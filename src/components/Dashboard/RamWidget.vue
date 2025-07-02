@@ -100,7 +100,7 @@ const formatBytes = (bytes, decimals = 2) => {
 const fetchRamData = async () => {
   try {
     loading.value = true
-    const response = await fetch('http://localhost:3000/api/ram')
+    const response = await fetch(`${window.location.protocol}//${window.location.hostname}:3000/api/ram`)
     
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)

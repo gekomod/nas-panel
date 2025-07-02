@@ -284,7 +284,7 @@ import PermissionsModal from './modals/PermissionsModal.vue';
 import PropertiesModal from './modals/PropertiesModal.vue';
 import FileEditorModal from './modals/FileEditorModal.vue';
 
-axios.defaults.baseURL = 'http://localhost:3000';
+axios.defaults.baseURL = `${window.location.protocol}//${window.location.hostname}:3000`;
 
 export default {
   components: {

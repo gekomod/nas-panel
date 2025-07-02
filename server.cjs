@@ -30,12 +30,13 @@ const upload = multer({
 });
 
 const app = express()
-const PORT = 3000
+const HOST = '0.0.0.0'; // Nasłuchuje na wszystkich interfejsach
+const PORT = process.env.PORT || 3000;
 
 const BASE_DIR = '/';
 
 // Prosta konfiguracja CORS bez użycia path-to-regexp
-const allowedOrigins = ['http://localhost:5173']
+const allowedOrigins = ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://0.0.0.0:5173', 'http://192.168.1.54:5173'];
 
 app.locals.requireAuth = (req, res, next) => {
   // Your authentication logic here
@@ -929,7 +930,6 @@ function getPermissions(mode) {
 
 StorageRoutes(app,requireAuth);
 
-app.listen(PORT, () => {
-  console.log(`API server running on http://localhost:${PORT}`)
+app.listen(PORT, HOST, () => {
+  console.log(`Serwer działa na http://${HOST}:${PORT}`);
 })
-

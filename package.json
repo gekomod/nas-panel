@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm run server\" \"vite\"",
-    "server": "node server.cjs",
+    "dev": "concurrently \"npm run server\" \"vite --host 0.0.0.0\"",
+    "server": "node server.cjs --host",
     "build": "vite build",
     "preview": "vite preview"
   },

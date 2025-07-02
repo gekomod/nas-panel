@@ -55,6 +55,8 @@ import DeviceBasicInfo from './DeviceBasicInfo.vue'
 import SmartAttributes from './SmartAttributes.vue'
 import TestHistory from './TestHistory.vue'
 
+axios.defaults.baseURL = `${window.location.protocol}//${window.location.hostname}:3000`;
+
 const route = useRoute()
 const router = useRouter()
 

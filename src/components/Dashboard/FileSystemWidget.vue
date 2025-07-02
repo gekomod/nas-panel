@@ -81,6 +81,8 @@ const autoRefresh = ref(true)
 const refreshInterval = ref(null)
 const sortBy = ref('usage') // 'usage', 'name', 'size'
 
+axios.defaults.baseURL = `${window.location.protocol}//${window.location.hostname}:3000`;
+
 // Computed
 const sortedDisks = computed(() => {
   return [...fileSystems.value].sort((a, b) => {
@@ -96,7 +98,7 @@ const fetchFileSystems = async () => {
   error.value = null
   
   try {
-    const response = await axios.get('http://localhost:3000/api/filesystems')
+    const response = await axios.get('/api/filesystems')
     fileSystems.value = processDiskData(response.data)
   } catch (err) {
     error.value = 'Błąd ładowania danych dyskowych'

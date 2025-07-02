@@ -86,7 +86,7 @@ const loading = ref(false)
 const scanning = ref(false)
 const error = ref(null)
 
-axios.defaults.baseURL = 'http://localhost:3000';
+axios.defaults.baseURL = `${window.location.protocol}//${window.location.hostname}:3000`;
 
 const getDeviceIcon = (device) => {
   if (device.startsWith('nvme')) return 'mdi:memory'

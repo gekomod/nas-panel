@@ -117,6 +117,8 @@ import axios from 'axios'
 
 const { t } = useI18n()
 
+axios.defaults.baseURL = `${window.location.protocol}//${window.location.hostname}:3000`;
+
 const filesystems = ref([
   {
     device: '/dev/sda1',

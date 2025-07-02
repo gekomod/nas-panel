@@ -92,7 +92,7 @@ const formatCpuText = () => {
 const fetchCpuData = async () => {
   try {
     loading.value = true
-    const response = await fetch('http://localhost:3000/api/cpu')
+    const response = await fetch(`${window.location.protocol}//${window.location.hostname}:3000/api/cpu`)
     
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)

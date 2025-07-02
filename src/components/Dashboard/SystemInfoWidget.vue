@@ -93,7 +93,7 @@ const formatUptime = (seconds) => {
 
 const fetchData = async () => {
   try {
-    const response = await fetch('http://localhost:3000/api/system-info')
+    const response = await fetch(`${window.location.protocol}//${window.location.hostname}:3000/api/system-info`)
     
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
