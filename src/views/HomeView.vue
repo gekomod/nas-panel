@@ -126,7 +126,7 @@ const loadWidgets = async () => {
         if (!updatedWidgets.some(w => w.name === newWidget.name)) {
           updatedWidgets.push(newWidget);
         }
-      });
+	      });
       
       allWidgets.value = updatedWidgets.sort((a, b) => (a.position || 0) - (b.position || 0));
     } else {

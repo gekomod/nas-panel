@@ -1,0 +1,22 @@
+sudo ln -s /etc/nginx/sites-available/nas-engine /etc/nginx/sites-enabled
+sudo nginx -t
+sudo systemctl restart nginx
+
+npm run build
+
+sudo systemctl daemon-reload
+sudo systemctl enable nas-api nas-frontend
+sudo systemctl start nas-api nas-frontend
+
+# Sprawdź status
+sudo systemctl status nas-api nas-frontend
+
+# Logi API
+journalctl -u nas-api -f
+
+# Logi frontendu
+journalctl -u nas-frontend -f
+
+# Restart usług
+sudo systemctl restart nas-api nas-frontend
+

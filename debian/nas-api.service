@@ -1,0 +1,16 @@
+[Unit]
+Description=NAS Engine API Service
+After=network.target
+
+[Service]
+User=nodeuser
+Group=nodeuser
+WorkingDirectory=/nas-engine/api
+Environment=NODE_ENV=production
+Environment=PORT=3000
+ExecStart=/usr/bin/node /nas-engine/api/server.js
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
