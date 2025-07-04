@@ -148,6 +148,11 @@ const menuItems = [
         icon: 'mdi:account-group'
       },
       {
+        title: 'Aktualizacje',
+        path: '/system/updates',
+        icon: 'mdi:update'
+      },
+      {
         title: 'Powiadomienia',
         path: '/system/notifications',
         icon: 'mdi:bell'

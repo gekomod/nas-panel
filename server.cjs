@@ -12,6 +12,7 @@ const { exec } = require('child_process');
 
 const StorageRoutes = require('./src/api/storage.cjs');
 const NetworkRoutes = require('./src/api/network.cjs');
+const SystemRoutes = require('./src/api/system.cjs');
 
 // Konfiguracja multer dla uploadu plików
 const storage = multer.diskStorage({
@@ -931,6 +932,7 @@ function getPermissions(mode) {
 
 StorageRoutes(app,requireAuth);
 NetworkRoutes(app,requireAuth);
+SystemRoutes(app,requireAuth);
 
 app.listen(PORT, HOST, () => {
   console.log(`Serwer działa na http://${HOST}:${PORT}`);

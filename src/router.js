@@ -174,6 +174,16 @@ const routes = [
           requiresAuth: true,
           icon: 'mdi:console' 
         } 
+      },
+      {
+	path: 'updates',
+	name: 'SystemUpdates',
+	component: () => import('@/components/system/updates/Updates.vue'),
+	meta: { 
+	  title: 'System Updates', 
+	  requiresAuth: true,
+	  icon: 'mdi:update' 
+	}
       }
     ]
   }
