@@ -72,6 +72,88 @@ export default {
     unavailable: 'Unavailable',
     commandCopied: 'Command copied to clipboard'
   },
+  network: {
+    interfaces: {
+      title: 'Network Interfaces',
+      device: 'Device',
+      method: 'Method',
+      address: 'IP Address',
+      netmask: 'Netmask',
+      gateway: 'Gateway',
+      status: 'Status',
+      mac: 'MAC Address',
+      mtu: 'MTU',
+      wol: 'WOL',
+      speed: 'Speed',
+      type: 'Type',
+      details_for: 'Interface Details',
+      statistics: 'Statistics',
+      rx_bytes: 'RX Bytes',
+      tx_bytes: 'TX Bytes',
+      rx_packets: 'RX Packets',
+      tx_packets: 'TX Packets',
+      speed_test: 'Speed Test',
+      start_test: 'Start Test',
+      testing: 'Testing...',
+      download: 'Download',
+      upload: 'Upload',
+      ping: 'Ping',
+      results: 'Results',
+      refresh: 'Refresh',
+      save: 'Save',
+      healthy: 'healthy',
+      error: 'error',
+      unknown: 'unknown',
+      up: 'up',
+      down: 'down',
+      actions: 'Actions',
+      refresh: 'Refresh',
+      save: 'Save',
+      add_interface: 'Add Interface',
+      interface_name: 'Interface name',
+      interface_type: 'Interface type',
+      interface_types: {
+        ethernet: 'Ethernet',
+        bridge: 'Bridge',
+        vlan: 'VLAN',
+        bond: 'Bonding'
+      },
+      delete_interface: 'Delete Interface',
+      delete_confirm: 'Are you sure you want to delete interface {interface}?',
+      delete_success: 'Interface deleted successfully',
+      delete_protected: 'Cannot delete protected interface',
+      delete_not_found: 'Interface does not exist',
+      details: 'Details',
+      delete: 'Delete',
+      cancel: 'Cancel',
+      confirm: 'Confirm'
+    },
+    types: {
+      ethernet: 'Ethernet',
+      wireless: 'Wireless',
+      other: 'Other'
+    },
+    methods: {
+      dhcp: 'DHCP',
+      static: 'Static',
+      unknown: 'Unknown'
+    },
+    firewall: {
+      title: 'Firewall',
+      rules: 'Rules',
+      enable: 'Enable',
+      disable: 'Disable',
+      status: {
+        active: 'active',
+        inactive: 'inactive'
+      },
+      actions: {
+        allow: 'Allow',
+        deny: 'Deny'
+      },
+      rule_action: 'Action'
+    }
+  },
   widgets: {
     SystemInfoWidget: "System Information",
     RamWidget: "RAM Memory",

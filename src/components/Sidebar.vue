@@ -88,6 +88,28 @@ const menuItems = [
     ]
   },
   {
+    title: 'Network',
+    path: '/network',
+    icon: 'mdi:network',
+    children: [
+      {
+        title: 'Interfejsy',
+        path: '/network/interfaces',
+        icon: 'mdi:ethernet-cable'
+      },
+      {
+        title: 'Zapora sieciowa',
+        path: '/network/firewall',
+        icon: 'mdi:firewall'
+      },
+      {
+        title: 'VPN',
+        path: '/network/vpn',
+        icon: 'mdi:lock'
+      }
+    ]
+  },
+  {
     title: 'Storage',
     path: '/storage',
     icon: 'mdi:database',

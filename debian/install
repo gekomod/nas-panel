@@ -20,3 +20,4 @@ journalctl -u nas-frontend -f
 # Restart usług
 sudo systemctl restart nas-api nas-frontend
 
+sudo apt install ethtool net-tools

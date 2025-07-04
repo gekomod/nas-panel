@@ -99,6 +99,88 @@ export default {
       noData: 'Brak danych atrybutów SMART'
     }
   },
+  network: {
+    interfaces: {
+      title: 'Interfejsy sieciowe',
+      device: 'Urządzenie',
+      method: 'Metoda',
+      address: 'Adres IP',
+      netmask: 'Maska podsieci',
+      gateway: 'Brama',
+      status: 'Status',
+      mac: 'Adres MAC',
+      mtu: 'MTU',
+      wol: 'WOL',
+      speed: 'Prędkość',
+      type: 'Typ',
+      details_for: 'Szczegóły interfejsu',
+      statistics: 'Statystyki',
+      rx_bytes: 'Odebrane bajty',
+      tx_bytes: 'Wysłane bajty',
+      rx_packets: 'Odebrane pakiety',
+      tx_packets: 'Wysłane pakiety',
+      speed_test: 'Test prędkości',
+      start_test: 'Rozpocznij test',
+      testing: 'Trwa testowanie...',
+      download: 'Pobieranie',
+      upload: 'Wysyłanie',
+      ping: 'Ping',
+      results: 'Wyniki',
+      refresh: 'Odśwież',
+      save: 'Zapisz',
+      healthy: 'sprawny',
+      error: 'błąd',
+      unknown: 'nieznany',
+      up: 'aktywny',
+      down: 'nieaktywny',
+      actions: 'Akcje',
+      refresh: 'Odśwież',
+      save: 'Zapisz',
+      add_interface: 'Dodaj Interfejs',
+      interface_name: 'Nazwa interfejsu',
+      interface_type: 'Typ interfejsu',
+      interface_types: {
+        ethernet: 'Ethernet',
+        bridge: 'Most',
+        vlan: 'VLAN',
+        bond: 'Bonding'
+      },
+      delete_interface: 'Usuń interfejs',
+      delete_confirm: 'Czy na pewno chcesz usunąć interfejs {interface}?',
+      delete_success: 'Interfejs został usunięty',
+      delete_protected: 'Nie można usunąć chronionego interfejsu',
+      delete_not_found: 'Interfejs nie istnieje',
+      details: 'Szczegóły',
+      delete: 'Usuń',
+      cancel: 'Anuluj',
+      confirm: 'Potwierdź'
+    },
+    types: {
+      ethernet: 'Ethernet',
+      wireless: 'Wi-Fi',
+      other: 'Inny'
+    },
+    methods: {
+      dhcp: 'DHCP',
+      static: 'Statyczny',
+      unknown: 'Nieznany'
+    },
+    firewall: {
+      title: 'Zapora sieciowa',
+      rules: 'Reguły',
+      enable: 'Włącz',
+      disable: 'Wyłącz',
+      status: {
+        active: 'aktywny',
+        inactive: 'nieaktywny'
+      },
+      actions: {
+        allow: 'Zezwól',
+        deny: 'Odrzuć'
+      },
+      rule_action: 'Akcja'
+    }
+  },
   widgets: {
     SystemInfoWidget: "Informacje systemowe",
     RamWidget: "Pamięć RAM",

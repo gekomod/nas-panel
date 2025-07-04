@@ -53,6 +53,56 @@ const routes = [
       icon: 'mdi:apps' 
     } 
   },
+{
+  path: '/network',
+  meta: { 
+    title: 'Network',
+    icon: 'mdi:network' 
+  },
+  children: [
+    {
+      path: 'interfaces',
+      name: 'Interfaces',
+      component: () => import('@/components/network/Interfaces.vue'),
+      meta: { 
+        title: 'Interfejsy sieciowe', 
+        requiresAuth: true,
+        icon: 'mdi:ethernet-cable' 
+      }
+    },
+    {
+      path: 'interfaces/details/:interface',
+      name: 'InterfaceDetails',
+      component: () => import('@/components/network/interfaces/details/Details.vue'),
+      props: true,
+      meta: { 
+        title: 'Szczegóły interfejsu', 
+        requiresAuth: true,
+        hideInMenu: true 
+      }
+    },
+    {
+      path: 'firewall',
+      name: 'Firewall',
+      component: () => import('@/components/network/firewall/Firewall.vue'),
+      meta: { 
+        title: 'Zapora sieciowa', 
+        requiresAuth: true,
+        icon: 'mdi:firewall' 
+      }
+    },
+    {
+      path: 'vpn',
+      name: 'VPN',
+      component: () => import('@/components/network/vpn/Vpn.vue'),
+      meta: { 
+        title: 'VPN', 
+        requiresAuth: true,
+        icon: 'mdi:lock' 
+      }
+    }
+  ]
+},
   {
     path: '/storage',
     meta: { 

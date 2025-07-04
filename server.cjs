@@ -11,6 +11,7 @@ const diskusage = require('diskusage');
 const { exec } = require('child_process');
 
 const StorageRoutes = require('./src/api/storage.cjs');
+const NetworkRoutes = require('./src/api/network.cjs');
 
 // Konfiguracja multer dla uploadu plików
 const storage = multer.diskStorage({
@@ -49,7 +50,7 @@ app.use((req, res, next) => {
   if (allowedOrigins.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin)
     res.setHeader('Access-Control-Allow-Credentials', 'true')
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, DELETE')
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
   }
   
@@ -929,6 +930,7 @@ function getPermissions(mode) {
 // SMART Endpoints
 
 StorageRoutes(app,requireAuth);
+NetworkRoutes(app,requireAuth);
 
 app.listen(PORT, HOST, () => {
   console.log(`Serwer działa na http://${HOST}:${PORT}`);
