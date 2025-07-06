@@ -1,0 +1,14 @@
+nas-panel (1.0.0-1ubuntu1) UNRELEASED; urgency=medium
+
+  * Add Docker to Services
+  * Add Samba to services
+  * Add Information want install Docker or Samba
+  * Add Diagnostic/Processes Page
+
+ -- root <root@zaba-iMac>  Sun, 06 Jul 2025 21:14:53 +0200
+
+nas-panel (1.0.0-1) unstable; urgency=medium
+
+  * Initial release of NAS Panel
+
+ -- Your Name <your.email@example.com>  Mon, 01 Jan 2024 12:00:00 +0000

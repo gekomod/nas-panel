@@ -1,0 +1,38 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+# Pomijamy kroki związane z tworzeniem archiwum
+override_dh_auto_configure:
+	export npm_config_platform=linux; \
+	export npm_config_arch=x64; \
+	export npm_config_target_arch=x64; \
+	export npm_config_target_platform=linux
+
+override_dh_auto_build:
+	cd backend && npm install --force --quiet && npm run build
+
+override_dh_auto_install:
+	rm -fr /etc/nginx/sites-available/nas-engine
+	install -D -m 644 debian/nginx/nas-engine $(CURDIR)/debian/nas-panel/etc/nginx/sites-available/nas-engine
+
+	if [ ! -L /lib/libc.musl-x86_64.so.1 ]; then \
+		ln -s /usr/lib/x86_64-linux-musl/libc.so /lib/libc.musl-x86_64.so.1; \
+	fi
+	mkdir -p $(CURDIR)/debian/nas-panel/etc/nginx/sites-available
+	cp debian/nginx/nas-engine $(CURDIR)/debian/nas-panel/etc/nginx/sites-available/
+
+	# Install frontend files
+	mkdir -p debian/nas-panel/opt/nas-panel
+	cp -r backend/dist/* debian/nas-panel/opt/nas-panel/
+	
+	# Install backend files (assuming they're in a backend/ directory)
+	cp -r backend/* debian/nas-panel/opt/nas-panel/
+	
+	# Install systemd services
+	mkdir -p debian/nas-panel/lib/systemd/system
+	cp debian/nas-api.service debian/nas-panel/lib/systemd/system/
+
+override_dh_shlibdeps:
+	dh_shlibdeps --dpkg-shlibdeps-params=--ignore-missing-info
