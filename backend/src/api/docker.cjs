@@ -7,6 +7,100 @@ const execAsync = promisify(exec);
 const DOCKER_COMPOSE_DIR = path.join(__dirname, '../docker-compose');
 
 module.exports = function(app, requireAuth) {
+
+const manageDockerService = async (action) => {
+  return new Promise((resolve, reject) => {
+    const command = `sudo systemctl ${action} docker`;
+    console.log(`Executing: ${command}`);
+    
+    const child = exec(command, { timeout: 10000 }, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`Error ${action}ing Docker: ${stderr || error.message}`);
+        return reject(new Error(`Failed to ${action} Docker: ${stderr || error.message}`));
+      }
+      console.log(`Docker ${action} success: ${stdout}`);
+      resolve(`Docker service ${action}ed successfully`);
+    });
+
+    child.on('exit', (code, signal) => {
+      if (code !== 0) {
+        console.warn(`Process exited with code ${code}, signal ${signal}`);
+      }
+    });
+  });
+};
+
+// Uruchom Docker
+app.post('/services/docker/stop', requireAuth, async (req, res) => {
+  try {
+    // 1. Najpierw zatrzymaj wszystkie kontenery
+    await new Promise((resolve) => {
+      exec('sudo docker stop $(sudo docker ps -aq)', { timeout: 30000 }, (error) => {
+        if (error) {
+          console.warn('Warning: Not all containers stopped gracefully');
+        }
+        resolve();
+      });
+    });
+
+    // 2. Zatrzymaj usługę Docker
+    const result = await manageDockerService('stop');
+    
+    // 3. Sprawdź status
+    const status = await new Promise((resolve) => {
+      exec('systemctl is-active docker', (error) => {
+        resolve(error ? 'inactive' : 'active');
+      });
+    });
+
+    if (status === 'active') {
+      throw new Error('Docker service still running after stop command');
+    }
+
+    res.json({ 
+      message: result,
+      status: 'inactive'
+    });
+  } catch (error) {
+    console.error(`Stop failed: ${error.message}`);
+    res.status(500).json({ 
+      error: error.message,
+      details: 'Check server logs for more information'
+    });
+  }
+});
+
+// Zatrzymaj Docker
+app.post('/services/docker/start', requireAuth, async (req, res) => {
+  try {
+    const result = await manageDockerService('start');
+
+    await new Promise((resolve) => {
+      exec('sudo docker start $(sudo docker ps -aq)', { timeout: 30000 }, (error) => {
+        if (error) {
+          console.warn('Warning: Not all containers started gracefully');
+        }
+        resolve();
+      });
+    });
+
+    res.json({ message: result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Zrestartuj Docker
+app.post('/services/docker/restart', requireAuth, async (req, res) => {
+  try {
+    const result = await manageDockerService('restart');
+    res.json({ message: result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
   // Check if Docker is installed
   app.get('/services/docker/status', requireAuth, async (req, res) => {
   try {
@@ -200,6 +294,26 @@ app.get('/services/docker/container/logs/:id', requireAuth, async (req, res) => 
         error: 'Failed to pull image',
         details: error.message
       });
+    }
+  });
+
+  // Delete Docker Images
+  app.delete('/services/docker/images/remove', requireAuth, async (req, res) => {
+    try {
+      const { image } = req.query;
+      if (!image) {
+        return res.status(400).json({ error: 'Image name is required' });
+      }
+
+      const { exec } = require('child_process');
+      exec(`docker rmi ${image}`, (error, stdout, stderr) => {
+        if (error) {
+          return res.status(500).json({ error: stderr });
+        }
+        res.json({ message: `Image ${image} removed successfully` });
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
     }
   });
 
@@ -527,6 +641,52 @@ app.post('/services/docker/container/:id/restart', requireAuth, validateContaine
     res.status(500).json({
       success: false,
       error: 'Failed to restart container'
+    });
+  }
+});
+
+app.delete('/services/docker/container/:id', requireAuth, async (req, res) => {
+  const { id } = req.params;
+  const { removeVolumes, removeImage, force } = req.query;
+
+  try {
+    // 1. Zatrzymaj kontener jeśli jest uruchomiony i wymuszamy usunięcie
+    if (force) {
+      try {
+        await exec(`docker stop ${id}`);
+      } catch (stopError) {
+        console.log('Container already stopped or does not exist');
+      }
+    }
+
+    if (removeImage) {
+      try {
+        // Pobierz informacje o kontenerze przed usunięciem
+        const containerInfo = await exec(`docker inspect ${id}`);
+        const containerData = JSON.parse(containerInfo);
+
+        if (containerData.length > 0 && containerData[0].Image) {
+          const imageId = containerData[0].Image;
+          await exec(`docker rmi ${imageId}`);
+        }
+      } catch (imageError) {
+        console.error('Error removing image:', imageError);
+        // Kontynuuj nawet jeśli nie uda się usunąć obrazu
+      }
+    }
+
+    // 2. Usuń kontener
+    let rmCommand = `docker rm ${id}`;
+    if (removeVolumes) rmCommand += ' -v';
+    if (force) rmCommand += ' -f';
+    await exec(rmCommand);
+
+    res.json({ success: true, message: 'Container deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting container:', error);
+    res.status(500).json({ 
+      error: 'Failed to delete container',
+      details: error.message 
     });
   }
 });

@@ -9,7 +9,7 @@
         <Icon icon="mdi:plus" class="icon" />
         New Compose
       </el-button>
-      <el-button type="info" @click="showTemplatesDialog = true">
+      <el-button type="info" @click="loadTemplatesDialog">
         <Icon icon="mdi:file-download" class="icon" />
         Add from Templates
       </el-button>
@@ -387,15 +387,17 @@ const deployCompose = async (filename) => {
 const loadTemplates = async () => {
   try {
     // Najpierw spróbuj pobrać z GitHub
-    const response = await axios.get('https://api.github.com/repos/your-repo/docker-templates/contents/templates.json', {
-      headers: {
-        Accept: 'application/vnd.github.v3.raw'
+    const response = await axios.get(
+      'https://raw.githubusercontent.com/gekomod/docker-templates/main/contents/templates.json',
+      {
+        headers: {
+          'Accept': 'application/vnd.github.v3.raw'
+        }
       }
-    });
-    templates.value = response.data;
+    );
+    templates.value = response.data.templates || defaultTemplates;
   } catch (error) {
     console.log('Using default templates due to error:', error);
-    // Jeśli nie uda się pobrać z GitHub, użyj domyślnych
     templates.value = defaultTemplates;
   }
 };
@@ -426,9 +428,13 @@ const handleTemplateSelect = (row) => {
   showCreateDialog.value = true;
 };
 
+const loadTemplatesDialog = async () => {
+    showTemplatesDialog.value = true;
+    loadTemplates();
+}
+
 onMounted(() => {
   fetchComposeFiles();
-  loadTemplates();
 });
 </script>
 

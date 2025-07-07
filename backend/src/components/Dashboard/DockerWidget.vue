@@ -4,11 +4,32 @@
       <div class="widget-header">
         <Icon icon="mdi:docker" width="20" class="header-icon" />
         <span>Kontenery Docker</span>
+        <el-tag :type="dockerStatusTagType" size="small" class="status-tag">
+          {{ dockerStatusText }}
+        </el-tag>
       </div>
     </template>
 
-    <div v-loading="loading" class="widget-content">
-      <div v-for="container in containers" :key="container.id" class="container-item">
+    <div v-if="!dockerRunning" class="docker-offline">
+      <el-empty description="Docker jest wyłączony">
+        <el-button 
+          type="primary" 
+          size="small"
+          @click="startDocker"
+          :loading="startingDocker"
+        >
+          <Icon icon="mdi:power" class="button-icon" />
+          Uruchom Docker
+        </el-button>
+      </el-empty>
+    </div>
+
+    <div v-else v-loading="loading" class="widget-content">
+      <div v-if="containers.length === 0" class="no-containers">
+        <el-empty description="Brak uruchomionych kontenerów" />
+      </div>
+      
+      <div v-else v-for="container in containers" :key="container.id" class="container-item">
         <div class="container-name">
           <span>{{ container.names }}</span>
         </div>
@@ -35,33 +56,56 @@ export default {
 </script>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { Icon } from '@iconify/vue'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 
 const containers = ref([])
 const loading = ref(false)
+const dockerStatus = ref('unknown')
+const startingDocker = ref(false)
 let intervalId = null
+
+const dockerRunning = computed(() => dockerStatus.value === 'active')
+const dockerStatusText = computed(() => {
+  return dockerStatus.value === 'active' ? 'Docker działa' : 'Docker wyłączony'
+})
+const dockerStatusTagType = computed(() => {
+  return dockerStatus.value === 'active' ? 'success' : 'danger'
+})
+
+const fetchDockerStatus = async () => {
+  try {
+    const response = await axios.get('/services/docker/status')
+    dockerStatus.value = response.data.status || 'unknown'
+    
+    // Pobierz kontenery tylko jeśli Docker jest uruchomiony
+    if (dockerRunning.value) {
+      await fetchContainers()
+    } else {
+      containers.value = []
+    }
+  } catch (error) {
+    console.error('Błąd pobierania statusu Dockera:', error)
+    dockerStatus.value = 'inactive'
+  }
+}
 
 const fetchContainers = async () => {
   try {
     loading.value = true
-    const response = await axios.get('/services/docker/containers',{
+    const response = await axios.get('/services/docker/containers', {
       params: { all: true }
     })
     
-    // Handle different response formats
     let containersData = []
     
     if (Array.isArray(response.data)) {
-      // If response is already an array
       containersData = response.data
     } else if (response.data.containers) {
-      // If response is an object with containers property
       containersData = response.data.containers
     } else if (response.data.data) {
-      // If response is nested under data property
       containersData = response.data.data
     }
     
@@ -75,9 +119,23 @@ const fetchContainers = async () => {
   } catch (error) {
     console.error('Błąd pobierania kontenerów:', error)
     ElMessage.error('Nie udało się pobrać listy kontenerów')
-    containers.value = [] // Set empty array on error
+    containers.value = []
   } finally {
     loading.value = false
+  }
+}
+
+const startDocker = async () => {
+  try {
+    startingDocker.value = true
+    await axios.post('/services/docker/start')
+    ElMessage.success('Docker został uruchomiony')
+    await fetchDockerStatus()
+  } catch (error) {
+    console.error('Błąd uruchamiania Dockera:', error)
+    ElMessage.error('Nie udało się uruchomić Dockera')
+  } finally {
+    startingDocker.value = false
   }
 }
 
@@ -87,22 +145,21 @@ const toggleContainer = async (container) => {
     const action = container.state === 'running' ? 'stop' : 'start'
     await axios.post(`/services/docker/container/${container.id}/${action}`)
     
-    ElMessage.success(`Kontener ${container.name} ${action === 'stop' ? 'zatrzymany' : 'uruchomiony'}`)
+    ElMessage.success(`Kontener ${container.names} ${action === 'stop' ? 'zatrzymany' : 'uruchomiony'}`)
     container.state = action === 'stop' ? 'exited' : 'running'
   } catch (error) {
     console.error('Błąd zmiany stanu kontenera:', error)
-    ElMessage.error(`Nie udało się zmienić stanu kontenera ${container.name}`)
+    ElMessage.error(`Nie udało się zmienić stanu kontenera ${container.names}`)
   } finally {
     container.loading = false
   }
 }
 
 onMounted(() => {
-  fetchContainers()
-  intervalId = setInterval(fetchContainers, 15000)
+  fetchDockerStatus()
+  intervalId = setInterval(fetchDockerStatus, 15000)
 })
 
-// Sprzątanie
 onBeforeUnmount(() => {
   if (intervalId) clearInterval(intervalId)
 })
@@ -125,8 +182,14 @@ onBeforeUnmount(() => {
   color: var(--el-color-primary);
 }
 
+.status-tag {
+  margin-left: auto;
+}
+
 .widget-content {
   padding: 2px 0;
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 .container-item {
@@ -147,5 +210,18 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 70%;
+}
+
+.docker-offline {
+  padding: 20px 0;
+  text-align: center;
+}
+
+.no-containers {
+  padding: 20px 0;
+}
+
+.button-icon {
+  margin-right: 5px;
 }
 </style>

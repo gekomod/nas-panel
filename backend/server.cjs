@@ -15,6 +15,7 @@ const NetworkRoutes = require('./src/api/network.cjs');
 const SystemRoutes = require('./src/api/system.cjs');
 const ServicesRoutes = require('./src/api/services.cjs');
 const DockerRoutes = require('./src/api/docker.cjs');
+const DockerConfigRoutes = require('./src/api/docker-config.cjs');
 const DiagnosticsRoutes = require('./src/api/diagnostics.cjs');
 
 // Konfiguracja multer dla uploadu plików
@@ -969,6 +970,7 @@ NetworkRoutes(app,requireAuth);
 SystemRoutes(app,requireAuth);
 ServicesRoutes(app,requireAuth);
 DockerRoutes(app,requireAuth);
+DockerConfigRoutes(app,requireAuth);
 DiagnosticsRoutes(app,requireAuth);
 
 app.listen(PORT, HOST, () => {

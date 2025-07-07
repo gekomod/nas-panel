@@ -89,7 +89,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, inject, watch } from 'vue';
 import axios from 'axios';
 import { Icon } from '@iconify/vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -100,6 +100,7 @@ const searchQuery = ref('');
 const showCreateDialog = ref(false);
 const inspectDialogVisible = ref(false);
 const inspectData = ref('');
+const reloadKey = inject('reloadKey');
 const networkForm = ref({
   name: '',
   driver: 'bridge',
@@ -174,6 +175,10 @@ const inspectNetwork = async (id) => {
     console.error(error);
   }
 };
+
+watch(reloadKey, () => {
+  fetchNetworks();
+});
 
 onMounted(() => {
   fetchNetworks();

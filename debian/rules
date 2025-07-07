@@ -34,5 +34,8 @@ override_dh_auto_install:
 	mkdir -p debian/nas-panel/lib/systemd/system
 	cp debian/nas-api.service debian/nas-panel/lib/systemd/system/
 
+	# Create directory in /etc/
+	install -d debian/nas-panel/etc/nas-panel
+
 override_dh_shlibdeps:
 	dh_shlibdeps --dpkg-shlibdeps-params=--ignore-missing-info

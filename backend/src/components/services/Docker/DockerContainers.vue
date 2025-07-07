@@ -119,6 +119,14 @@
             >
               <el-icon><Icon icon="mdi:file-document" /></el-icon>
             </el-button>
+            <el-button
+              size="small"
+              type="danger"
+              plain
+              @click.stop="confirmDeleteContainer(row)"
+            >
+            <el-icon><Icon icon="mdi:delete" /></el-icon>
+            </el-button>
           </el-button-group>
         </template>
       </el-table-column>
@@ -152,10 +160,10 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, inject, watch } from 'vue';
 import axios from 'axios';
 import { Icon } from '@iconify/vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import ContainerStats from './ContainerStats.vue';
 
 const containers = ref([]);
@@ -168,6 +176,7 @@ const selectedContainerId = ref('');
 const loadingActions = ref({});
 const expandedRow = ref(null);
 const containerStats = ref({});
+const reloadKey = inject('reloadKey');
 
 const handleRowClick = async (row) => {
           expandedRow.value = row.ID;
@@ -280,6 +289,57 @@ const manageContainer = async (id, action) => {
   }
 };
 
+const deleteContainer = async (containerId) => {
+  try {
+    loadingActions.value[containerId] = 'delete';
+    
+    const response = await axios.delete(`/services/docker/container/${containerId}`, {
+      params: {
+        removeVolumes: true,
+        removeImage: true,
+        force: true
+      }
+    });
+    
+    await fetchContainers();
+    ElMessage.success(response.data.message || 'Container deleted successfully');
+  } catch (error) {
+    const errorMsg = error.response?.data?.details || 
+                    error.response?.data?.error || 
+                    'Failed to delete container';
+    ElMessage.error(errorMsg);
+    console.error('Delete error:', error);
+    throw error; // Rzuć błąd dalej dla obsługi w confirmDeleteContainer
+  } finally {
+    loadingActions.value[containerId] = null;
+  }
+};
+
+const confirmDeleteContainer = (container) => {
+  ElMessageBox.confirm(
+    `This will permanently delete container ${container.ID} with all associated resources. Continue?`,
+    'Delete Confirmation',
+    {
+      confirmButtonText: 'Delete',
+      cancelButtonText: 'Cancel',
+      type: 'warning',
+      beforeClose: async (action, instance, done) => {
+        if (action === 'confirm') {
+          instance.confirmButtonLoading = true;
+          try {
+            await deleteContainer(container.ID);
+            done();
+          } catch {
+            instance.confirmButtonLoading = false;
+          }
+        } else {
+          done();
+        }
+      }
+    }
+  ).catch(() => {});
+};
+
 const showContainerLogs = async (id) => {
   try {
     selectedContainerId.value = id;
@@ -301,6 +361,10 @@ const showContainerStats = (id) => {
   selectedContainerId.value = id;
   statsDialogVisible.value = true;
 };
+
+watch(reloadKey, () => {
+  fetchContainers();
+});
 
 onMounted(() => {
   fetchContainers();

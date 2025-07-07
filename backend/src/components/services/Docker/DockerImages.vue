@@ -41,7 +41,7 @@
             <el-button
               size="small"
               type="danger"
-              @click="deleteImage(row.ImageID)"
+              @click="deleteImage(row)"
             >
               <Icon icon="mdi:delete" />
             </el-button>
@@ -72,7 +72,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, inject, watch } from 'vue';
 import axios from 'axios';
 import { Icon } from '@iconify/vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -81,6 +81,7 @@ const images = ref([]);
 const loading = ref(false);
 const searchQuery = ref('');
 const showPullDialog = ref(false);
+const reloadKey = inject('reloadKey');
 const pullForm = ref({
   image: ''
 });
@@ -133,10 +134,10 @@ const pullImage = async () => {
   }
 };
 
-const deleteImage = async (imageId) => {
+const deleteImage = async (image) => {
   try {
     await ElMessageBox.confirm(
-      'This will permanently delete the image. Continue?',
+      `This will permanently delete the image ${image.Repository}:${image.Tag}. Continue?`,
       'Warning',
       {
         confirmButtonText: 'Delete',
@@ -145,7 +146,13 @@ const deleteImage = async (imageId) => {
       }
     );
 
-    await axios.delete(`/services/docker/images/${imageId}`);
+    // Zmieniamy endpoint i sposób przekazywania parametrów
+    await axios.delete('/services/docker/images/remove', {
+      params: {
+        image: `${image.Repository}:${image.Tag}`
+      }
+    });
+    
     ElMessage.success('Image deleted successfully');
     await fetchImages();
   } catch (error) {
@@ -167,6 +174,10 @@ const runImage = async (repository) => {
     console.error(error);
   }
 };
+
+watch(reloadKey, () => {
+  fetchImages();
+});
 
 onMounted(() => {
   fetchImages();

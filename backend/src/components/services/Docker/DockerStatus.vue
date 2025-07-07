@@ -121,6 +121,12 @@
       <el-tab-pane label="Compose" name="compose">
         <DockerCompose />
       </el-tab-pane>
+      <el-tab-pane label="Settings" name="settings">
+        <DockerSettings 
+          :config="dockerConfig"
+          @save="handleSaveSettings"
+        />
+      </el-tab-pane>
     </el-tabs>
 
     <DockerInstall 
@@ -139,7 +145,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, provide } from 'vue';
 import axios from 'axios';
 import { Icon } from '@iconify/vue';
 import { ElMessage } from 'element-plus';
@@ -150,6 +156,7 @@ import DockerVolumes from './DockerVolumes.vue';
 import DockerCompose from './DockerCompose.vue';
 import DockerInstall from './DockerInstall.vue';
 import ContainerStats from './ContainerStats.vue';
+import DockerSettings from './DockerSettings.vue';
 
 const status = ref({
   installed: false,
@@ -157,12 +164,16 @@ const status = ref({
   status: 'unknown',
   info: ''
 });
+const dockerConfig = ref(null);
 const loading = ref(true);
 const serviceLoading = ref(false);
 const activeTab = ref('containers');
 const showInstallDialog = ref(false);
 const statsDialogVisible = ref(false);
 const selectedContainerId = ref('');
+
+const reloadKey = ref(0);
+provide('reloadKey', reloadKey);
 
 const statusClass = computed(() => {
   if (!status.value.installed) return 'danger';
@@ -197,7 +208,17 @@ const manageDocker = async (action) => {
     serviceLoading.value = true;
     await axios.post(`/services/docker/${action}`);
     ElMessage.success(`Docker service ${action}ed successfully`);
+    
+    // Odśwież status i wymuś przeładowanie zakładek
     await fetchStatus();
+    reloadKey.value++; // Inkrementacja wymusza przeładowanie
+    
+    // Dodatkowe opóźnienie dla pewności
+    setTimeout(() => {
+      if (status.value.installed) {
+        fetchDockerConfig();
+      }
+    }, 1000);
   } catch (error) {
     ElMessage.error(`Failed to ${action} Docker service`);
     console.error(error);
@@ -221,12 +242,45 @@ const showContainerStats = (containerId) => {
   statsDialogVisible.value = true;
 };
 
+const fetchDockerConfig = async () => {
+  try {
+    const response = await axios.get('/services/docker/config');
+    dockerConfig.value = response.data;
+  } catch (error) {
+    ElMessage.error('Failed to fetch Docker configuration');
+    console.error(error);
+    // Ustaw domyślne wartości w przypadku błędu
+    dockerConfig.value = {
+      daemonPort: 2375,
+      ipv6Enabled: false,
+      loggingDriver: 'json-file',
+      maxConcurrentDownloads: 3,
+      dataRoot: '/var/lib/docker'
+    };
+  }
+};
+
+const handleSaveSettings = async (newConfig) => {
+  try {
+    await axios.post('/services/docker/config', newConfig);
+    await fetchDockerConfig(); // Ponownie pobierz konfigurację po zapisie
+    ElMessage.success('Docker settings saved successfully');
+  } catch (error) {
+    ElMessage.error('Failed to save Docker settings');
+    console.error(error);
+    throw error; // Rzuć błąd, aby komponent mógł go obsłużyć
+  }
+};
+
 const onDockerInstalled = () => {
   fetchStatus();
 };
 
 onMounted(() => {
   fetchStatus();
+  if (status.value.installed) {
+    fetchDockerConfig();
+  }
 });
 </script>
 
