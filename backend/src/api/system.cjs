@@ -1,10 +1,12 @@
 const path = require('path');
-const fs = require('fs').promises;
+const fs = require('fs');
 const { exec, spawn } = require('child_process');
 const { promisify } = require('util');
 const execAsync = promisify(exec);
 const { v4: uuidv4 } = require('uuid')
 const activeProcesses = new Map()
+
+const SETTINGS_PATH = '/etc/nas-panel/settings.json';
 
 // Helper do wykonania komendy z obietnicą
 const execPromise = (command) => {
@@ -99,15 +101,19 @@ app.get('/system/updates/check-deps/:pkg', requireAuth, async (req, res) => {
 
 // Instalacja aktualizacji
 app.post('/system/updates/install', requireAuth, async (req, res) => {
-  const { packages } = req.body
+  const { packages = [], no_confirm = false } = req.body
+  
+  // If no packages specified but no_confirm is true, do full upgrade
+  const args = ['install', '-y']
   
   try {
-    // Rozpocznij instalację
-    const child = spawn('apt-get', [
-      'install',
-      '-y',
-      ...packages
-    ])
+    let child;
+    if (packages.length > 0) {
+      child = spawn('apt-get', [...args, ...packages])
+    } else {
+      // If no specific packages, do full upgrade
+      child = spawn('apt-get', ['upgrade', '-y'])
+    }
 
     // Zapisz proces do śledzenia
     const processId = Date.now()
@@ -125,7 +131,7 @@ app.post('/system/updates/install', requireAuth, async (req, res) => {
       error: error.toString()
     })
   }
-})
+});
 
 // Endpoint do śledzenia postępu (SSE)
 app.get('/system/updates/progress/:pkg', requireAuth, (req, res) => {
@@ -216,6 +222,45 @@ app.post('/api/system-restart', requireAuth, (req, res) => {
   res.json({ status: 'restarting' })
 })
 
+// Pobierz ustawienia
+app.get('/system/settings', (req, res) => {
+  try {
+    const settings = fs.readFileSync(SETTINGS_PATH, 'utf8');
+    res.json(JSON.parse(settings));
+  } catch (error) {
+    console.error('Error reading settings:', error);
+    // Zwróć domyślne ustawienia jeśli plik nie istnieje
+    res.json({
+      docker: {
+        composeDir: '/opt/docker/compose',
+        dataRoot: '/var/lib/docker',
+        autoStart: true
+      },
+      system: {
+        hostname: '',
+        timezone: 'Europe/Warsaw',
+        language: 'pl',
+        autoUpdates: false
+      },
+      ui: {
+        theme: 'system',
+        sidebarMode: 'vertical'
+      }
+    });
+  }
+});
+
+// Zapisz ustawienia
+app.post('/system/settings', (req, res) => {
+  try {
+    const settings = JSON.stringify(req.body, null, 2);
+    fs.writeFileSync(SETTINGS_PATH, settings, 'utf8');
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error saving settings:', error);
+    res.status(500).json({ error: 'Failed to save settings' });
+  }
+});
 
 // Helper functions
 function getStatusMessage(progress) {

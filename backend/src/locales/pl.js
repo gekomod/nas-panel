@@ -250,6 +250,64 @@ export default {
     autoRefreshOff: 'Auto-odświeżanie wyłączone',
     lastUpdate: "Ostatnia aktualizacja"
   },
+  docker: {
+    settings: {
+      title: 'Konfiguracja Dockera',
+      daemonPort: 'Port demona Dockera',
+      hosts: 'Hosty',
+      hostsPlaceholder: 'Dodaj hosty Dockera (np. tcp://0.0.0.0:2375)',
+      ipv6Enabled: 'Włącz IPv6',
+      loggingDriver: 'Domyślny sterownik logowania',
+      logLevel: 'Poziom logowania',
+      maxConcurrentDownloads: 'Maksymalna liczba równoległych pobrań',
+      maxConcurrentUploads: 'Maksymalna liczba równoległych wysyłań',
+      dataRoot: 'Główny katalog danych',
+      containerd: 'Gniazdo Containerd',
+      experimental: 'Funkcje eksperymentalne',
+      debug: 'Tryb debugowania',
+      liveRestore: 'Przywracanie na żywo',
+      ipTables: 'Włącz IP Tables',
+      ip6Tables: 'Włącz IPv6 Tables',
+      selectPlaceholder: 'Wybierz opcję',
+      basicSettings: "Basic Settings",
+      networkSettings: "Network",
+      loggingSettings: "Logging",
+      transferSettings: "Transfer",
+      advancedSettings: "Advanced",
+      ipForward: "IP Forwarding",
+      ipMasq: "IP Masquerading",
+      tlsEnabled: "Enable TLS",
+      tlsCaCert: "TLS CA Certificate",
+      tlsCert: "TLS Certificate",
+      tlsKey: "TLS Key",
+      maxDownloadAttempts: "Max Download Attempts"
+    },
+    messages: {
+      saveSuccess: 'Ustawienia zostały zapisane',
+      saveError: 'Nie udało się zapisać ustawień'
+    }
+  },
+  settings: {
+    systemSettings: 'Ustawienia systemu',
+    dockerSettings: 'Ustawienia Dockera',
+    generalSettings: 'Ogólne ustawienia systemu',
+    uiSettings: 'Ustawienia interfejsu',
+    dockerComposeDir: 'Domyślny katalog plików Compose',
+    dockerComposeDirPlaceholder: '/ścieżka/do/katalogu',
+    dockerDataRoot: 'Główny katalog danych Dockera',
+    dockerDataRootPlaceholder: '/var/lib/docker',
+    dockerAutoStart: 'Automatyczne uruchamianie Dockera',
+    hostname: 'Nazwa hosta',
+    timezone: 'Strefa czasowa',
+    language: 'Język',
+    autoUpdates: 'Automatyczne aktualizacje',
+    theme: 'Motyw',
+    sidebarMode: 'Tryb paska bocznego',
+    sidebarVertical: 'Pionowy',
+    sidebarHorizontal: 'Poziomy',
+    save: 'Zapisz',
+    reset: 'Resetuj'
+  },
   common: {
     yes: "Tak",
     no: "Nie",
@@ -261,6 +319,8 @@ export default {
     days: "dni",
     daysShort: "d",
     hoursShort: "h",
-    minutesShort: "m"
+    minutesShort: "m",
+    save: "Zapisz",
+    reset: "Resetuj"
   }
 }

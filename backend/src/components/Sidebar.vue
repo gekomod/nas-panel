@@ -3,27 +3,28 @@
     class="sidebar-menu"
     :default-active="activeMenu"
     :collapse="isCollapsed"
-    background-color="#304156"
-    text-color="#bfcbd9"
-    active-text-color="#409EFF"
+    :background-color="theme === 'dark' ? 'var(--sidebar-bg)' : 'var(--sidebar-bg)'"
+    :text-color="theme === 'dark' ? 'var(--sidebar-text)' : 'var(--sidebar-text)'"
+    :active-text-color="theme === 'dark' ? 'var(--sidebar-active-text)' : 'var(--sidebar-active-text)'"
     unique-opened
     router
     :collapse-transition="false"
+    style="--el-menu-hover-bg-color: var(--el-menu-hover-bg-color)"
   >
     <template v-for="item in menuItems" :key="item.path">
       <!-- Poziom 1 - główne elementy menu -->
       <el-sub-menu v-if="item.children" :index="item.path">
         <template #title>
-          <Icon :icon="item.icon" width="18" height="18" class="menu-icon" />
-          <span>{{ item.title }}</span>
+          <Icon :icon="item.meta.icon" width="18" height="18" class="menu-icon" />
+          <span>{{ item.meta.title }}</span>
         </template>
         
         <!-- Poziom 2 - podmenu -->
         <template v-for="child in item.children" :key="child.path">
           <el-sub-menu v-if="child.children" :index="child.path">
             <template #title>
-              <Icon :icon="child.icon" width="18" height="18" class="menu-icon" />
-              <span>{{ child.title }}</span>
+              <Icon :icon="child.meta.icon" width="18" height="18" class="menu-icon" />
+              <span>{{ child.meta.title }}</span>
             </template>
             
             <!-- Poziom 3 - elementy podpodmenu -->
@@ -32,21 +33,21 @@
               :key="subChild.path"
               :index="subChild.path"
             >
-              <Icon :icon="subChild.icon" width="18" height="18" class="menu-icon" />
-              <span>{{ subChild.title }}</span>
+              <Icon :icon="subChild.meta.icon" width="18" height="18" class="menu-icon" />
+              <span>{{ subChild.meta.title }}</span>
             </el-menu-item>
           </el-sub-menu>
           
           <el-menu-item v-else :index="child.path">
-            <Icon :icon="child.icon" width="18" height="18" class="menu-icon" />
-            <span>{{ child.title }}</span>
+            <Icon :icon="child.meta.icon" width="18" height="18" class="menu-icon" />
+            <span>{{ child.meta.title }}</span>
           </el-menu-item>
         </template>
       </el-sub-menu>
       
       <el-menu-item v-else :index="item.path">
-        <Icon :icon="item.icon" width="18" height="18" class="menu-icon" />
-        <span>{{ item.title }}</span>
+        <Icon :icon="item.meta.icon" width="18" height="18" class="menu-icon" />
+        <span>{{ item.meta.title }}</span>
       </el-menu-item>
     </template>
   </el-menu>
@@ -54,206 +55,102 @@
 
 <script setup>
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { Icon } from '@iconify/vue'
 
-defineProps({
-  isCollapsed: Boolean
+const props = defineProps({
+  isCollapsed: Boolean,
+  theme: {
+    type: String,
+    default: 'light',
+    validator: (value) => ['light', 'dark', 'system'].includes(value)
+  }
 })
 
 const route = useRoute()
+const router = useRouter()
 const activeMenu = computed(() => route.path)
 
-const menuItems = [
-  {
-    title: 'Dashboard',
-    path: '/dashboard',
-    icon: 'mdi:view-dashboard'
-  },
-  {
-    title: 'Pliki',
-    path: '/files',
-    icon: 'mdi:folder-multiple',
-    children: [
-      {
-        title: 'Eksplorator',
-        path: '/files/explorer',
-        icon: 'mdi:folder-open'
-      },
-      {
-        title: 'Udostępnianie',
-        path: '/files/shares',
-        icon: 'mdi:share-variant'
-      }
-    ]
-  },
-  {
-    title: 'Network',
-    path: '/network',
-    icon: 'mdi:network',
-    children: [
-      {
-        title: 'Interfejsy',
-        path: '/network/interfaces',
-        icon: 'mdi:ethernet-cable'
-      },
-      {
-        title: 'Zapora sieciowa',
-        path: '/network/firewall',
-        icon: 'mdi:firewall'
-      },
-      {
-        title: 'VPN',
-        path: '/network/vpn',
-        icon: 'mdi:lock'
-      }
-    ]
-  },
-  {
-    title: 'Storage',
-    path: '/storage',
-    icon: 'mdi:database',
-    children: [
-      {
-        title: 'Dyski',
-        path: '/storage/disks',
-        icon: 'mdi:harddisk'
-      },
-      {
-        title: 'Systemy Plików',
-        path: '/storage/filesystems',
-        icon: 'mdi:file-cabinet'
-      },
-       { title: 'S.M.A.R.T',
-         path: '/storage/smart',
-         icon: 'mdi:harddisk-plus',
-         children: [
-           {
-             title: 'Urządzenia',
-             path: '/storage/smart/devices',
-             icon: 'mdi:file-cabinet'
-           }
-         ]
-       }
-    ]
-  },
-  {
-    title: 'Services',
-    path: '/services',
-    icon: 'mdi:server-network',
-    children: [
-      {
-        title: 'Docker',
-        path: '/services/docker',
-        icon: 'mdi:docker',
-      },
-      {
-        title: 'Samba',
-        path: '/services/samba',
-        icon: 'mdi:folder-network',
-        children: [
-          {
-            title: 'Shares',
-            path: '/services/samba/shares',
-            icon: 'mdi:share-variant'
-          },
-          {
-            title: 'Settings',
-            path: '/services/samba/settings',
-            icon: 'mdi:cog'
-          },
-          {
-            title: 'Status usługi',
-            path: '/services/samba/status',
-            icon: 'mdi:server'
-          }
-        ]
-      }
-    ]
-  },
-  {
-    title: 'System',
-    path: '/system',
-    icon: 'mdi:cog',
-    children: [
-      {
-        title: 'Użytkownicy',
-        path: '/system/users',
-        icon: 'mdi:account-group'
-      },
-      {
-        title: 'Aktualizacje',
-        path: '/system/updates',
-        icon: 'mdi:update'
-      },
-      {
-        title: 'Powiadomienia',
-        path: '/system/notifications',
-        icon: 'mdi:bell'
-      },
-      {
-        title: 'Terminal',
-        path: '/system/terminal',
-        icon: 'mdi:console'
-      },
-      {
-        title: 'Zgłoszenia',
-        path: '/system/tickets',
-        icon: 'mdi:ticket'
-      }
-    ]
-  },
-  {
-    title: 'Diagnostyka',
-    path: '/diagnostics',
-    icon: 'mdi:chart-box',
-    children: [
-      {
-        title: 'Procesy systemowe',
-        path: '/diagnostics/processes',
-        icon: 'mdi:chart-box-outline'
-      }
-    ]
+const menuItems = computed(() => {
+  const buildMenu = (routes, parentPath = '') => {
+    return routes
+      .filter(route => route.meta && !route.meta.hideInMenu)
+      .map(route => {
+        const fullPath = parentPath 
+          ? `${route.path}`.replace(/\/+/g, '/')
+          : route.path
+        
+        const children = route.children 
+          ? buildMenu(route.children, fullPath)
+          : []
+        
+        return {
+          path: fullPath,
+          meta: route.meta,
+          children: children.length > 0 ? children : null
+        }
+      })
   }
-]
+
+  return buildMenu(router.options.routes)
+})
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
+
 .sidebar-menu {
-  height: 100%;
-  border-right: none;
-  transition: width 0.3s;
-}
+  background-color: var(--sidebar-bg) !important;
+  color: var(--sidebar-text) !important;
+  
+  .el-menu-item,
+  .el-sub-menu__title {
+    color: var(--sidebar-text) !important;
+    
+    &:hover {
+      background-color: var(--sidebar-hover-bg) !important;
+    }
+  }
 
-.sidebar-menu:not(.el-menu--collapse) {
-  width: 260px;
-}
+  .el-menu-item.is-active {
+    color: var(--sidebar-active-text) !important;
+    background-color: var(--sidebar-hover-bg) !important;
+  }
 
-.el-menu-item,
-.el-sub-menu__title {
-  height: 48px;
-  line-height: 48px;
-}
+  .el-sub-menu {
+    .el-menu {
+      background-color: var(--sidebar-submenu-bg) !important;
+    }
+  }
 
-.el-menu-item.is-active {
-  background-color: #263445 !important;
-}
+  &:not(.el-menu--collapse) {
+    width: 260px;
+  }
 
-.el-sub-menu .el-menu-item {
-  padding-left: 60px !important;
-}
 
-.el-sub-menu .el-sub-menu__title {
-  padding-left: 20px !important;
-}
+  .el-sub-menu {
+    &:hover {
+      background-color: var(--sidebar-hover-bg) !important;
+    }
+  
+    .el-menu-item {
+      padding-left: 60px !important;
+    }
 
-.el-sub-menu .el-sub-menu .el-menu-item {
-  padding-left: 80px !important;
-}
+    .el-sub-menu__title {
+      padding-left: 20px !important;
+    }
 
-.menu-icon {
-  margin-right: 16px;
-  font-size: 18px;
-  vertical-align: middle;
+    .el-sub-menu {
+      .el-menu-item {
+        padding-left: 80px !important;
+      }
+    }
+  }
+
+  .menu-icon {
+    margin-right: 16px;
+    font-size: 18px;
+    vertical-align: middle;
+  }
 }
 </style>

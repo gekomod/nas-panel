@@ -6,20 +6,20 @@
         <img src="@/assets/logo.png" class="logo">
       </div>
 
-<el-button
-  circle
-  plain
-  @click="toggleSidebar"
-  class="toggle-button"
->
-  <el-icon :size="20">
-    <Icon 
-      :icon="isSidebarCollapsed ? 'mdi:chevron-right' : 'mdi:chevron-left'" 
-      class="icon" 
-      :class="{ 'rotated': isSidebarCollapsed }" 
-    />
-  </el-icon>
-</el-button>
+      <el-button
+        circle
+        plain
+        @click="toggleSidebar"
+        class="toggle-button"
+      >
+        <el-icon :size="20">
+          <Icon 
+            :icon="isSidebarCollapsed ? 'mdi:chevron-right' : 'mdi:chevron-left'" 
+            class="icon" 
+            :class="{ 'rotated': isSidebarCollapsed }" 
+          />
+        </el-icon>
+      </el-button>
       
       <!-- Breadcrumbs -->
       <el-breadcrumb separator="/">
@@ -33,13 +33,35 @@
     </div>
     
     <div class="navbar-right">
-  <el-select 
-    v-model="$i18n.locale" 
-    style="width: 100px; margin-left: 20px"
-  >
-    <el-option label="Polski" value="pl" />
-    <el-option label="English" value="en" />
-  </el-select>
+      <el-select 
+        v-model="$i18n.locale" 
+        style="width: 100px; margin-left: 20px"
+      >
+        <el-option label="Polski" value="pl" />
+        <el-option label="English" value="en" />
+      </el-select>
+
+      <!-- Theme Toggle -->
+      <el-dropdown trigger="click" @command="handleThemeChange">
+        <el-button circle plain>
+          <el-icon :size="20">
+            <Icon :icon="themeIcon" />
+          </el-icon>
+        </el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="light" :class="{ 'active': theme === 'light' }">
+              <Icon icon="mdi:weather-sunny" /> Dzień
+            </el-dropdown-item>
+            <el-dropdown-item command="dark" :class="{ 'active': theme === 'dark' }">
+              <Icon icon="mdi:weather-night" /> Noc
+            </el-dropdown-item>
+            <el-dropdown-item command="system" :class="{ 'active': theme === 'system' }">
+              <Icon icon="mdi:monitor" /> System
+            </el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
 
       <el-dropdown>
         <div class="user-panel">
@@ -64,13 +86,28 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuth } from '@/services/AuthService'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Icon } from '@iconify/vue'
-import { defineEmits } from 'vue';
+import { defineEmits, defineProps } from 'vue';
 
-const emit = defineEmits(['toggle-sidebar']);
+const props = defineProps({
+  theme: {
+    type: String,
+    default: 'system'
+  }
+})
+
+const emit = defineEmits(['toggle-sidebar', 'theme-changed']);
 const router = useRouter()
 const route = useRoute()
 const { logout, currentUser } = useAuth()
 const isSidebarCollapsed = ref(false)
+
+const themeIcon = computed(() => {
+  switch (props.theme) {
+    case 'light': return 'mdi:weather-sunny'
+    case 'dark': return 'mdi:weather-night'
+    default: return 'mdi:monitor'
+  }
+})
 
 const breadcrumbs = computed(() => {
   const paths = route.path.split('/').filter(Boolean)
@@ -84,6 +121,10 @@ const toggleSidebar = () => {
   isSidebarCollapsed.value = !isSidebarCollapsed.value;
   localStorage.setItem('sidebarCollapsed', isSidebarCollapsed.value);
   emit('toggle-sidebar');
+}
+
+const handleThemeChange = (theme) => {
+  emit('theme-changed', theme)
 }
 
 const username = computed(() => {
@@ -102,10 +143,7 @@ const confirmLogout = async () => {
       }
     )
     
-    // Wywołanie istniejącej funkcji logout z AuthService
     await logout()
-    
-    // Przekierowanie po wylogowaniu
     router.push('/login')
     
     ElMessage({
@@ -134,7 +172,7 @@ const navigateToSettings = () => {
 <style scoped>
 .navbar {
   height: 60px;
-  background: #fff;
+  background: var(--el-bg-color);
   box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
   display: flex;
   justify-content: space-between;
@@ -185,7 +223,7 @@ const navigateToSettings = () => {
 }
 
 .user-panel:hover {
-  background: #f5f5f5;
+  background: var(--el-fill-color-light);
 }
 
 .username {
@@ -203,5 +241,9 @@ const navigateToSettings = () => {
 
 .el-breadcrumb {
   margin-left: 10px;
+}
+
+.active {
+  color: var(--el-color-primary);
 }
 </style>

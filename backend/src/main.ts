@@ -4,7 +4,7 @@ import router from './router'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import { ElNotification } from 'element-plus'
-import './assets/main.css'
+import './assets/main.scss'
 import { initDatabase } from './database/sqlite-service'
 import { i18n } from './locales'
 

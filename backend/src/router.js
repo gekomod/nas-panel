@@ -28,40 +28,49 @@ const routes = [
     name: 'Dashboard',
     component: HomeView,
     meta: { 
-      title: 'Pulpit', 
+      title: 'Dashboard', 
       requiresAuth: true,
       icon: 'mdi:view-dashboard' 
     } 
   },
-  { 
-    path: '/files/explorer', 
-    name: 'Files',
-    component: FileManager,
-    meta: { 
-      title: 'Pliki', 
-      requiresAuth: true,
-      icon: 'mdi:folder-multiple' 
-    } 
+  {
+  path: '/files',
+  meta: { 
+    title: 'Pliki',
+    requiresAuth: true,
+    icon: 'mdi:folder-multiple' 
   },
-  { 
-    path: '/apps', 
-    name: 'Apps',
-    component: AppsView,
-    meta: { 
-      title: 'Aplikacje', 
-      requiresAuth: true,
-      icon: 'mdi:apps' 
-    } 
+  children: [
+	  { 
+	    path: '/files/explorer', 
+	    name: 'Files',
+	    component: FileManager,
+	    meta: { 
+	      title: 'Eksplorator', 
+	      requiresAuth: true,
+	      icon: 'mdi:folder-multiple' 
+	    } 
+	  },
+	  {
+           path: '/files/shares',
+           meta: {
+             title: 'Udostępnianie',
+             requiresAuth: true,
+             icon: 'mdi:share-variant'
+           }
+          }
+  ]
   },
 {
   path: '/network',
   meta: { 
     title: 'Network',
+    requiresAuth: true,
     icon: 'mdi:network' 
   },
   children: [
     {
-      path: 'interfaces',
+      path: '/network/interfaces',
       name: 'Interfaces',
       component: () => import('@/components/network/Interfaces.vue'),
       meta: { 
@@ -71,7 +80,7 @@ const routes = [
       }
     },
     {
-      path: 'interfaces/details/:interface',
+      path: '/network/interfaces/details/:interface',
       name: 'InterfaceDetails',
       component: () => import('@/components/network/interfaces/details/Details.vue'),
       props: true,
@@ -82,7 +91,7 @@ const routes = [
       }
     },
     {
-      path: 'firewall',
+      path: '/network/firewall',
       name: 'Firewall',
       component: () => import('@/components/network/firewall/Firewall.vue'),
       meta: { 
@@ -92,7 +101,7 @@ const routes = [
       }
     },
     {
-      path: 'vpn',
+      path: '/network/vpn',
       name: 'VPN',
       component: () => import('@/components/network/vpn/Vpn.vue'),
       meta: { 
@@ -107,38 +116,50 @@ const routes = [
   path: '/services',
   meta: { 
     title: 'Services',
+    requiresAuth: true,
     icon: 'mdi:server-network' 
   },
   children: [
-    {
-      path: 'samba/shares',
-      name: 'Samba',
-      component: () => import('@/components/services/Samba/SambaShares.vue'),
-      meta: { 
-        title: 'Samba', 
-        requiresAuth: true,
-        icon: 'mdi:folder-network' 
-      }
-    },
-    {
-      path: 'samba/settings',
-      name: 'SambaSettings',
-      component: () => import('@/components/services/Samba/SambaSettings.vue'),
-      meta: { 
-        title: 'Samba Settings', 
-        requiresAuth: true,
-        icon: 'mdi:cog' 
-      }
-    },
-    {
-      path: 'samba/status',
-      name: 'SambaStatus',
-      component: () => import('@/components/services/Samba/SambaStatus.vue'),
-      meta: { 
-        title: 'Status usługi',
-        requiresAuth: true,
-        icon: 'mdi:server-network' 
-      }
+  {
+   path: '/samba',
+   meta: { 
+     title: 'Samba',
+     requiresAuth: true,
+     icon: 'mdi:folder-network' 
+   },
+    children: [
+   
+	    {
+	      path: '/services/samba/shares',
+	      name: 'Samba',
+	      component: () => import('@/components/services/Samba/SambaShares.vue'),
+	      meta: { 
+		title: 'Samba', 
+		requiresAuth: true,
+		icon: 'mdi:folder-network' 
+	      }
+	    },
+	    {
+	      path: '/services/samba/settings',
+	      name: 'SambaSettings',
+	      component: () => import('@/components/services/Samba/SambaSettings.vue'),
+	      meta: { 
+		title: 'Samba Settings', 
+		requiresAuth: true,
+		icon: 'mdi:cog' 
+	      }
+	    },
+	    {
+	      path: '/services/samba/status',
+	      name: 'SambaStatus',
+	      component: () => import('@/components/services/Samba/SambaStatus.vue'),
+	      meta: { 
+		title: 'Status usługi',
+		requiresAuth: true,
+		icon: 'mdi:server-network' 
+	      }
+	    }
+	    ]
     },
     {
       path: '/services/docker',
@@ -156,11 +177,12 @@ const routes = [
     path: '/storage',
     meta: { 
       title: 'Storage',
+      requiresAuth: true,
       icon: 'mdi:database' 
     },
     children: [
       {
-        path: 'disks',
+        path: '/storage/disks',
         name: 'Storage',
         component: () => import('@/components/storage/StorageDisks.vue'),
         meta: { 
@@ -170,42 +192,53 @@ const routes = [
         }
       },
       {
-        path: 'filesystems',
+        path: '/storage/filesystems',
         name: 'File Systems',
         component: () => import('@/components/storage/StorageFilesystems.vue'),
         meta: { 
-          title: 'File Systems', 
+          title: 'Systemy Plików', 
           requiresAuth: true,
           icon: 'mdi:file-cabinet' 
         }
       },
       {
-        path: 'smart/devices',
-        name: 'SMART Devices',
-        component: () => import('@/components/storage/smart/StorageSmartDevices.vue'),
-        meta: { 
-          title: 'Monitorowane urządzenia', 
-          requiresAuth: true,
-          icon: 'mdi:harddisk-plus' 
+	    path: '/storage/smart',
+	    meta: { 
+	      title: 'S.M.A.R.T',
+	      requiresAuth: true,
+	      icon: 'mdi:harddisk-plus' 
+	    },
+	    children: [
+	      {
+		path: '/storage/smart/devices',
+		name: 'SMART Devices',
+		component: () => import('@/components/storage/smart/StorageSmartDevices.vue'),
+		meta: { 
+		  title: 'Urządzenia', 
+		  requiresAuth: true,
+		  icon: 'mdi:harddisk-plus' 
+		}
+	      },
+	      {
+		path: '/storage/smart/devices/details/:device',
+		name: 'StorageSmartDetails',
+		component: () => import('@/components/storage/smart/Details.vue'),
+		props: true
+	      }
+	    ]
         }
-      },
-      {
-        path: '/storage/smart/devices/details/:device',
-        name: 'StorageSmartDetails',
-        component: () => import('@/components/storage/smart/Details.vue'),
-        props: true
-      }
     ]
   },
   {
     path: '/system',
     meta: { 
       title: 'System',
+      requiresAuth: true,
       icon: 'mdi:cog' 
     },
     children: [
       {
-        path: 'users',
+        path: '/system/users',
         name: 'Użytkownicy',
         component: () => import('@/components/system/Users.vue'),
         meta: { 
@@ -215,7 +248,7 @@ const routes = [
         }
       },
       { 
-        path: 'terminal', 
+        path: '/system/terminal', 
         name: 'Terminal',
         component: TerminalView,
         meta: { 
@@ -225,7 +258,7 @@ const routes = [
         } 
       },
       {
-	path: 'updates',
+	path: '/system/updates',
 	name: 'SystemUpdates',
 	component: () => import('@/components/system/updates/Updates.vue'),
 	meta: { 
@@ -233,6 +266,16 @@ const routes = [
 	  requiresAuth: true,
 	  icon: 'mdi:update' 
 	}
+      },
+      {
+        path: '/system/settings',
+        name: 'SystemSettings',
+        component: () => import('@/components/system/Settings/Settings.vue'),
+        meta: { 
+          title: 'Ustawienia', 
+          requiresAuth: true,
+          icon: 'mdi:cog-outline' 
+        }
       }
     ]
   },
@@ -244,7 +287,7 @@ const routes = [
     },
     children: [
       {
-        path: 'processes',
+        path: '/diagnostics/processes',
         name: 'ProcessMonitor',
         component: () => import('@/components/diagnostics/Processes/ProcessMonitor.vue'),
         meta: { 

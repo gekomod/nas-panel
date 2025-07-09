@@ -123,9 +123,11 @@
       </el-tab-pane>
       <el-tab-pane label="Settings" name="settings">
         <DockerSettings 
+          v-if="dockerConfig"
           :config="dockerConfig"
           @save="handleSaveSettings"
         />
+        <div v-else>Loading settings...</div>
       </el-tab-pane>
     </el-tabs>
 
@@ -276,8 +278,8 @@ const onDockerInstalled = () => {
   fetchStatus();
 };
 
-onMounted(() => {
-  fetchStatus();
+onMounted(async () => {
+  await fetchStatus();
   if (status.value.installed) {
     fetchDockerConfig();
   }

@@ -3,6 +3,10 @@
     "/dev/sda": {
       "monitored": true,
       "lastUpdated": "2025-07-02T18:06:05.812Z"
+    },
+    "/dev/sdb": {
+      "monitored": true,
+      "lastUpdated": "2025-07-09T13:45:07.375Z"
     }
   }
 }

@@ -223,6 +223,64 @@ export default {
     autoRefreshOff: 'Auto refresh disabled',
     lastUpdate: "Last update"
   },
+  docker: {
+    settings: {
+      title: 'Docker Configuration',
+      daemonPort: 'Docker Daemon Port',
+      hosts: 'Hosts',
+      hostsPlaceholder: 'Add Docker hosts (e.g., tcp://0.0.0.0:2375)',
+      ipv6Enabled: 'Enable IPv6',
+      loggingDriver: 'Default Logging Driver',
+      logLevel: 'Log Level',
+      maxConcurrentDownloads: 'Max Concurrent Downloads',
+      maxConcurrentUploads: 'Max Concurrent Uploads',
+      dataRoot: 'Data Root Directory',
+      containerd: 'Containerd Run Socket',
+      experimental: 'Experimental Features',
+      debug: 'Debug Mode',
+      liveRestore: 'Live Restore',
+      ipTables: 'Enable IP Tables',
+      ip6Tables: 'Enable IPv6 Tables',
+      selectPlaceholder: 'Select option',
+      basicSettings: "Basic Settings",
+      networkSettings: "Network",
+      loggingSettings: "Logging",
+      transferSettings: "Transfer",
+      advancedSettings: "Advanced",
+      ipForward: "IP Forwarding",
+      ipMasq: "IP Masquerading",
+      tlsEnabled: "Enable TLS",
+      tlsCaCert: "TLS CA Certificate",
+      tlsCert: "TLS Certificate",
+      tlsKey: "TLS Key",
+      maxDownloadAttempts: "Max Download Attempts"
+    },
+    messages: {
+      saveSuccess: 'Settings saved successfully',
+      saveError: 'Failed to save settings'
+    }
+  },
+  settings: {
+    systemSettings: 'System Settings',
+    dockerSettings: 'Docker Settings',
+    generalSettings: 'General System Settings',
+    uiSettings: 'UI Settings',
+    dockerComposeDir: 'Default Compose Files Directory',
+    dockerComposeDirPlaceholder: '/path/to/directory',
+    dockerDataRoot: 'Docker Data Root Directory',
+    dockerDataRootPlaceholder: '/var/lib/docker',
+    dockerAutoStart: 'Docker Auto Start',
+    hostname: 'Hostname',
+    timezone: 'Timezone',
+    language: 'Language',
+    autoUpdates: 'Auto Updates',
+    theme: 'Theme',
+    sidebarMode: 'Sidebar Mode',
+    sidebarVertical: 'Vertical',
+    sidebarHorizontal: 'Horizontal',
+    save: 'Save',
+    reset: 'Reset'
+  },
   common: {
     yes: "Yes",
     no: "No",
@@ -234,6 +292,8 @@ export default {
     days: "days",
     daysShort: "d",
     hoursShort: "h",
-    minutesShort: "m"
+    minutesShort: "m",
+    save: "Save",
+    reset: "Reset"
   }
 }

@@ -1,7 +1,9 @@
 <template>
-  <div class="widget-card" v-loading="loading">
+
+  <el-card class="widget-card" shadow="hover" v-loading="loading">
     <!-- Nagłówek -->
-    <div class="header">
+    <template #header>
+    <div class="widget-header">
       <div class="header-main">
         <Icon icon="mdi:information-outline" width="18" />
         <span class="header-title">Informacje o systemie</span>
@@ -15,6 +17,7 @@
         <span class="system">{{ data.system.distro || t('common.loading') }}</span>
       </div>
     </div>
+    </template>
 
     <!-- Informacje systemowe -->
     <div class="widget-content">
@@ -79,7 +82,7 @@
         <p>{{ t('systemInfo.restartDescription') }}</p>
       </div>
     </div>
-  </div>
+  </el-card>
 </template>
 
 <script>
@@ -240,19 +243,8 @@ onBeforeUnmount(() => {
 <style scoped>
 
 .widget-card {
-  display: inline-block;   /* kluczowe dla poprawnego działania */
-  width: 100%;            /* zajmuje całą dostępną szerokość kolumny */
-  margin-bottom: 20px;     /* odstęp między widgetami */
-  break-inside: avoid;     /* zapobiega przerywaniu widgetów między kolumnami */
-  page-break-inside: avoid; /* dla starszych przeglądarek */
-  background: #ffffff;
-  border-radius: 12px;
-  padding: 16px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  color: #333;
-  max-width: 500px;
-  argin-bottom: 20px !important;
+  border-radius: 8px;
+  font-family: 'Inter', -apple-system, sans-serif;
 }
 
 .header {
@@ -270,7 +262,6 @@ onBeforeUnmount(() => {
 
 .header-title {
   font-size: 15px;
-  color: #444;
   font-weight: 500;
 }
 
@@ -282,7 +273,7 @@ onBeforeUnmount(() => {
 }
 
 .hostname, .system {
-  color: #555;
+
   font-weight: 400;
 }
 
@@ -291,7 +282,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: #666;
+
 }
 
 .info-section {
@@ -308,7 +299,7 @@ onBeforeUnmount(() => {
 }
 
 .label {
-  color: #666;
+
   font-weight: 400;
   display: flex;
   align-items: center;
@@ -316,7 +307,7 @@ onBeforeUnmount(() => {
 }
 
 .value {
-  color: #222;
+
   font-weight: 400;
 }
 

@@ -1,5 +1,6 @@
 <template>
-  <div class="disk-widget">
+  <el-card class="widget-card" shadow="hover">
+  <template #header>
     <div class="widget-header">
       <div class="header-left">
         <Icon icon="mdi:harddisk" width="18" height="18" color="#409EFF" />
@@ -25,8 +26,8 @@
         </el-button>
       </div>
     </div>
+  </template>
 
-    <el-divider style="margin: 12px 0" />
     
     <transition-group name="disk-list" tag="div" class="disk-container">
       <div v-for="disk in sortedDisks" :key="disk.device" class="disk-item">
@@ -56,7 +57,7 @@
       <Icon icon="mdi:alert-circle" width="16" height="16" color="#F56C6C" />
       <span>{{ error }}</span>
     </div>
-  </div>
+  </el-card>
 </template>
 
 <script>
@@ -179,11 +180,8 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.disk-widget {
-  background: #FFFFFF;
+.widget-card {
   border-radius: 8px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
-  padding: 12px;
   font-family: 'Inter', -apple-system, sans-serif;
 }
 
@@ -203,7 +201,7 @@ onBeforeUnmount(() => {
   margin: 0;
   font-size: 14px;
   font-weight: 500;
-  color: #303133;
+
 }
 
 .header-actions {
@@ -250,7 +248,6 @@ onBeforeUnmount(() => {
 .device {
   font-size: 13px;
   font-weight: 500;
-  color: #303133;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

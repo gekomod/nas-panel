@@ -1,5 +1,5 @@
 <template>
-  <el-card class="widget-card" shadow="never">
+  <el-card class="widget-card" shadow="hover">
     <template #header>
       <div class="widget-header">
         <Icon icon="ph:hard-drives" width="18" />
@@ -134,9 +134,8 @@ onBeforeUnmount(() => {
 
 <style scoped lang="scss">
 .widget-card {
-  border: none;
-  border-radius: 12px;
-  background: var(--el-bg-color-overlay);
+  border-radius: 8px;
+  height: 100%;
   
   :deep(.el-card__header) {
     padding: 12px 16px;
@@ -147,6 +146,7 @@ onBeforeUnmount(() => {
     padding: 0;
   }
 }
+
 
 .widget-header {
   display: flex;

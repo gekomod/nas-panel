@@ -63,12 +63,12 @@ app.use((req, res, next) => {
     return res.sendStatus(200)
   }
 
-  console.log('Original URL:', req.originalUrl);
+  //console.log('Original URL:', req.originalUrl);
   const questionMarkIndex = req.originalUrl.indexOf('?');
   if (questionMarkIndex >= 0) {
     const queryString = req.originalUrl.slice(questionMarkIndex + 1);
     req.query = querystring.parse(queryString);
-    console.log('Parsed query:', req.query);
+    //console.log('Parsed query:', req.query);
   }
   
   next()

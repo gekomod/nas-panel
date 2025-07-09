@@ -236,13 +236,14 @@ const installUpdates = async () => {
     )
     
     isInstalling.value = true
+    const packageNames = updates.value.map(update => update.name)
     const response = await api.post('/system/updates/install', {
-      no_confirm: true // odpowiada parametrowi -y w apt
+      packages: packageNames, // Send array of package names
+      no_confirm: true
     })
     
     ElMessage.success(response.data.message || 'Updates installed successfully!')
     updates.value = []
-    // Ponowne sprawdzenie po aktualizacji
     await checkUpdates()
   } catch (err) {
     if (err !== 'cancel') {
