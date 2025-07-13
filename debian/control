@@ -1,14 +1,14 @@
 Source: nas-panel
 Section: web
 Priority: optional
-Maintainer: Your Name <your.email@example.com>
+Maintainer: Gekomod <zaba141@o2.pl>
 Build-Depends: debhelper-compat (= 13), nodejs, npm
 Standards-Version: 4.5.1
 Homepage: https://example.com/nas-panel
 
 Package: nas-panel
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, nodejs (>= 22), npm, sqlite3, ethtool, nginx,ufw, network-manager, smartmontools, net-tools, libc6, iperf3, iproute2, jq, python3, make, g++, musl-dev, samba
+Depends: ${shlibs:Depends}, ${misc:Depends}, nodejs (>= 22), npm, sqlite3, ethtool, ufw, network-manager, smartmontools, net-tools, libc6, iperf3, iproute2, jq, python3, make, g++, musl-dev, samba
 Description: Web-based NAS administration panel
  A modern web interface for managing your NAS device with features
  like file management, system monitoring, and configuration tools.

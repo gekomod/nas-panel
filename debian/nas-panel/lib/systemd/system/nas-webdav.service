@@ -1,0 +1,14 @@
+[Unit]
+Description=NAS WebDAV Server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/nas-webdav
+Restart=always
+User=www-data
+Group=www-data
+Environment="LD_LIBRARY_PATH=/usr/local/lib"
+
+[Install]
+WantedBy=multi-user.target

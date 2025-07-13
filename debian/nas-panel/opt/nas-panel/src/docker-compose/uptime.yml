@@ -1,0 +1,12 @@
+---
+# Date: 2025-06-01
+# https://github.com/louislam/uptime-kuma
+services:
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: uptime-kuma
+    volumes:
+      - /var/lib/docker/volumes/data/_data/uptime-kuma/data:/app/data
+    ports:
+      - 3001:3001 # Host Port:Container Port
+    restart: unless-stopped

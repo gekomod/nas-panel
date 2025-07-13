@@ -33,9 +33,23 @@ override_dh_auto_install:
 	# Install systemd services
 	mkdir -p debian/nas-panel/lib/systemd/system
 	cp debian/nas-api.service debian/nas-panel/lib/systemd/system/
+	cp debian/nas-webdav.service debian/nas-panel/lib/systemd/system/
 
 	# Create directory in /etc/
 	install -d debian/nas-panel/etc/nas-panel
+	install -m 644 debian/config/settings.json debian/nas-panel/etc/nas-panel/
+
+	install -d debian/nas-panel/usr/bin/
+	install -d debian/nas-panel/usr/local/bin/
+	install -m 755 debian/scripts/update-dynamic-dns.py debian/nas-panel/usr/bin/
+
+	rm -fr debian/nas-panel/usr/local/bin/nas-webdav
+	g++ -std=c++17 -O2 debian/nas-webdav.cpp -o debian/nas-panel/usr/local/bin/nas-webdav
+	chmod +x debian/nas-panel/usr/local/bin/nas-webdav
 
 override_dh_shlibdeps:
 	dh_shlibdeps --dpkg-shlibdeps-params=--ignore-missing-info
+
+override_dh_usrlocal:
+
+override_dh_strip_nondeterminism:

@@ -1,1 +1,2 @@
 /etc/nginx/sites-available/nas-engine
+/etc/nas-panel/settings.json

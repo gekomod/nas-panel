@@ -1,0 +1,2 @@
+./debian/config/settings.json
+./debian/scripts/update-dynamic-dns.py

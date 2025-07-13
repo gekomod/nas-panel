@@ -1,2 +1,3 @@
 etc/nas-panel
 lib/systemd/system
+usr/local/bin

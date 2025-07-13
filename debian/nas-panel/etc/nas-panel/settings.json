@@ -1,0 +1,17 @@
+{
+  "docker": {
+    "composeDir": "/opt/docker/compose",
+    "dataRoot": "/var/lib/docker",
+    "autoStart": true
+  },
+  "system": {
+    "hostname": "zaba-imac",
+    "timezone": "Europe/Warsaw",
+    "language": "pl",
+    "autoUpdates": true
+  },
+  "ui": {
+    "theme": "light",
+    "sidebarMode": "vertical"
+  }
+}

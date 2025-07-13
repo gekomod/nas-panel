@@ -1,11 +1,21 @@
-nas-panel (1.0.0-1ubuntu1) UNRELEASED; urgency=medium
+nas-panel (1.0.2) UNRELEASED; urgency=medium
+
+  * Add Webdav
+  * Fix error's in smaba
+  * Add Format disks and mount/umount disk
+  * Add nas-webdav server
+
+ -- root <root@zaba-iMac>  Thu, 13 Jul 2025 15:00:16 +0200
+
+nas-panel (1.0.1) UNRELEASED; urgency=medium
 
   * Add Docker to Services
   * Add Samba to services
   * Add Information want install Docker or Samba
   * Add Diagnostic/Processes Page
+  * Add DynamicDns Page
 
- -- root <root@zaba-iMac>  Sun, 06 Jul 2025 21:14:53 +0200
+ -- root <root@zaba-iMac>  Thu, 10 Jul 2025 19:42:16 +0200
 
 nas-panel (1.0.0-1) unstable; urgency=medium
 
