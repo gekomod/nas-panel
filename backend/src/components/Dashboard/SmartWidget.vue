@@ -21,15 +21,40 @@
             <Icon :icon="getDiskIcon(disk.device)" width="16" class="disk-icon" />
             <span class="disk-name">{{ formatDiskName(disk.device) }}</span>
             <span class="disk-path">{{ disk.device }}</span>
+            <el-tooltip 
+              v-if="hasCriticalIssues(disk)"
+              effect="dark" 
+              placement="top"
+            >
+              <template #content>
+                <div v-if="disk.badSectors > 0">
+                  <p>Znalezione bad sector: {{ disk.badSectors }}</p>
+                </div>
+                <div v-if="disk.outOfSpecParams.length > 0">
+                  <p>Parametry poza normą:</p>
+                  <ul>
+                    <li v-for="param in disk.outOfSpecParams" :key="param.id">
+                      {{ param.name }}: {{ param.value }} (norma: {{ param.threshold }})
+                    </li>
+                  </ul>
+                </div>
+              </template>
+              <Icon 
+                icon="ph:warning" 
+                width="16" 
+                class="warning-icon" 
+                :style="{ color: 'var(--el-color-warning)' }" 
+              />
+            </el-tooltip>
           </div>
           
           <div class="disk-stats">
-            <div class="temperature">
+            <div class="temperature" :class="{ 'critical': isTempCritical(disk.temperature, disk.isSSD) }">
               <Icon icon="mdi:thermometer" width="14" />
               <span>{{ disk.temperature || '--' }}°C</span>
             </div>
-            <div class="status" :class="disk.status ? 'ok' : 'error'">
-              {{ disk.status ? 'OK' : 'ERR' }}
+            <div class="status" :class="getStatusClass(disk)">
+              {{ getStatusText(disk) }}
             </div>
           </div>
         </div>
@@ -59,15 +84,25 @@ import PromisePool from 'es6-promise-pool';
 
 const monitoredDisks = ref([])
 const loading = ref(false)
-const TEMP_LIMIT = 110
+const TEMP_LIMIT_SSD = 50
+const TEMP_LIMIT_HDD = 55
 let intervalId = null
 
 const overallStatus = computed(() => {
-  return monitoredDisks.value.some(d => !d.status) ? 'danger' : 'success'
+  const hasErrors = monitoredDisks.value.some(d => !d.status || 
+    d.badSectors > 0 || 
+    d.outOfSpecParams.length > 0 ||
+    isTempCritical(d.temperature, d.isSSD))
+  return hasErrors ? 'danger' : 'success'
 })
 
 const overallStatusText = computed(() => {
-  const errorCount = monitoredDisks.value.filter(d => !d.status).length
+  const errorCount = monitoredDisks.value.filter(d => 
+    !d.status || 
+    d.badSectors > 0 || 
+    d.outOfSpecParams.length > 0 ||
+    isTempCritical(d.temperature, d.isSSD)
+  ).length
   return errorCount ? `${errorCount} BŁĘDY` : 'WSZYSTKO OK'
 })
 
@@ -79,7 +114,28 @@ const formatDiskName = (device) => {
   return device.split('/').pop().toUpperCase()
 }
 
-// Dodaj na początku składni setup:
+const isTempCritical = (temp, isSSD = false) => {
+  if (!temp) return false
+  const limit = isSSD ? TEMP_LIMIT_SSD : TEMP_LIMIT_HDD
+  return temp > limit
+}
+
+const hasCriticalIssues = (disk) => {
+  return disk.badSectors > 0 || disk.outOfSpecParams.length > 0 || isTempCritical(disk.temperature, disk.isSSD)
+}
+
+const getStatusClass = (disk) => {
+  if (!disk.status) return 'error'
+  if (disk.badSectors > 0) return 'bad-sectors'
+  if (hasCriticalIssues(disk)) return 'warning'
+  return 'ok'
+}
+
+const getStatusText = (disk) => {
+  if (disk.badSectors > 0) return 'BAD SEKTORY'
+  return disk.status ? 'OK' : 'ERR'
+}
+
 const activeControllers = ref(new Set());
 
 const fetchDeviceDetails = async (device) => {
@@ -90,15 +146,49 @@ const fetchDeviceDetails = async (device) => {
     const detailsRes = await axios.get(
       `/api/storage/smart/details/${encodeURIComponent(device)}`, 
       {
-        timeout: 5000, // Zwiększony timeout
+        timeout: 5000,
         signal: controller.signal
       }
     );
 
+    const smartData = detailsRes.data.data;
+    const isSSD = smartData.rotation_rate === 0;
+    
+    // Check for bad sectors
+    let badSectors = 0;
+    if (smartData.ata_smart_attributes?.table) {
+      const reallocated = smartData.ata_smart_attributes.table.find(a => a.id === 5);
+      const pending = smartData.ata_smart_attributes.table.find(a => a.id === 197);
+      const offline = smartData.ata_smart_attributes.table.find(a => a.id === 198);
+      
+      badSectors = (reallocated?.raw?.value || 0) + 
+                   (pending?.raw?.value || 0) + 
+                   (offline?.raw?.value || 0);
+    }
+
+    // Check for out of spec parameters
+    const outOfSpecParams = [];
+    if (smartData.ata_smart_attributes?.table) {
+      smartData.ata_smart_attributes.table.forEach(attr => {
+        if (attr.value && attr.thresh && attr.value <= attr.thresh) {
+          outOfSpecParams.push({
+            id: attr.id,
+            name: attr.name,
+            value: attr.value,
+            threshold: attr.thresh
+          });
+        }
+      });
+    }
+
     return {
       device,
-      status: detailsRes.data.data.smart_status?.passed || false,
-      temperature: detailsRes.data.data.temperature?.current || null
+      status: smartData.smart_status?.passed || false,
+      temperature: smartData.temperature?.current || extractTemperature(smartData),
+      isSSD,
+      badSectors,
+      outOfSpecParams,
+      rawData: smartData
     };
   } catch (error) {
     if (!axios.isCancel(error)) {
@@ -107,11 +197,32 @@ const fetchDeviceDetails = async (device) => {
     return {
       device,
       status: false,
-      temperature: null
+      temperature: null,
+      isSSD: false,
+      badSectors: 0,
+      outOfSpecParams: [],
+      rawData: null
     };
   } finally {
     activeControllers.value.delete(controller);
   }
+};
+
+const extractTemperature = (smartData) => {
+  if (smartData.nvme_smart_health_information_log?.temperature) {
+    return smartData.nvme_smart_health_information_log.temperature - 273;
+  }
+  
+  if (smartData.temperature?.current) return smartData.temperature.current;
+  
+  if (smartData.ata_smart_attributes?.table) {
+    const tempAttr = smartData.ata_smart_attributes.table.find(
+      attr => ['Temperature_Celsius', 'Temperature_Internal'].includes(attr.name) || attr.id === 194
+    );
+    if (tempAttr?.raw?.value) return parseInt(tempAttr.raw.value);
+  }
+  
+  return null;
 };
 
 const abortAllRequests = () => {
@@ -130,7 +241,6 @@ const fetchData = async () => {
     const monitoredDevices = Object.keys(monitoringRes.data.devices)
       .filter(device => monitoringRes.data.devices[device].monitored);
 
-    // Process devices in batches of 2
     const batchSize = 2;
     monitoredDisks.value = [];
     
@@ -151,15 +261,10 @@ const fetchData = async () => {
   }
 };
 
-// W onMounted:
-let controller = null;
-
-// Metoda do odświeżania danych
 const refreshData = async () => {
   await fetchData()
 }
 
-// Udostępnienie metody na zewnątrz
 defineExpose({
   refreshData
 })
@@ -167,9 +272,9 @@ defineExpose({
 onMounted(() => {
   if (intervalId) clearInterval(intervalId);
   
-  controller = new AbortController();
+  const controller = new AbortController();
   fetchData().finally(() => {
-    intervalId = setInterval(fetchData, 15000); // Zwiększony interwał
+    intervalId = setInterval(fetchData, 15000);
   });
 });
 
@@ -193,7 +298,6 @@ onBeforeUnmount(() => {
     padding: 0;
   }
 }
-
 
 .widget-header {
   display: flex;
@@ -249,6 +353,10 @@ onBeforeUnmount(() => {
     color: var(--el-text-color-secondary);
     opacity: 0.7;
   }
+  
+  .warning-icon {
+    margin-left: 4px;
+  }
 }
 
 .disk-stats {
@@ -267,6 +375,10 @@ onBeforeUnmount(() => {
   span {
     font-feature-settings: 'tnum';
   }
+  
+  &.critical {
+    color: var(--el-color-danger);
+  }
 }
 
 .status {
@@ -278,6 +390,16 @@ onBeforeUnmount(() => {
   &.ok {
     color: var(--el-color-success);
     background: var(--el-color-success-light-9);
+  }
+  
+  &.warning {
+    color: var(--el-color-warning);
+    background: var(--el-color-warning-light-9);
+  }
+  
+  &.bad-sectors {
+    color: var(--el-color-warning-dark-2);
+    background: var(--el-color-warning-light-8);
   }
   
   &.error {

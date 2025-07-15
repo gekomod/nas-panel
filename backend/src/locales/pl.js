@@ -129,6 +129,13 @@ export default {
     },
     attributes: {
       noData: 'Brak danych atrybutów SMART'
+    },
+    statusValues: {
+      healthy: "Zdrowy",
+      warning: "Ostrzeżenie",
+      error: "Błąd",
+      unavailable: "Niedostępny",
+      badSectors: "Bad Sektory"
     }
   },
   network: {

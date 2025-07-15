@@ -57,7 +57,15 @@ app.get('/system/updates/check', requireAuth, async (req, res) => {
         `awk '/^Package:/ {pkg=$2} /^Description(-[a-z]+)?:/ {print pkg ":" $0}'`
       )
       
-      // ... reszta kodu pozostaje bez zmian
+      const descMap = {}
+      descriptions.split('\n').forEach(line => {
+        const [pkg, desc] = line.split(':')
+        if (pkg && desc) descMap[pkg] = desc.trim()
+      })
+
+      updates.forEach(update => {
+        update.description = descMap[update.name] || 'No description available'
+      })
     }
 
     res.json({ updates })
@@ -242,22 +250,43 @@ app.get('/system/settings', (req, res) => {
       ui: {
         theme: 'system',
         sidebarMode: 'vertical'
+      },
+      services: {
+        monitoredServices: []
       }
     });
   }
 });
 
 // Zapisz ustawienia
-app.post('/system/settings', (req, res) => {
+app.post('/system/settings', async (req, res) => {
   try {
-    const settings = JSON.stringify(req.body, null, 2);
-    fs.writeFileSync(SETTINGS_PATH, settings, 'utf8');
+    await fs.writeFileSync(SETTINGS_PATH, JSON.stringify(req.body, null, 2));
     res.json({ success: true });
-  } catch (error) {
-    console.error('Error saving settings:', error);
+  } catch (err) {
     res.status(500).json({ error: 'Failed to save settings' });
   }
 });
+
+  app.get('/services/status/:service', async (req, res) => {
+    const { service } = req.params
+    
+    try {
+      const { stdout } = await execAsync(`systemctl is-active ${service}`)
+      res.json({
+        success: true,
+        active: stdout.trim() === 'active',
+        service
+      })
+    } catch (error) {
+      res.json({
+        success: true,
+        active: false,
+        service,
+        error: error.stderr || error.message
+      })
+    }
+  });
 
 // Helper functions
 function getStatusMessage(progress) {

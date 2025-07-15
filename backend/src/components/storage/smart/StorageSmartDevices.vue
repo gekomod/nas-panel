@@ -124,23 +124,35 @@
     </template>
   </el-table-column>
       
-      <el-table-column :label="t('storageSmart.statusS')" prop="status" width="150">
-        <template #default="{ row }">
-          <template v-if="row.available">
-            <el-tag :type="getStatusTagType(row.status)" effect="dark">
-              {{ t(`storageSmart.statusValues.${row.status}`) }}
-            </el-tag>
-          </template>
-          <template v-else>
-            <el-tag type="info" effect="dark">
-              {{ t('storageSmart.statusValues.unavailable') }}
-            </el-tag>
-            <el-tooltip v-if="row.error" :content="row.error">
-              <Icon icon="mdi:alert-circle" class="ml-2" />
-            </el-tooltip>
-          </template>
-        </template>
-      </el-table-column>
+<el-table-column :label="t('storageSmart.statusS')" prop="status" width="150">
+  <template #default="{ row }">
+    <template v-if="row.available">
+      <el-tag :type="getStatusTagType(row)" effect="dark">
+        {{ getStatusText(row) }}
+      </el-tag>
+      <el-tooltip 
+        v-if="hasCriticalIssues(row)"
+        effect="dark" 
+        placement="top"
+        :content="getCriticalIssuesTooltip(row)"
+      >
+        <Icon 
+          icon="mdi:alert-circle" 
+          width="16" 
+          :style="{ color: 'var(--el-color-warning)', marginLeft: '8px' }" 
+        />
+      </el-tooltip>
+    </template>
+    <template v-else>
+      <el-tag type="info" effect="dark">
+        {{ t('storageSmart.statusValues.unavailable') }}
+      </el-tag>
+      <el-tooltip v-if="row.error" :content="row.error">
+        <Icon icon="mdi:alert-circle" class="ml-2" />
+      </el-tooltip>
+    </template>
+  </template>
+</el-table-column>
 
 <el-table-column label="Akcje" width="120" align="right">
   <template #default="{ row }">
@@ -242,14 +254,24 @@ const getTempClass = (temp) => {
   return 'temp-normal'
 }
 
-const getStatusTagType = (status) => {
-  switch (status) {
+const getStatusText = (device) => {
+  if (device.badSectors > 0) {
+    return t('storageSmart.statusValues.badSectors');
+  }
+  return t(`storageSmart.statusValues.${device.status}`);
+};
+
+const getStatusTagType = (device) => {
+  if (device.badSectors > 0) {
+    return 'warning'; // pomarańczowy dla bad sectorów
+  }
+  switch (device.status) {
     case 'healthy': return 'success'
     case 'warning': return 'warning'
     case 'error': return 'danger'
     default: return 'info'
   }
-}
+};
 
 const showDetails = (device) => {
   router.push(`/storage/smart/devices/details/${encodeURIComponent(device)}`)
@@ -260,26 +282,68 @@ const copyInstallCommand = () => {
   ElMessage.success(t('storageSmart.commandCopied'));
 };
 
+const hasCriticalIssues = (device) => {
+  return device.badSectors > 0 || 
+         (device.outOfSpecParams && device.outOfSpecParams.length > 0) ||
+         isTempCritical(device.temperature, device.isSSD);
+};
+
+const getCriticalIssuesTooltip = (device) => {
+  const issues = [];
+  
+  if (device.badSectors > 0) {
+    issues.push(`Bad sectors: ${device.badSectors}`);
+  }
+  
+  if (device.outOfSpecParams && device.outOfSpecParams.length > 0) {
+    issues.push(`Out of spec parameters: ${device.outOfSpecParams.length}`);
+  }
+  
+  if (isTempCritical(device.temperature, device.isSSD)) {
+    const limit = device.isSSD ? TEMP_LIMIT_SSD : TEMP_LIMIT_HDD;
+    issues.push(`High temperature: ${device.temperature}°C (max ${limit}°C)`);
+  }
+  
+  return issues.join('\n');
+};
+
+const isTempCritical = (temp, isSSD = false) => {
+  if (!temp) return false;
+  const limit = isSSD ? TEMP_LIMIT_SSD : TEMP_LIMIT_HDD;
+  return temp > limit;
+};
+
+const TEMP_LIMIT_SSD = 50; // Próg temperatury dla SSD
+const TEMP_LIMIT_HDD = 55; // Próg temperatury dla HDD
+
 const fetchDevices = async () => {
   try {
-    loading.value = true
-    error.value = null
+    loading.value = true;
+    error.value = null;
     
-    // Pobierz dane SMART i status monitorowania w jednym żądaniu
     const [smartResponse, monitoringResponse] = await Promise.all([
       axios.get('/api/storage/smart'),
       axios.get('/api/storage/smart/monitoring')
-    ])
+    ]);
     
-    // Połącz dane
     devices.value = smartResponse.data.data.map(device => {
-      const monitoredStatus = monitoringResponse.data.devices[device.device]?.monitored || false
+      const monitoredStatus = monitoringResponse.data.devices[device.device]?.monitored || false;
+      
+      // Dodaj informacje o bad sectorach i parametrach poza normą
+      const badSectors = calculateBadSectors(device.rawData);
+      const outOfSpecParams = checkOutOfSpecParams(device.rawData);
+      const isSSD = device.rawData?.rotation_rate === 0;
+      
       return {
         ...device,
         monitored: monitoredStatus,
-        loading: false
-      }
-    })
+        loading: false,
+        badSectors,
+        outOfSpecParams,
+        isSSD,
+        temperature: extractTemperature(device.rawData) || device.temperature
+      };
+    });
   } catch (err) {
     error.value = t('storageSmart.errorLoading')
     console.error('Error fetching devices:', err)
@@ -332,6 +396,53 @@ const toggleMonitoring = async (device) => {
     device.loading = false
   }
 }
+
+const calculateBadSectors = (smartData) => {
+  if (!smartData?.ata_smart_attributes?.table) return 0;
+  
+  const reallocated = smartData.ata_smart_attributes.table.find(a => a.id === 5);
+  const pending = smartData.ata_smart_attributes.table.find(a => a.id === 197);
+  const offline = smartData.ata_smart_attributes.table.find(a => a.id === 198);
+  
+  return (reallocated?.raw?.value || 0) + 
+         (pending?.raw?.value || 0) + 
+         (offline?.raw?.value || 0);
+};
+
+const checkOutOfSpecParams = (smartData) => {
+  if (!smartData?.ata_smart_attributes?.table) return [];
+  
+  return smartData.ata_smart_attributes.table
+    .filter(attr => attr.value && attr.thresh && attr.value <= attr.thresh)
+    .map(attr => ({
+      id: attr.id,
+      name: attr.name,
+      value: attr.value,
+      threshold: attr.thresh
+    }));
+};
+
+const extractTemperature = (smartData) => {
+  if (!smartData) return null;
+  
+  // Dla dysków NVMe
+  if (smartData.nvme_smart_health_information_log?.temperature) {
+    return smartData.nvme_smart_health_information_log.temperature - 273;
+  }
+  
+  // Dla tradycyjnych dysków
+  if (smartData.temperature?.current) return smartData.temperature.current;
+  
+  // Z atrybutów SMART
+  if (smartData.ata_smart_attributes?.table) {
+    const tempAttr = smartData.ata_smart_attributes.table.find(
+      attr => ['Temperature_Celsius', 'Temperature_Internal'].includes(attr.name) || attr.id === 194
+    );
+    if (tempAttr?.raw?.value) return parseInt(tempAttr.raw.value);
+  }
+  
+  return null;
+};
 
 onMounted(async () => {
   await fetchDevices()
@@ -425,5 +536,10 @@ onMounted(async () => {
 .el-table .cell {
   display: flex;
   align-items: center;
+}
+
+.warning-icon {
+  color: var(--el-color-warning);
+  margin-left: 8px;
 }
 </style>
