@@ -288,6 +288,16 @@ const routes = [
 	}
       },
       {
+	path: '/system/cron-jobs',
+	name: 'CronJobs',
+	component: () => import('@/components/system/Cron/CronJobs.vue'),
+	meta: { 
+	  title: 'Cron Jobs',
+	  requiresAuth: true,
+	  icon: 'mdi:firework'
+	}
+      },
+      {
         path: '/system/settings',
         name: 'SystemSettings',
         component: () => import('@/components/system/Settings/Settings.vue'),

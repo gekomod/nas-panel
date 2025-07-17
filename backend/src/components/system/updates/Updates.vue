@@ -144,8 +144,37 @@
       </el-button>
     </div>
 
-    <!-- Dialogi pozostają bez zmian -->
+    <el-dialog
+  v-model="detailsDialogVisible"
+  :title="t('systemUpdates.updateDetails')"
+  width="50%"
+>
+  <div v-if="selectedUpdate" class="update-details">
+    <h3>{{ selectedUpdate.name }}</h3>
+    
+    <div class="version-display">
+      <el-tag size="medium" effect="plain">{{ selectedUpdate.current_version }}</el-tag>
+      <Icon icon="mdi:arrow-right" width="20" />
+      <el-tag size="medium" type="success" effect="dark">{{ selectedUpdate.new_version }}</el-tag>
+    </div>
+    
+    <el-divider />
+    
+    <h4>{{ t('systemUpdates.description') }}</h4>
+    <div class="description-content">
+      {{ selectedUpdate.fullDescription || t('systemUpdates.noDescription') }}
+    </div>
+  </div>
+  
+  <template #footer>
+    <el-button @click="detailsDialogVisible = false">
+      {{ t('common.close') }}
+    </el-button>
+  </template>
+</el-dialog>
+
   </el-card>
+
 </template>
 
 <script setup>
@@ -212,24 +241,27 @@ const lastCheckedFormatted = computed(() => lastChecked.value ? new Date(lastChe
 
 // Methods
 const checkUpdates = async () => {
-  isChecking.value = true
-  error.value = ''
+  isChecking.value = true;
+  error.value = '';
   
   try {
-    const response = await api.get('/system/updates/check')
-    updates.value = response.data.updates || []
-    lastChecked.value = new Date().toISOString()
+    // Wysyłamy force=true aby zignorować cache przy ręcznym sprawdzaniu
+    const response = await api.get('/system/updates/check?force=true');
+    updates.value = response.data.updates || [];
+    lastChecked.value = new Date().toISOString();
     
     if (!hasUpdates.value) {
-      ElMessage.success(t('systemUpdates.systemUpToDate'))
+      ElMessage.success(t('systemUpdates.systemUpToDate'));
     }
   } catch (err) {
-    error.value = t('systemUpdates.checkFailed', { error: err.response?.data?.message || err.message })
-    console.error('Update check error:', err)
+    error.value = t('systemUpdates.checkFailed', { 
+      error: err.response?.data?.message || err.message 
+    });
+    console.error('Update check error:', err);
   } finally {
-    isChecking.value = false
+    isChecking.value = false;
   }
-}
+};
 
 const installUpdates = async () => {
   try {
@@ -404,9 +436,12 @@ const updateInstallationStatus = (pkgName, data) => {
 }
 
 const showUpdateDetails = (pkg) => {
-  selectedUpdate.value = pkg
-  detailsDialogVisible.value = true
-}
+  selectedUpdate.value = {
+    ...pkg,
+    fullDescription: pkg.description // Zachowaj pełny opis
+  };
+  detailsDialogVisible.value = true;
+};
 
 const showAutomaticUpdatesDialog = () => {
   automaticUpdatesDialogVisible.value = true
@@ -550,6 +585,32 @@ onBeforeUnmount(() => {
   
   .install-all-btn {
     margin-right: auto;
+  }
+}
+
+.update-details {
+  padding: 0 20px;
+  
+  h3 {
+    margin-top: 0;
+    color: var(--el-color-primary);
+  }
+  
+  .version-display {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 15px 0;
+  }
+  
+  .description-content {
+    white-space: pre-wrap;
+    line-height: 1.6;
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 10px;
+    background-color: var(--el-fill-color-light);
+    border-radius: 4px;
   }
 }
 

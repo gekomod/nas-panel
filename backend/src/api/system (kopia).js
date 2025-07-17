@@ -6,7 +6,6 @@ const execAsync = promisify(exec);
 const { v4: uuidv4 } = require('uuid')
 const activeProcesses = new Map()
 const cron = require('node-cron');
-const cronParser = require('cron-parser');
 
 const CACHE_FILE = path.join('/etc/nas-panel/updates-cache.json');
 const CACHE_TTL = 12 * 60 * 60 * 1000; // 12 godzin cache
@@ -49,13 +48,13 @@ const execPromise = (command, options = {}) => {
       fullStdout += data;
       // Debugowanie tylko pierwszych 500 znaków
       if (fullStdout.length < 500) {
-        //console.debug('stdout chunk:', data.toString().trim());
+        console.debug('stdout chunk:', data.toString().trim());
       }
     });
 
     child.stderr?.on('data', (data) => {
       fullStderr += data;
-      //console.error('stderr chunk:', data.toString().trim());
+      console.error('stderr chunk:', data.toString().trim());
     });
 
     child.on('close', (code) => {
@@ -339,14 +338,7 @@ function loadSettings() {
   try {
     if (fs.existsSync(SETTINGS_PATH)) {
       const rawData = fs.readFileSync(SETTINGS_PATH, 'utf8');
-      const settings = JSON.parse(rawData);
-      
-      // Upewnij się, że cronJobs istnieje i jest tablicą
-      if (!Array.isArray(settings.cronJobs)) {
-        settings.cronJobs = [];
-      }
-      
-      return settings;
+      return JSON.parse(rawData);
     }
   } catch (error) {
     console.error('Error loading settings:', error);
@@ -431,68 +423,23 @@ app.post('/system/settings', async (req, res) => {
   }
 });
 
-async function updateCronSchedule(updateSettings) {
-  const UPDATE_JOB_ID = 'system-auto-updates'; // Stałe ID dla tego zadania
-
-  // Usuń istniejące zadanie jeśli istnieje
+function updateCronSchedule(updateSettings) {
   if (updateCronJob) {
     updateCronJob.destroy();
     updateCronJob = null;
   }
-  
-  if (cronJobs.has(UPDATE_JOB_ID)) {
-    cronJobs.get(UPDATE_JOB_ID).task.stop();
-    cronJobs.delete(UPDATE_JOB_ID);
-  }
 
+  // Utwórz nowy jeśli autoUpdate jest włączone
   if (updateSettings.autoUpdate) {
-    try {
-      // Utwórz nowe zadanie
-      const task = cron.schedule(
-        updateSettings.schedule,
-        async () => {
-          console.log('Running scheduled system update...');
-          try {
-            await execPromise(updateSettings.updateCommand);
-            // Aktualizuj informacje o ostatnim wykonaniu
-            cronJobs.set(UPDATE_JOB_ID, {
-              ...cronJobs.get(UPDATE_JOB_ID),
-              lastRun: new Date(),
-              nextRun: calculateNextRun(updateSettings.schedule)
-            });
-            saveCronJobs();
-            console.log('System updates completed');
-          } catch (error) {
-            console.error('System updates failed:', error);
-          }
-        },
-        {
-          scheduled: true,
-          timezone: 'Europe/Warsaw'
-        }
-      );
-
-      // Oblicz następne wykonanie
-      const nextRun = calculateNextRun(updateSettings.schedule);
-
-      // Zapisz zadanie w głównej mapie zadań
-      cronJobs.set(UPDATE_JOB_ID, {
-        id: UPDATE_JOB_ID,
-        name: 'Automatyczne aktualizacje systemu',
-        schedule: updateSettings.schedule,
-        command: updateSettings.updateCommand,
-        description: 'Automatyczne aktualizacje systemu zgodnie z ustawieniami',
-        task: task,
-        nextRun: nextRun,
-        lastRun: null,
-        isSystemJob: true
-      });
-
-      updateCronJob = task;
-      saveCronJobs();
-    } catch (error) {
-      console.error('Error creating system update cron job:', error);
-    }
+    updateCronJob = cron.schedule(updateSettings.schedule, async () => {
+      console.log('Running scheduled update:', new Date().toISOString());
+      try {
+        await execPromise(updateSettings.updateCommand);
+        console.log('Scheduled update completed');
+      } catch (error) {
+        console.error('Scheduled update failed:', error);
+      }
+    });
   }
 }
 
@@ -562,37 +509,15 @@ function extractDownloadSize(output) {
 
 
 function saveCronJobs() {
-  try {
-    const jobsToSave = Array.from(cronJobs.values())
-      .filter(job => !job.isSystemJob) // Pomijamy zadania systemowe w pliku
-      .map(job => ({
-        id: job.id,
-        name: job.name,
-        schedule: job.schedule,
-        command: job.command,
-        description: job.description
-      }));
+  const jobsToSave = Array.from(cronJobs.values()).map(job => ({
+    id: job.id,
+    name: job.name,
+    schedule: job.schedule,
+    command: job.command,
+    description: job.description
+  }));
 
-    fs.writeFileSync(CRON_JOBS_FILE, JSON.stringify(jobsToSave, null, 2));
-    
-    // Dodatkowo zapisz ustawienia systemowe
-    const settings = loadSettings();
-    if (cronJobs.has('system-auto-updates')) {
-      const updateJob = cronJobs.get('system-auto-updates');
-      settings.updates = {
-        autoUpdate: true,
-        schedule: updateJob.schedule,
-        updateCommand: updateJob.command
-      };
-    } else {
-      settings.updates.autoUpdate = false;
-    }
-    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2));
-    
-    return true;
-  } catch (error) {
-    return false;
-  }
+  fs.writeFileSync(CRON_JOBS_FILE, JSON.stringify(jobsToSave, null, 2));
 }
 
 // Funkcja do ładowania zadań z pliku
@@ -600,8 +525,7 @@ function loadCronJobs() {
   try {
     if (fs.existsSync(CRON_JOBS_FILE)) {
       const data = fs.readFileSync(CRON_JOBS_FILE, 'utf8');
-      const jobs = JSON.parse(data);
-      return Array.isArray(jobs) ? jobs : [];
+      return JSON.parse(data);
     }
   } catch (error) {
     console.error('Error loading cron jobs:', error);
@@ -611,99 +535,57 @@ function loadCronJobs() {
 
 // Funkcja tworząca nowe zadanie cron
 async function createCronJob(job) {
-  if (!isValidCronExpression(job.schedule)) {
-    return false;
+  // Usuń istniejące zadanie jeśli istnieje
+  if (cronJobs.has(job.id)) {
+    cronJobs.get(job.id).task.stop();
   }
 
-  try {
-    // Oblicz następne wykonanie
-    const nextRun = calculateNextRun(job.schedule);
-    
-    // Utwórz zadanie
-    const task = cron.schedule(
-      job.schedule,
-      async () => {
-        try {
-          await execPromise(job.command);
-          
-          // Aktualizuj daty po wykonaniu
-          cronJobs.set(job.id, {
-            ...cronJobs.get(job.id),
-            lastRun: new Date(),
-            nextRun: calculateNextRun(job.schedule)
-          });
-          saveCronJobs();
-        } catch (err) {
-        }
-      },
-      {
-        scheduled: true,
-        timezone: 'Europe/Warsaw'
+  // Utwórz nowe zadanie
+  const task = cron.schedule(
+    job.schedule,
+    async () => {
+      try {
+        console.log(`Executing job ${job.id}: ${job.command}`);
+        await execPromise(job.command);
+        job.lastRun = new Date();
+        console.log(`Job ${job.id} completed`);
+      } catch (error) {
+        console.error(`Job ${job.id} failed:`, error);
       }
-    );
+    },
+    {
+      scheduled: true,
+      timezone: 'Europe/Warsaw',
+      recoverMissedExecutions: false
+    }
+  );
 
-    // Zapisz zadanie
-    cronJobs.set(job.id, {
-      ...job,
-      task,
-      nextRun,
-      lastRun: null
-    });
+  // Oblicz następne wykonanie (nowe API node-cron 3.x)
+  const nextRun = task.nextDates(1)[0];
 
-    saveCronJobs();
-    return true;
-  } catch (err) {
-    return false;
-  }
-}
+  // Zapisz zadanie
+  cronJobs.set(job.id, {
+    ...job,
+    task,
+    nextRun,
+    lastRun: null
+  });
 
-function isValidCronExpression(expression) {
-  try {
-    cronParser.CronExpressionParser.parse(expression);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function calculateNextRun(cronExpression) {
-  try {
-    // Poprawne użycie CronExpressionParser
-    const interval = cronParser.CronExpressionParser.parse(cronExpression, {
-      currentDate: new Date(),
-      tz: 'Europe/Warsaw'
-    });
-    return interval.next().toDate();
-  } catch (err) {
-    const nextRun = new Date();
-    nextRun.setHours(nextRun.getHours() + 1);
-    return nextRun;
-  }
+  saveCronJobs();
 }
 
 // Inicjalizacja zadań przy starcie
 function initCronJobs() {
-  // Wczytaj zwykłe zadania
   const jobs = loadCronJobs();
   jobs.forEach(job => {
-    try {
-      createCronJob({
-        id: job.id || uuidv4(),
-        name: job.name || 'New Cron Job',
-        schedule: job.schedule,
-        command: job.command,
-        description: job.description || ''
-      });
-    } catch (error) {
-      console.error('Error initializing cron job:', error);
-    }
+    createCronJob({
+      id: job.id || uuidv4(),
+      name: job.name || 'New Cron Job',
+      schedule: job.schedule,
+      command: job.command,
+      description: job.description || ''
+    });
   });
-
-  // Inicjalizuj zadanie aktualizacji systemu
-  const settings = loadSettings();
-  if (settings.updates?.autoUpdate) {
-    updateCronSchedule(settings.updates);
-  }
 }
 
 // Helper do walidacji harmonogramu
@@ -713,26 +595,21 @@ function isValidCronExpression(expression) {
 
 // Endpointy CRUD dla zadań cron
 app.get('/system/cron-jobs', requireAuth, (req, res) => {
-  const jobs = Array.from(cronJobs.values()).map(job => {
-    const nextRun = job.nextRun || calculateNextRun(job.schedule);
-    
-    return {
-      id: job.id,
-      name: job.name,
-      schedule: job.schedule,
-      command: job.command,
-      description: job.description,
-      lastRun: job.lastRun?.toISOString(),
-      nextRun: nextRun.toISOString(),
-      isActive: !!job.task
-    };
-  });
-  
+  const jobs = Array.from(cronJobs.values()).map(job => ({
+    id: job.id,
+    name: job.name,
+    schedule: job.schedule,
+    command: job.command,
+    description: job.description,
+    lastRun: job.lastRun?.toISOString(),
+    nextRun: job.nextRun?.toISOString(),
+    isActive: job.task && !job.task.isStopped()
+  }));
   res.json(jobs);
 });
 
 app.post('/system/cron-jobs', requireAuth, async (req, res) => {
-  try {
+   try {
     const { schedule, command, name, description } = req.body;
 
     if (!cron.validate(schedule)) {
@@ -805,17 +682,9 @@ function saveAllCronJobsToSettings() {
   fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2));
 }
 
-// Na końcu pliku, przed eksportem modułu
-function migrateCronJobs() {
-  const settings = loadSettings();
-  if (settings.cronJobs && settings.cronJobs.length > 0 && !fs.existsSync(CRON_JOBS_FILE)) {
-    console.log('Migrating cron jobs from settings.json to cron-jobs.json');
-    fs.writeFileSync(CRON_JOBS_FILE, JSON.stringify(settings.cronJobs, null, 2));
-  }
-}
-
-// Wywołaj migrację przy starcie
-migrateCronJobs();
+// Wywołaj inicjalizację przy starcie serwera
 initCronJobs();
+
+console.log('Initialized cron jobs:', Array.from(cronJobs.keys()));
 
 }

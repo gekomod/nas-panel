@@ -279,7 +279,14 @@ export default {
     sidebarVertical: 'Vertical',
     sidebarHorizontal: 'Horizontal',
     save: 'Save',
-    reset: 'Reset'
+    reset: 'Reset',
+    autoUpdatesTitle: 'Automatic Updates',
+    enableAutoUpdates: 'Enable automatic updates',
+    updateSchedule: 'Update schedule',
+    updateCommand: 'Update command',
+    dailyMidnight: 'Daily at midnight',
+    weeklySunday: 'Weekly on Sunday',
+    monthlyFirstDay: 'Monthly on 1st day'
   },
   common: {
     yes: "Yes",

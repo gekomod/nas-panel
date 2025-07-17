@@ -71,10 +71,28 @@
               </el-select>
             </el-form-item>
 
-            <el-form-item :label="$t('settings.autoUpdates')">
-              <el-switch v-model="settings.system.autoUpdates" />
-            </el-form-item>
           </el-form>
+            <el-divider />
+
+  <h3>{{ $t('settings.autoUpdatesTitle') }}</h3>
+  <el-form :model="settings.updates" label-position="top">
+    <el-form-item :label="$t('settings.enableAutoUpdates')">
+      <el-switch v-model="settings.updates.autoUpdate" />
+    </el-form-item>
+
+    <el-form-item v-if="settings.updates.autoUpdate" :label="$t('settings.updateSchedule')">
+      <el-select v-model="settings.updates.schedule">
+        <el-option value="0 0 * * *" :label="$t('settings.dailyMidnight')" />
+        <el-option value="0 0 * * 0" :label="$t('settings.weeklySunday')" />
+        <el-option value="0 0 1 * *" :label="$t('settings.monthlyFirstDay')" />
+      </el-select>
+    </el-form-item>
+
+    <el-form-item v-if="settings.updates.autoUpdate" :label="$t('settings.updateCommand')">
+      <el-input v-model="settings.updates.updateCommand" />
+    </el-form-item>
+  </el-form>
+
         </el-tab-pane>
 
         <!-- Zakładka UI -->
@@ -104,7 +122,7 @@
               <el-checkbox 
                 v-for="service in availableServices" 
                 :key="service.value" 
-                :label="service.value"
+                :value="service.value"
               >
                 <div class="service-checkbox">
                   <Icon :icon="service.icon" width="18" />
@@ -147,8 +165,7 @@ const settings = ref({
   system: {
     hostname: '',
     timezone: 'Europe/Warsaw',
-    language: 'pl',
-    autoUpdates: false
+    language: 'pl'
   },
   ui: {
     theme: 'system',
@@ -156,6 +173,11 @@ const settings = ref({
   },
   services: {
     monitoredServices: []
+  },
+  updates: {
+    autoUpdate: false,
+    schedule: '0 0 * * *',
+    updateCommand: 'sudo apt-get update && sudo apt-get upgrade -y'
   }
 })
 
@@ -216,6 +238,23 @@ const saveSettings = async () => {
   }
 }
 
+const checkSystemCronJob = async () => {
+  try {
+    const response = await axios.get('/system/cron-jobs');
+    const systemJob = response.data.find(job => job.id === 'system-auto-updates');
+    
+    if (systemJob) {
+      settings.value.updates = {
+        autoUpdate: true,
+        schedule: systemJob.schedule,
+        updateCommand: systemJob.command
+      };
+    }
+  } catch (error) {
+    console.error('Error checking system cron jobs:', error);
+  }
+};
+
 const resetSettings = () => {
   fetchSettings()
 }
@@ -229,8 +268,9 @@ const browseDirectory = (field) => {
 }
 
 onMounted(() => {
-  fetchSettings()
-})
+  fetchSettings();
+  checkSystemCronJob();
+});
 </script>
 
 <style scoped>

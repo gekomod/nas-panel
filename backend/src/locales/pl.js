@@ -319,7 +319,7 @@ export default {
       tlsCaCert: "TLS CA Certificate",
       tlsCert: "TLS Certificate",
       tlsKey: "TLS Key",
-      maxDownloadAttempts: "Max Download Attempts"
+      maxDownloadAttempts: "Max Download Attempts",
     },
     messages: {
       saveSuccess: 'Ustawienia zostały zapisane',
@@ -345,7 +345,14 @@ export default {
     sidebarVertical: 'Pionowy',
     sidebarHorizontal: 'Poziomy',
     save: 'Zapisz',
-    reset: 'Resetuj'
+    reset: 'Resetuj',
+    autoUpdatesTitle: 'Automatyczne aktualizacje',
+    enableAutoUpdates: 'Włącz automatyczne aktualizacje',
+    updateSchedule: 'Harmonogram aktualizacji',
+    updateCommand: 'Polecenie aktualizacji',
+    dailyMidnight: 'Codziennie o północy',
+    weeklySunday: 'Co tydzień w niedzielę',
+    monthlyFirstDay: 'Co miesiąc pierwszego dnia'
   },
   common: {
     yes: "Tak",
