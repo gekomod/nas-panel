@@ -298,6 +298,16 @@ const routes = [
 	}
       },
       {
+	path: '/system/antivirus',
+	name: 'Antivirus',
+	component: () => import('@/components/system/Antivirus/Antivirus.vue'),
+	meta: { 
+	  title: 'Antivirus',
+	  requiresAuth: true,
+	  icon: 'mdi:security'
+	}
+      },
+      {
         path: '/system/settings',
         name: 'SystemSettings',
         component: () => import('@/components/system/Settings/Settings.vue'),

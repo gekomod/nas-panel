@@ -19,6 +19,7 @@ const DockerConfigRoutes = require('./src/api/docker-config.cjs');
 const DiagnosticsRoutes = require('./src/api/diagnostics.cjs');
 const dynamicDnsRoutes = require('./src/api/network-dynamicdns.cjs');
 const WebDavRoutes = require('./src/api/webdav.cjs');
+const AntivirusRoutes = require('./src/api/antivirus.cjs');
 
 const os = require('os');
 const { publicIpv4 } = require('public-ip');
@@ -49,12 +50,14 @@ const initializeDynamicOrigins = async () => {
     // Dodaj wszystkie lokalne IP
     localIps.forEach(ip => {
       newOrigins.push(`http://${ip}:5173`);
+      newOrigins.push(`http://${ip}:8080`);
       newOrigins.push(`http://${ip}`);
     });
 
     // Dodaj publiczne IP jeśli istnieje
     if (publicIp) {
       newOrigins.push(`http://${publicIp}:5173`);
+      newOrigins.push(`http://${publicIp}:8080`);
       newOrigins.push(`http://${publicIp}`);
     }
 
@@ -158,6 +161,7 @@ DockerConfigRoutes(app,requireAuth);
 DiagnosticsRoutes(app,requireAuth);
 dynamicDnsRoutes(app, requireAuth);
 WebDavRoutes(app, requireAuth);
+AntivirusRoutes(app, requireAuth);
 
 // Zmieniamy funkcję logowania:
 app.post('/api/login', async (req, res) => {

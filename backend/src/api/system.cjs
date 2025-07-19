@@ -150,7 +150,7 @@ async function checkForUpdates(force = false) {
       });
 
       updates.forEach(update => {
-        update.description = descMap[update.name] || t('systemUpdates.noDescription');
+        update.description = descMap[update.name] || 'No Description';
       });
     }
 
