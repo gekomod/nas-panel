@@ -20,6 +20,8 @@ const DiagnosticsRoutes = require('./src/api/diagnostics.cjs');
 const dynamicDnsRoutes = require('./src/api/network-dynamicdns.cjs');
 const WebDavRoutes = require('./src/api/webdav.cjs');
 const AntivirusRoutes = require('./src/api/antivirus.cjs');
+const UsersRoutes = require('./src/api/users.cjs');
+const SystemLogsRoutes = require('./src/api/system-logs.cjs');
 
 const os = require('os');
 const { publicIpv4 } = require('public-ip');
@@ -162,6 +164,8 @@ DiagnosticsRoutes(app,requireAuth);
 dynamicDnsRoutes(app, requireAuth);
 WebDavRoutes(app, requireAuth);
 AntivirusRoutes(app, requireAuth);
+UsersRoutes(app, requireAuth);
+SystemLogsRoutes(app, requireAuth);
 
 // Zmieniamy funkcję logowania:
 app.post('/api/login', async (req, res) => {

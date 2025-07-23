@@ -335,7 +335,37 @@ const routes = [
           requiresAuth: true,
           icon: 'mdi:chart-box-outline' 
         }
-      }
+      },
+      {
+	  path: '/diagnostics/system-logs',
+	  meta: { 
+	    title: 'System Logs',
+	    requiresAuth: true,
+	    icon: 'mdi:file-document-outline' 
+	  },
+	  children: [
+	    {
+	      path: '/diagnostics/system-logs/local',
+	      name: 'SystemLogs',
+	      component: () => import('@/components/diagnostics/system-logs/LocalLogs.vue'),
+	      meta: { 
+		title: 'Local Logs', 
+		requiresAuth: true,
+		icon: 'mdi:file-document-multiple-outline' 
+	      }
+	    },
+	    {
+	      path: '/diagnostics/system-logs/remote',
+	      name: 'RemoteLogs',
+	      component: () => import('@/components/diagnostics/system-logs/RemoteLogs.vue'),
+	      meta: { 
+		title: 'Remote Logs', 
+		requiresAuth: true,
+		icon: 'mdi:server-network' 
+	      }
+	    }
+	  ]
+	}
     ]
   }
 ]

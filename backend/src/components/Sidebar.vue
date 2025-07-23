@@ -133,7 +133,7 @@ const menuItems = computed(() => {
     }
   
     .el-menu-item {
-      padding-left: 60px !important;
+      padding-left: 40px !important;
     }
 
     .el-sub-menu__title {

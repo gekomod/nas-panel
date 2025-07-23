@@ -78,9 +78,16 @@
         </template>
       </el-table-column>
       
-      <el-table-column label="Actions" width="220">
+      <el-table-column label="Actions" width="240">
         <template #default="{row}">
           <el-button-group>
+
+      <el-tooltip
+        class="box-item"
+        effect="dark"
+        content="Start/Stop Container"
+        placement="top-start"
+      >
             <el-button
               v-if="!isContainerRunning(row.status)"
               size="small"
@@ -89,6 +96,7 @@
             >
               <el-icon><Icon icon="mdi:play" /></el-icon>
             </el-button>
+     
             <el-button
               v-else
               size="small"
@@ -105,6 +113,14 @@
             >
               <el-icon><Icon icon="mdi:restart" /></el-icon>
             </el-button>
+            </el-tooltip>
+            
+      <el-tooltip
+        class="box-item"
+        effect="dark"
+        content="Show Container Stats"
+        placement="top-start"
+      >
             <el-button
               size="small"
               type="info"
@@ -112,6 +128,14 @@
             >
               <el-icon><Icon icon="mdi:chart-box" /></el-icon>
             </el-button>
+      </el-tooltip>
+       
+      <el-tooltip
+        class="box-item"
+        effect="dark"
+        content="Show Container Logs"
+        placement="top-start"
+      >
             <el-button
               size="small"
               type="primary"
@@ -119,6 +143,14 @@
             >
               <el-icon><Icon icon="mdi:file-document" /></el-icon>
             </el-button>
+      </el-tooltip>
+            
+      <el-tooltip
+        class="box-item"
+        effect="dark"
+        content="Delete Container"
+        placement="top-start"
+      >
             <el-button
               size="small"
               type="danger"
@@ -127,6 +159,24 @@
             >
             <el-icon><Icon icon="mdi:delete" /></el-icon>
             </el-button>
+      </el-tooltip>
+      
+      
+      <el-tooltip
+        class="box-item"
+        effect="dark"
+        content="Open SSH"
+        placement="top-start"
+      >
+      <el-button
+        size="small"
+        type="success"
+        @click.stop="openSshDialog(row.ID)"
+      >
+        <el-icon><Icon icon="mdi:console" /></el-icon>
+      </el-button>
+      </el-tooltip>
+      
           </el-button-group>
         </template>
       </el-table-column>
@@ -156,14 +206,29 @@
   </template>
 </el-dialog>
 
+  <el-dialog
+    v-model="sshDialogVisible"
+    title="SSH Connection"
+    width="70%"
+  >
+    <div class="ssh-terminal">
+      <div class="ssh-output">
+        <pre>KIEDYŚ</pre>
+      </div>
+    </div>
+    <template #footer>
+      <el-button @click="sshDialogVisible = false">Close</el-button>
+    </template>
+  </el-dialog>
+
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, inject, watch } from 'vue';
+import { ref, computed, onMounted, inject, watch, nextTick } from 'vue';
 import axios from 'axios';
 import { Icon } from '@iconify/vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessage, ElMessageBox, ElTooltip } from 'element-plus';
 import ContainerStats from './ContainerStats.vue';
 
 const containers = ref([]);
@@ -177,6 +242,8 @@ const loadingActions = ref({});
 const expandedRow = ref(null);
 const containerStats = ref({});
 const reloadKey = inject('reloadKey');
+const sshDialogVisible = ref(false);
+const currentSshContainer = ref('');
 
 const handleRowClick = async (row) => {
           expandedRow.value = row.ID;
@@ -362,6 +429,11 @@ const showContainerStats = (id) => {
   statsDialogVisible.value = true;
 };
 
+const openSshDialog = (containerId) => {
+  currentSshContainer.value = containerId;
+  sshDialogVisible.value = true;
+};
+
 watch(reloadKey, () => {
   fetchContainers();
 });
@@ -446,5 +518,24 @@ onMounted(() => {
 .loading-stats .el-icon {
   margin-right: 8px;
   font-size: 16px;
+}
+
+/* Dodaj nowe style */
+.ssh-terminal {
+  height: 60vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.ssh-output {
+  flex-grow: 1;
+  overflow: auto;
+  background: #1e1e1e;
+  color: #f0f0f0;
+  padding: 10px;
+  border-radius: 4px;
+  font-family: monospace;
+  white-space: pre-wrap;
+  margin-top: 10px;
 }
 </style>

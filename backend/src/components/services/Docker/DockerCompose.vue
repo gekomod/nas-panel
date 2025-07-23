@@ -113,12 +113,19 @@ services:
       </template>
     </el-dialog>
 
-    <el-dialog v-model="deployDialogVisible" title="Deploy Status" width="60%">
-      <pre class="deploy-log">{{ deployLog }}</pre>
-      <template #footer>
-        <el-button @click="deployDialogVisible = false">Close</el-button>
-      </template>
-    </el-dialog>
+  <el-dialog 
+    v-model="deployDialogVisible" 
+    title="Deploy Status" 
+    width="80%"
+    @closed="handleDeployDialogClosed"
+  >
+    <div class="terminal-container">
+      <div ref="deployTerminalRef" class="terminal"></div>
+    </div>
+    <template #footer>
+      <el-button @click="closeDeploy">Close</el-button>
+    </template>
+  </el-dialog>
     
     <!-- Nowy dialog z szablonami -->
     <el-dialog v-model="showTemplatesDialog" title="Add from Templates" width="60%">
@@ -133,7 +140,7 @@ services:
           <template #default="{ row }">
             <el-button
               size="small"
-              type="text"
+              type="primary"
               @click.stop="previewTemplate(row)"
             >
               Preview
@@ -158,10 +165,14 @@ services:
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import axios from 'axios';
 import { Icon } from '@iconify/vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+
+import { Terminal } from 'xterm';
+import { FitAddon } from 'xterm-addon-fit';
+import 'xterm/css/xterm.css';
 
 const composeFiles = ref([]);
 const loading = ref(false);
@@ -170,6 +181,11 @@ const showEditDialog = ref(false);
 const deployDialogVisible = ref(false);
 const deployLog = ref('');
 const creatingCompose = ref(false);
+
+const deployTerminalRef = ref(null);
+const deployTerminal = ref(null);
+const deployFitAddon = ref(null);
+const deployEventSource = ref(null);
 
 const showTemplatesDialog = ref(false);
 const showTemplatePreview = ref(false);
@@ -366,23 +382,120 @@ const deleteCompose = async (filename) => {
   }
 };
 
+
+
+// Inicjalizacja terminala
+const initDeployTerminal = () => {
+  // Najpierw posprzątaj istniejące instancje
+  if (deployTerminal.value) {
+    try {
+      deployTerminal.value.dispose();
+    } catch (e) {
+      console.warn('Error disposing terminal:', e);
+    }
+  }
+
+	deployTerminal.value = new Terminal({
+	  cursorBlink: false,
+	  fontFamily: 'monospace',
+	  fontSize: 14,
+	  convertEol: true,  // Wymuszaj konwersję znaków końca linii
+	  theme: {
+	    background: '#1e1e1e',
+	    foreground: '#f0f0f0'
+	  },
+	  rendererType: 'canvas', // Lepsza wydajność
+	  disableStdin: true,     // Wyłącz wejście z klawiatury
+	  scrollback: 1000        // Zwiększ bufor przewijania
+	});
+
+  deployFitAddon.value = new FitAddon();
+  deployTerminal.value.loadAddon(deployFitAddon.value);
+  
+  if (deployTerminalRef.value) {
+    deployTerminal.value.open(deployTerminalRef.value);
+    deployFitAddon.value.fit();
+  }
+};
+
+// Zamknięcie strumienia deploy
+const closeDeployStream = () => {
+  if (deployEventSource.value) {
+    deployEventSource.value.close();
+    deployEventSource.value = null;
+  }
+
+  if (deployTerminal.value) {
+    try {
+      if (deployFitAddon.value) {
+        deployTerminal.value.loadAddon(deployFitAddon.value);
+        deployFitAddon.value.dispose();
+        deployFitAddon.value = null;
+      }
+      deployTerminal.value.dispose();
+      deployTerminal.value = null;
+    } catch (e) {
+      console.warn('Error cleaning up terminal:', e);
+    }
+  }
+};
+
+// Obsługa zamknięcia dialogu
+const handleDeployDialogClosed = () => {
+  closeDeployStream();
+  deployDialogVisible.value = false;
+};
+
+// Ręczne zamknięcie przez przycisk
+const closeDeploy = () => {
+  handleDeployDialogClosed();
+};
+
+// Funkcja deploy
 const deployCompose = async (filename) => {
   try {
     deployDialogVisible.value = true;
-    deployLog.value = 'Starting deployment...\n';
     
-    const response = await axios.post('/services/docker/compose/deploy', {
-      file: filename
-    });
+    await nextTick();
+    initDeployTerminal();
     
-    deployLog.value += response.data.output;
-    ElMessage.success('Compose file deployed successfully');
+    deployTerminal.value.writeln('Starting deployment...');
+    deployTerminal.value.writeln('========================\r\n');
+
+    // Połączenie EventSource
+    const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+    const wsUrl = `${protocol}//${window.location.hostname}:3000`;
+    deployEventSource.value = new EventSource(`${wsUrl}/services/docker/composer/deploy-stream?file=${filename}`);
+    
+deployEventSource.value.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.message) {
+          // Prawidłowe wyświetlanie tekstu w terminalu
+          const lines = data.message.split('\r\n');
+          lines.forEach(line => {
+            if (line.trim().length > 0) {
+              deployTerminal.value.writeln(line);
+            }
+          });
+        }
+      } catch (e) {
+        console.error('Error parsing event data:', e);
+      }
+    };
+
+    deployEventSource.value.onerror = (error) => {
+      deployTerminal.value.writeln('\r\nError in deployment stream');
+      closeDeployStream();
+    };
   } catch (error) {
-    deployLog.value += error.response?.data?.details || error.message;
-    ElMessage.error('Failed to deploy compose file');
-    console.error(error);
+    console.error('Deployment error:', error);
+    if (deployTerminal.value) {
+      deployTerminal.value.writeln('Error: ' + error.message);
+    }
   }
 };
+
 
 const loadTemplates = async () => {
   try {
@@ -436,6 +549,10 @@ const loadTemplatesDialog = async () => {
 onMounted(() => {
   fetchComposeFiles();
 });
+
+onBeforeUnmount(() => {
+    closeDeployStream();
+});
 </script>
 
 <style scoped>
@@ -473,5 +590,18 @@ onMounted(() => {
   font-family: monospace;
   white-space: pre-wrap;
   border: 1px solid #eaeaea;
+}
+
+.terminal-container {
+  width: 100%;
+  height: 70vh;
+  background: #1e1e1e;
+  padding: 10px;
+  border-radius: 4px;
+}
+
+.terminal {
+  width: 100%;
+  height: 100%;
 }
 </style>

@@ -1,45 +1,51 @@
 <template>
   <div class="app-container" :class="theme">
-    <Navbar 
-      @toggle-sidebar="toggleSidebar" 
-      :theme="theme"
-      @theme-changed="handleThemeChange"
-    />
-    
-    <div class="main-container" :class="{'horizontal-layout': sidebarMode === 'horizontal'}">
-      <!-- Sidebar w trybie vertical -->
-      <Sidebar 
-        v-if="sidebarMode === 'vertical'"
-        :is-collapsed="isSidebarCollapsed" 
+    <template v-if="!isLoginPage">
+      <Navbar 
+        @toggle-sidebar="toggleSidebar" 
         :theme="theme"
+        @theme-changed="handleThemeChange"
       />
       
-      <!-- Główna zawartość -->
-      <div class="main-content" :class="{ 
-        'collapsed': isSidebarCollapsed && sidebarMode === 'vertical',
-        'horizontal-layout': sidebarMode === 'horizontal'
-      }">
-        <!-- Horizontal navbar (dla trybu horizontal) -->
-        <div v-if="sidebarMode === 'horizontal'" class="horizontal-navbar">
-          <HorizontalSidebar :theme="theme" />
+      <div class="main-container" :class="{'horizontal-layout': sidebarMode === 'horizontal'}">
+        <!-- Sidebar w trybie vertical -->
+        <Sidebar 
+          v-if="sidebarMode === 'vertical'"
+          :is-collapsed="isSidebarCollapsed" 
+          :theme="theme"
+        />
+
+        <div class="main-content" :class="{ 
+          'collapsed': isSidebarCollapsed && sidebarMode === 'vertical',
+          'horizontal-layout': sidebarMode === 'horizontal'
+        }">
+          <div v-if="sidebarMode === 'horizontal'" class="horizontal-navbar">
+            <HorizontalSidebar :theme="theme" />
+          </div>
+          
+          <router-view />
         </div>
-        
-        <router-view />
       </div>
-    </div>
+    </template>
+    
+    <router-view v-else />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import axios from 'axios'
 import Navbar from '@/components/Navbar.vue'
 import Sidebar from '@/components/Sidebar.vue'
 import HorizontalSidebar from '@/components/HorizontalSidebar.vue'
 
+const route = useRoute()
 const isSidebarCollapsed = ref(false)
 const sidebarMode = ref('horizontal')
 const theme = ref('system') // 'light', 'dark', or 'system'
+
+const isLoginPage = computed(() => route.path === '/login')
 
 const toggleSidebar = () => {
   if (sidebarMode.value === 'vertical') {
@@ -85,6 +91,7 @@ onMounted(() => {
   })
 })
 </script>
+
 
 <style scoped>
 .app-container {

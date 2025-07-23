@@ -178,13 +178,6 @@ import { useI18n } from 'vue-i18n';
 
 const { t } = useI18n();
 
-const props = defineProps({
-  config: {
-    type: Object,
-    required: true
-  }
-});
-
 const emit = defineEmits(['save']);
 
 const form = ref({
@@ -195,70 +188,123 @@ const form = ref({
   logLevel: 'debug',
   maxConcurrentDownloads: 3,
   maxConcurrentUploads: 5,
-  maxDownloadAttempts: 10,
+  maxDownloadAttempts: 5,
   dataRoot: '/var/lib/docker',
   containerd: '/run/containerd/containerd.sock',
   experimental: false,
   debug: true,
   liveRestore: true,
   iptables: false,
-  ip6tables: false
+  ip6tables: false,
+  ipForward: false,
+  ipMasq: false,
+  tls: false,
+  defaultAddressPools: [
+    {
+      base: '172.30.0.0/16',
+      size: 24
+    },
+    {
+      base: '172.31.0.0/16',
+      size: 24
+    }
+  ],
+  logOpts: {
+    'cache-disabled': 'false',
+    'cache-max-file': '5',
+    'cache-max-size': '20m',
+    'cache-compress': 'true',
+    'env': 'os,customer',
+    'labels': 'somelabel',
+    'max-file': '5',
+    'max-size': '10m'
+  }
 });
 
 const loading = ref(true);
 const saving = ref(false);
-const settingsForm = ref(null);
 
-// Initialize form with props
-const initializeForm = () => {
-  if (props.config) {
-    form.value = {
-      daemonPort: props.config.daemonPort || 2375,
-      hosts: props.config.hosts || ['tcp://0.0.0.0:2375', 'unix:///var/run/docker.sock'],
-      ipv6Enabled: props.config.ipv6Enabled || false,
-      loggingDriver: props.config.loggingDriver || 'json-file',
-      logLevel: props.config.logLevel || 'debug',
-      maxConcurrentDownloads: props.config.maxConcurrentDownloads || 3,
-      maxConcurrentUploads: props.config.maxConcurrentUploads || 5,
-      maxDownloadAttempts: props.config.maxDownloadAttempts || 10,
-      dataRoot: props.config.dataRoot || '/var/lib/docker',
-      containerd: props.config.containerd || '/run/containerd/containerd.sock',
-      experimental: props.config.experimental || false,
-      debug: props.config.debug !== undefined ? props.config.debug : true,
-      liveRestore: props.config.liveRestore !== undefined ? props.config.liveRestore : true,
-      iptables: props.config.iptables || false,
-      ip6tables: props.config.ip6tables || false
-    };
+// Pobierz konfigurację Dockera
+const fetchDockerConfig = async () => {
+  try {
+    loading.value = true;
+    const response = await axios.get('/services/docker/config');
+    updateFormWithConfig(response.data);
+  } catch (error) {
+    ElMessage.error(t('docker.messages.loadError'));
+    console.error('Error loading Docker config:', error);
+  } finally {
+    loading.value = false;
   }
-  loading.value = false;
 };
 
-watch(() => props.config, (newConfig) => {
-  if (newConfig) {
-    form.value = { ...newConfig };
-  }
-}, { immediate: true });
+// Aktualizuj formularz danymi z konfiguracji
+const updateFormWithConfig = (config) => {
+  form.value = {
+    daemonPort: config.daemonPort || 2375,
+    hosts: config.hosts || ['tcp://0.0.0.0:2375', 'unix:///var/run/docker.sock'],
+    ipv6Enabled: config.ipv6Enabled || false,
+    loggingDriver: config.loggingDriver || 'json-file',
+    logLevel: config.logLevel || 'debug',
+    maxConcurrentDownloads: config.maxConcurrentDownloads || 3,
+    maxConcurrentUploads: config.maxConcurrentUploads || 5,
+    maxDownloadAttempts: config.maxDownloadAttempts || 5,
+    dataRoot: config.dataRoot || '/var/lib/docker',
+    containerd: config.containerd || '/run/containerd/containerd.sock',
+    experimental: config.experimental || false,
+    debug: config.debug !== undefined ? config.debug : true,
+    liveRestore: config.liveRestore !== undefined ? config.liveRestore : true,
+    iptables: config.iptables || false,
+    ip6tables: config.ip6tables || false,
+    ipForward: config.ipForward !== undefined ? config.ipForward : true, // Zmienione - domyślnie true
+    ipMasq: config.ipMasq || false,
+    tls: config.tls || false,
+    defaultAddressPools: config.defaultAddressPools || [
+      {
+        base: '172.30.0.0/16',
+        size: 24
+      },
+      {
+        base: '172.31.0.0/16',
+        size: 24
+      }
+    ],
+    logOpts: config.logOpts || {
+      'cache-disabled': 'false',
+      'cache-max-file': '5',
+      'cache-max-size': '20m',
+      'cache-compress': 'true',
+      'env': 'os,customer',
+      'labels': 'somelabel',
+      'max-file': '5',
+      'max-size': '10m'
+    }
+  };
+};
 
 const saveSettings = async () => {
   try {
     saving.value = true;
-    await emit('save', form.value);
+    await axios.post('/services/docker/config', form.value);
     ElMessage.success(t('docker.messages.saveSuccess'));
+    await fetchDockerConfig(); // Ponownie pobierz konfigurację po zapisie
   } catch (error) {
     ElMessage.error(t('docker.messages.saveError'));
+    console.error('Error saving Docker config:', error);
   } finally {
     saving.value = false;
   }
 };
 
-const resetForm = () => {
-  initializeForm();
+const resetForm = async () => {
+  await fetchDockerConfig();
 };
 
 onMounted(() => {
-  initializeForm();
+  fetchDockerConfig();
 });
 </script>
+
 
 <style scoped>
 .modern-docker-settings {

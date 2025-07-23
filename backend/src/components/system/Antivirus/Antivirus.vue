@@ -4,15 +4,15 @@
       <div class="card-header">
         <h2>
           <el-icon><icon icon="mdi:shield-check" /></el-icon>
-          Status Antywirusa
+          {{ $t('antivirus.title') }}
         </h2>
       </div>
     </template>
 
     <el-descriptions :column="1" border>
-      <el-descriptions-item label="Zainstalowany">
+      <el-descriptions-item :label="$t('antivirus.installed')">
         <el-tag :type="packageInfo.installed ? 'success' : 'danger'">
-          {{ packageInfo.installed ? 'Tak' : 'Nie' }}
+          {{ packageInfo.installed ? $t('common.yes') : $t('common.no') }}
         </el-tag>
         <el-button 
           v-if="!packageInfo.installed"
@@ -21,59 +21,59 @@
           @click="installAntivirus"
           :loading="installing"
         >
-          (Zainstaluj antywirus)
+          ({{ $t('antivirus.install') }})
         </el-button>
       </el-descriptions-item>
       
-      <el-descriptions-item label="Status">
+      <el-descriptions-item :label="$t('antivirus.status')">
         <el-tag :type="getStatusTagType(status)">
           {{ statusText }}
         </el-tag>
       </el-descriptions-item>
 
-      <el-descriptions-item label="Wersja">
-        {{ packageInfo.version || 'Nieznana' }}
+      <el-descriptions-item :label="$t('antivirus.version')">
+        {{ packageInfo.version || $t('antivirus.unknown') }}
       </el-descriptions-item>
 
-      <el-descriptions-item label="Baza wirusów">
-        {{ virusDbVersion || 'Nie załadowana' }}
+      <el-descriptions-item :label="$t('antivirus.virus_db')">
+        {{ virusDbVersion || $t('antivirus.not_loaded') }}
         <el-button 
           type="primary"
           link
           @click="checkForUpdates"
           :loading="updating"
         >
-          (Sprawdź aktualizacje)
+          ({{ $t('antivirus.check_updates') }})
         </el-button>
       </el-descriptions-item>
 
-      <el-descriptions-item label="Ostatnia aktualizacja">
-        {{ lastUpdate || 'Nigdy' }}
+      <el-descriptions-item :label="$t('antivirus.last_update')">
+        {{ lastUpdate || $t('antivirus.never') }}
       </el-descriptions-item>
     </el-descriptions>
 
     <el-tabs v-model="activeTab" class="antivirus-tabs">
-      <el-tab-pane label="Skaner" name="scanner">
+      <el-tab-pane :label="$t('antivirus.scanner')" name="scanner">
         <div class="scan-options">
           <el-radio-group v-model="scanType">
             <el-radio-button value="quick">
               <el-icon><icon icon="mdi:flash" /></el-icon>
-              Szybkie skanowanie
+              {{ $t('antivirus.quick_scan') }}
             </el-radio-button>
             <el-radio-button value="full">
               <el-icon><icon icon="mdi:harddisk" /></el-icon>
-              Pełne skanowanie
+              {{ $t('antivirus.full_scan') }}
             </el-radio-button>
             <el-radio-button value="custom">
               <el-icon><icon icon="mdi:folder-multiple" /></el-icon>
-              Niestandardowe
+              {{ $t('antivirus.custom_scan') }}
             </el-radio-button>
           </el-radio-group>
 
           <div v-if="scanType === 'custom'" class="custom-scan-paths">
             <el-input 
               v-model="customPath" 
-              placeholder="Wprowadź ścieżkę do skanowania"
+              :placeholder="$t('antivirus.enter_path')"
               @keyup.enter="addCustomPath"
             >
               <template #append>
@@ -103,25 +103,25 @@
             class="scan-button"
           >
             <el-icon><icon icon="mdi:shield-sync" /></el-icon>
-            {{ isScanning ? 'Skanowanie...' : 'Rozpocznij skanowanie' }}
+            {{ isScanning ? $t('antivirus.scanning') : $t('antivirus.start_scan') }}
           </el-button>
         </div>
 
         <div v-if="isScanning || scanResults" class="scan-progress">
           <el-divider>
             <el-icon><icon icon="mdi:file-document-outline" /></el-icon>
-            Raport skanowania
+            {{ $t('antivirus.scan_report') }}
           </el-divider>
 
           <div class="scan-stats">
             <el-space>
               <el-tag>
                 <el-icon><icon icon="mdi:clock-outline" /></el-icon>
-                Czas trwania: {{ scanDuration }}
+                {{ $t('antivirus.duration') }}: {{ scanDuration }}
               </el-tag>
               <el-tag>
                 <el-icon><icon icon="mdi:file-tree" /></el-icon>
-                Przeskanowane: {{ scannedItems }} elementów
+                {{ $t('antivirus.scanned') }}: {{ scannedItems }} {{ $t('antivirus.items') }}
               </el-tag>
             </el-space>
           </div>
@@ -136,49 +136,49 @@
 
           <el-divider>
             <el-icon><icon icon="mdi:progress-upload" /></el-icon>
-            Zdarzenia w czasie rzeczywistym
+            {{ $t('antivirus.realtime_events') }}
           </el-divider>
 
           <div class="event-stream">
-<el-scrollbar height="200px" class="event-stream">
-  <div 
-    v-for="(event, index) in eventStream" 
-    :key="index"
-    class="event-item"
-    :class="{
-      'info-event': event.type === 'info',
-      'warning-event': event.type === 'warning',
-      'danger-event': event.type === 'danger',
-      'success-event': event.type === 'success'
-    }"
-  >
-    <el-icon>
-      <icon :icon="eventIcons[event.type]" />
-    </el-icon>
-    <span class="event-time">[{{ event.time }}]</span>
-    {{ event.message }}
-  </div>
-</el-scrollbar>
+            <el-scrollbar height="200px" class="event-stream">
+              <div 
+                v-for="(event, index) in eventStream" 
+                :key="index"
+                class="event-item"
+                :class="{
+                  'info-event': event.type === 'info',
+                  'warning-event': event.type === 'warning',
+                  'danger-event': event.type === 'danger',
+                  'success-event': event.type === 'success'
+                }"
+              >
+                <el-icon>
+                  <icon :icon="eventIcons[event.type]" />
+                </el-icon>
+                <span class="event-time">[{{ event.time }}]</span>
+                {{ event.message }}
+              </div>
+            </el-scrollbar>
           </div>
 
           <div v-if="detectedThreats.length > 0" class="threats-detected">
             <el-divider>
               <el-icon><icon icon="mdi:alert-octagon" /></el-icon>
-              Wykryte zagrożenia ({{ detectedThreats.length }})
+              {{ $t('antivirus.detected_threats', { count: detectedThreats.length }) }}
             </el-divider>
 
             <el-table :data="detectedThreats" height="250" border>
-              <el-table-column prop="name" label="Nazwa zagrożenia" width="180" />
-              <el-table-column prop="path" label="Ścieżka" />
-              <el-table-column label="Akcje" width="200">
+              <el-table-column prop="name" :label="$t('antivirus.threat_name')" width="180" />
+              <el-table-column prop="path" :label="$t('antivirus.path')" />
+              <el-table-column :label="$t('antivirus.actions')" width="200">
                 <template #default="{ row }">
                   <el-button type="danger" size="small" @click="removeThreat(row)">
                     <el-icon><icon icon="mdi:delete" /></el-icon>
-                    Usuń
+                    {{ $t('antivirus.remove') }}
                   </el-button>
                   <el-button type="warning" size="small" @click="quarantineThreat(row)">
                     <el-icon><icon icon="mdi:content-cut" /></el-icon>
-                    Kwarantanna
+                    {{ $t('antivirus.quarantine') }}
                   </el-button>
                 </template>
               </el-table-column>
@@ -187,18 +187,18 @@
         </div>
       </el-tab-pane>
 
-      <el-tab-pane label="Historia" name="history">
+      <el-tab-pane :label="$t('antivirus.history')" name="history">
         <div class="history-filters">
-          <el-select v-model="historyFilter" placeholder="Filtruj historię">
-            <el-option label="Wszystkie skanowania" value="all" />
-            <el-option label="Ostatni tydzień" value="week" />
-            <el-option label="Ostatni miesiąc" value="month" />
-            <el-option label="Tylko z zagrożeniami" value="threats" />
+          <el-select v-model="historyFilter" :placeholder="$t('antivirus.filter_history')">
+            <el-option :label="$t('antivirus.all_scans')" value="all" />
+            <el-option :label="$t('antivirus.last_week')" value="week" />
+            <el-option :label="$t('antivirus.last_month')" value="month" />
+            <el-option :label="$t('antivirus.only_threats')" value="threats" />
           </el-select>
 
           <el-button @click="refreshHistory" type="primary">
             <el-icon><icon icon="mdi:refresh" /></el-icon>
-            Odśwież
+            {{ $t('antivirus.refresh') }}
           </el-button>
         </div>
 
@@ -215,7 +215,7 @@
                   <el-icon>
                     <icon :icon="scan.threatsDetected > 0 ? 'mdi:alert-octagon' : 'mdi:check-circle'" />
                   </el-icon>
-                  {{ scan.scanType }} skanowanie
+                  {{ $t(`antivirus.scan_types.${scan.scanType}`) }} {{ $t('antivirus.scan') }}
                 </el-tag>
                 <el-space>
                   <el-tag>
@@ -224,11 +224,11 @@
                   </el-tag>
                   <el-tag>
                     <el-icon><icon icon="mdi:file-tree" /></el-icon>
-                    {{ scan.itemsScanned }} elementów
+                    {{ scan.itemsScanned }} {{ $t('antivirus.items') }}
                   </el-tag>
                   <el-tag v-if="scan.threatsDetected > 0" type="danger">
                     <el-icon><icon icon="mdi:virus" /></el-icon>
-                    {{ scan.threatsDetected }} zagrożeń
+                    {{ scan.threatsDetected }} {{ $t('antivirus.threats') }}
                   </el-tag>
                 </el-space>
               </div>
@@ -239,43 +239,43 @@
                 class="mt-2"
               >
                 <el-icon><icon icon="mdi:information" /></el-icon>
-                Szczegóły
+                {{ $t('antivirus.details') }}
               </el-button>
             </el-card>
           </el-timeline-item>
         </el-timeline>
       </el-tab-pane>
 
-      <el-tab-pane label="Ustawienia" name="settings">
+      <el-tab-pane :label="$t('antivirus.settings')" name="settings">
         <el-form :model="settings" label-width="250px">
-          <el-form-item label="Automatyczne aktualizacje">
+          <el-form-item :label="$t('antivirus.auto_updates')">
             <el-switch v-model="settings.autoUpdate" />
           </el-form-item>
 
-          <el-form-item label="Częstotliwość aktualizacji" v-if="settings.autoUpdate">
+          <el-form-item :label="$t('antivirus.update_frequency')" v-if="settings.autoUpdate">
             <el-select v-model="settings.updateFrequency">
-              <el-option label="Codziennie" value="daily" />
-              <el-option label="Tygodniowo" value="weekly" />
-              <el-option label="Miesięcznie" value="monthly" />
+              <el-option :label="$t('antivirus.daily')" value="daily" />
+              <el-option :label="$t('antivirus.weekly')" value="weekly" />
+              <el-option :label="$t('antivirus.monthly')" value="monthly" />
             </el-select>
           </el-form-item>
 
-          <el-form-item label="Ochrona w czasie rzeczywistym">
+          <el-form-item :label="$t('antivirus.realtime_protection')">
             <el-switch v-model="settings.realtimeProtection" />
           </el-form-item>
 
-          <el-form-item label="Powiadomienia o zagrożeniach">
+          <el-form-item :label="$t('antivirus.threat_notifications')">
             <el-switch v-model="settings.notifications" />
           </el-form-item>
 
           <el-form-item>
             <el-button type="primary" @click="saveSettings">
               <el-icon><icon icon="mdi:content-save" /></el-icon>
-              Zapisz ustawienia
+              {{ $t('antivirus.save_settings') }}
             </el-button>
             <el-button @click="checkForUpdates">
               <el-icon><icon icon="mdi:cloud-download" /></el-icon>
-              Sprawdź aktualizacje
+              {{ $t('antivirus.check_updates') }}
             </el-button>
           </el-form-item>
         </el-form>
@@ -285,11 +285,13 @@
 </template>
 
 <script setup>
-
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { ElMessage, ElNotification } from 'element-plus';
 import { Icon } from '@iconify/vue';
 import axios from 'axios';
+import { useI18n } from 'vue-i18n';
+
+const { t, locale } = useI18n();
 
 // Dane i stan
 const activeTab = ref('scanner');
@@ -325,13 +327,17 @@ const eventIcons = {
 const installing = ref(false);
 const updating = ref(false);
 
+const toggleLanguage = () => {
+  locale.value = locale.value === 'pl' ? 'en' : 'pl';
+};
+
 // Obliczenia
 const statusText = computed(() => {
   switch (status.value) {
-    case 'active': return 'Aktywna ochrona';
-    case 'error': return 'Błąd usługi';
-    case 'disabled': return 'Wyłączony';
-    default: return 'Ładowanie...';
+    case 'active': return t('antivirus.status_active');
+    case 'error': return t('antivirus.status_error');
+    case 'disabled': return t('antivirus.status_disabled');
+    default: return t('antivirus.status_loading');
   }
 });
 
@@ -380,7 +386,7 @@ const addEvent = (type, message) => {
   
   if (type === 'danger') {
     ElNotification.error({
-      title: 'Wykryto zagrożenie',
+      title: t('antivirus.threat_detected'),
       message: message,
       position: 'bottom-right'
     });
@@ -393,7 +399,7 @@ function addCustomPath() {
     customPaths.value.push(path);
     customPath.value = '';
   } else if (customPaths.value.includes(path)) {
-    addEvent('warning', 'Ta ścieżka została już dodana');
+    addEvent('warning', t('antivirus.path_already_added'));
   }
 }
 
@@ -412,7 +418,7 @@ async function checkPackage() {
     }
   } catch (error) {
     status.value = 'error';
-    addEvent('error', 'Nie udało się sprawdzić statusu pakietu antywirusowego');
+    addEvent('error', t('antivirus.package_status_error'));
   }
 }
 
@@ -422,7 +428,7 @@ async function checkVirusDb() {
     virusDbVersion.value = response.data.version;
     lastUpdate.value = new Date(response.data.updatedAt).toLocaleString();
   } catch (error) {
-    addEvent('warning', 'Nie udało się sprawdzić wersji bazy wirusów');
+    addEvent('warning', t('antivirus.virus_db_error'));
   }
 }
 
@@ -442,7 +448,6 @@ async function startScan() {
   };
 
   try {
-    // Zamknij istniejące połączenie jeśli istnieje
     if (currentEventSource.value) {
       currentEventSource.value.close();
     }
@@ -458,14 +463,13 @@ async function startScan() {
     };
 
     currentEventSource.value.onerror = (error) => {
-      addEvent('error', 'Błąd połączenia ze skanerem');
+      addEvent('error', t('antivirus.scanner_connection_error'));
       isScanning.value = false;
       if (currentEventSource.value) {
         currentEventSource.value.close();
       }
     };
 
-    // Dodaj nasłuchiwanie na konkretne typy zdarzeń
     currentEventSource.value.addEventListener('status', (event) => {
       const data = JSON.parse(event.data);
       addEvent('info', data.message);
@@ -476,22 +480,21 @@ async function startScan() {
       scanProgress.value = data.progress;
       scannedItems.value = data.itemsScanned;
       
-      // Oblicz czas trwania
       const currentTime = new Date();
       const durationInSeconds = Math.floor((currentTime - startTime) / 1000);
       scanDuration.value = formatDuration(durationInSeconds);
       
-      addEvent('info', `Postęp: ${data.progress}% (${data.itemsScanned} elementów)`);
+      addEvent('info', t('antivirus.scan_progress', { progress: data.progress, items: data.itemsScanned }));
     });
 
     currentEventSource.value.addEventListener('threat', (event) => {
       const data = JSON.parse(event.data);
       detectedThreats.value.push(data);
-      addEvent('danger', `Wykryto zagrożenie: ${data.name}`);
+      addEvent('danger', t('antivirus.threat_detected_message', { name: data.name }));
       
       ElNotification.warning({
-        title: 'Wykryto zagrożenie!',
-        message: `${data.name} w ${data.path}`,
+        title: t('antivirus.threat_detected_warning'),
+        message: t('antivirus.threat_detected_path', { name: data.name, path: data.path }),
         position: 'bottom-right',
         duration: 0
       });
@@ -500,9 +503,8 @@ async function startScan() {
     currentEventSource.value.addEventListener('complete', (event) => {
       const data = JSON.parse(event.data);
       isScanning.value = false;
-      addEvent('success', 'Skanowanie zakończone');
+      addEvent('success', t('antivirus.scan_complete'));
       
-      // Zapisz wyniki skanowania
       scanResults.value = {
         scanType: scanType.value,
         timestamp: new Date().toISOString(),
@@ -520,7 +522,7 @@ async function startScan() {
     });
 
   } catch (error) {
-    addEvent('error', 'Nie udało się rozpocząć skanowania');
+    addEvent('error', t('antivirus.scan_start_error'));
     isScanning.value = false;
     if (currentEventSource.value) {
       currentEventSource.value.close();
@@ -559,9 +561,9 @@ async function saveScanResults(results) {
   try {
     const response = await axios.post('/api/antivirus/scan/history', results);
     scanHistory.value.unshift(response.data);
-    addEvent('info', 'Wyniki skanowania zostały zapisane');
+    addEvent('info', t('antivirus.scan_results_saved'));
   } catch (error) {
-    addEvent('error', 'Nie udało się zapisać wyników skanowania');
+    addEvent('error', t('antivirus.scan_results_save_error'));
   }
 }
 
@@ -570,7 +572,7 @@ async function loadHistory() {
     const response = await axios.get('/api/antivirus/scan/history');
     scanHistory.value = response.data;
   } catch (error) {
-    addEvent('error', 'Nie udało się załadować historii skanowań');
+    addEvent('error', t('antivirus.history_load_error'));
   }
 }
 
@@ -579,7 +581,7 @@ async function loadSettings() {
     const response = await axios.get('/api/antivirus/settings');
     settings.value = response.data;
   } catch (error) {
-    addEvent('warning', 'Używanie domyślnych ustawień');
+    addEvent('warning', t('antivirus.using_default_settings'));
   }
 }
 
@@ -587,14 +589,14 @@ async function saveSettings() {
   try {
     const response = await axios.put('/api/antivirus/settings', settings.value);
     settings.value = response.data;
-    addEvent('info', 'Ustawienia zostały zapisane pomyślnie');
+    addEvent('info', t('antivirus.settings_saved'));
     
     if (realtimeEventSource.value) {
       realtimeEventSource.value.close();
       initRealTimeProtection();
     }
   } catch (error) {
-    addEvent('error', 'Nie udało się zapisać ustawień');
+    addEvent('error', t('antivirus.settings_save_error'));
   }
 }
 
@@ -614,24 +616,24 @@ function initRealTimeProtection() {
     };
     
     realtimeEventSource.value.onerror = (error) => {
-      addEvent('error', 'Ochrona w czasie rzeczywistym została rozłączona');
+      addEvent('error', t('antivirus.realtime_disconnected'));
       setTimeout(() => initRealTimeProtection(), 5000);
     };
     
-    addEvent('info', 'Ochrona w czasie rzeczywistym została aktywowana');
+    addEvent('info', t('antivirus.realtime_activated'));
   }
 }
 
 async function checkForUpdates() {
   updating.value = true;
-  addEvent('info', 'Sprawdzanie aktualizacji...');
+  addEvent('info', t('antivirus.checking_updates'));
   try {
     const response = await axios.post('/api/antivirus/update');
     virusDbVersion.value = response.data.version;
     lastUpdate.value = new Date(response.data.updatedAt).toLocaleString();
-    addEvent('info', 'Baza wirusów została zaktualizowana');
+    addEvent('info', t('antivirus.virus_db_updated'));
   } catch (error) {
-    addEvent('error', 'Nie udało się zaktualizować bazy wirusów');
+    addEvent('error', t('antivirus.virus_db_update_error'));
   } finally {
     updating.value = false;
   }
@@ -640,20 +642,20 @@ async function checkForUpdates() {
 async function quarantineThreat(threat) {
   try {
     await axios.post(`/api/antivirus/threats/${threat.id}/quarantine`);
-    addEvent('info', 'Zagrożenie zostało poddane kwarantannie');
+    addEvent('info', t('antivirus.threat_quarantined'));
     refreshHistory();
   } catch (error) {
-    addEvent('error', 'Nie udało się poddać zagrożenia kwarantannie');
+    addEvent('error', t('antivirus.quarantine_error'));
   }
 }
 
 async function removeThreat(threat) {
   try {
     await axios.delete(`/api/antivirus/threats/${threat.id}`);
-    addEvent('info', 'Zagrożenie zostało usunięte');
+    addEvent('info', t('antivirus.threat_removed'));
     refreshHistory();
   } catch (error) {
-    addEvent('error', 'Nie udało się usunąć zagrożenia');
+    addEvent('error', t('antivirus.remove_error'));
   }
 }
 
@@ -661,10 +663,10 @@ async function installAntivirus() {
   installing.value = true;
   try {
     await axios.post('/api/antivirus/install');
-    addEvent('info', 'Instalacja antywirusa rozpoczęta');
+    addEvent('info', t('antivirus.install_started'));
     await checkPackage();
   } catch (error) {
-    addEvent('error', 'Nie udało się zainstalować antywirusa');
+    addEvent('error', t('antivirus.install_error'));
   } finally {
     installing.value = false;
   }
@@ -681,15 +683,17 @@ function formatDate(timestamp) {
 }
 
 function showScanDetails(scan) {
-  ElMessage.info(`Szczegóły skanowania: ${scan.scanType} skanowanie wykonane ${formatDate(scan.timestamp)}`);
+  ElMessage.info(t('antivirus.scan_details', {
+    type: t(`antivirus.scan_types.${scan.scanType}`),
+    date: formatDate(scan.timestamp)
+  }));
 }
 
 async function refreshHistory() {
   await loadHistory();
-  addEvent('info', 'Historia skanowań została odświeżona');
+  addEvent('info', t('antivirus.history_refreshed'));
 }
 
-// Inicjalizacja
 onMounted(() => {
   checkPackage();
   loadSettings();

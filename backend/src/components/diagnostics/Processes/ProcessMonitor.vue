@@ -3,16 +3,16 @@
     <div class="monitor-header">
       <h2>
         <el-icon><Icon icon="mdi:chart-box" /></el-icon>
-        Monitor procesów systemowych
+        {{ $t('processMonitor.title') }}
       </h2>
       <div class="controls">
         <el-button size="small" @click="refreshProcesses" :loading="loading">
           <el-icon><Icon icon="mdi:refresh" /></el-icon>
-          Odśwież
+          {{ $t('processMonitor.refresh') }}
         </el-button>
         <el-input
           v-model="searchQuery"
-          placeholder="Wyszukaj proces..."
+          :placeholder="$t('processMonitor.searchPlaceholder')"
           clearable
           style="width: 200px"
           size="small"
@@ -32,10 +32,10 @@
       border
       height="calc(100vh - 220px)"
     >
-      <el-table-column prop="pid" label="PID" width="80" sortable />
-      <el-table-column prop="name" label="Nazwa" width="180" sortable />
-      <el-table-column prop="user" label="Użytkownik" width="120" sortable />
-      <el-table-column prop="cpu" label="CPU %" width="100" sortable>
+      <el-table-column prop="pid" :label="$t('processMonitor.columns.pid')" width="80" sortable />
+      <el-table-column prop="name" :label="$t('processMonitor.columns.name')" width="180" sortable />
+      <el-table-column prop="user" :label="$t('processMonitor.columns.user')" width="120" sortable />
+      <el-table-column prop="cpu" :label="$t('processMonitor.columns.cpu')" width="100" sortable>
         <template #default="{ row }">
           <el-progress 
             :percentage="row.cpu" 
@@ -46,7 +46,7 @@
           <span class="percentage">{{ row.cpu.toFixed(1) }}%</span>
         </template>
       </el-table-column>
-      <el-table-column prop="memory" label="Pamięć %" width="120" sortable>
+      <el-table-column prop="memory" :label="$t('processMonitor.columns.memory')" width="120" sortable>
         <template #default="{ row }">
           <el-progress 
             :percentage="row.memory" 
@@ -57,18 +57,18 @@
           <span class="percentage">{{ row.memory.toFixed(1) }}%</span>
         </template>
       </el-table-column>
-      <el-table-column prop="status" label="Status" width="100" sortable>
+      <el-table-column prop="status" :label="$t('processMonitor.columns.status')" width="100" sortable>
         <template #default="{ row }">
           <el-tag :type="getStatusType(row.status)" size="small">
             {{ row.status }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="command" label="Polecenie" show-overflow-tooltip />
-      <el-table-column label="Akcje" width="120">
+      <el-table-column prop="command" :label="$t('processMonitor.columns.command')" show-overflow-tooltip />
+      <el-table-column :label="$t('processMonitor.columns.actions')" width="120">
         <template #default="{ row }">
           <el-button-group>
-            <el-tooltip content="Zakończ proces" placement="top">
+            <el-tooltip :content="$t('processMonitor.tooltips.kill')" placement="top">
               <el-button
                 size="small"
                 type="danger"
@@ -78,7 +78,7 @@
                 <el-icon><Icon icon="mdi:skull" /></el-icon>
               </el-button>
             </el-tooltip>
-            <el-tooltip content="Szczegóły" placement="top">
+            <el-tooltip :content="$t('processMonitor.tooltips.details')" placement="top">
               <el-button
                 size="small"
                 type="info"
@@ -92,26 +92,26 @@
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="detailsDialogVisible" title="Szczegóły procesu" width="60%">
+    <el-dialog v-model="detailsDialogVisible" :title="$t('processMonitor.detailsDialog.title')" width="60%">
       <el-descriptions :column="2" border>
-        <el-descriptions-item label="PID">{{ currentProcess.pid }}</el-descriptions-item>
-        <el-descriptions-item label="Nazwa">{{ currentProcess.name }}</el-descriptions-item>
-        <el-descriptions-item label="Użytkownik">{{ currentProcess.user }}</el-descriptions-item>
-        <el-descriptions-item label="Status">
+        <el-descriptions-item :label="$t('processMonitor.detailsDialog.pid')">{{ currentProcess.pid }}</el-descriptions-item>
+        <el-descriptions-item :label="$t('processMonitor.detailsDialog.name')">{{ currentProcess.name }}</el-descriptions-item>
+        <el-descriptions-item :label="$t('processMonitor.detailsDialog.user')">{{ currentProcess.user }}</el-descriptions-item>
+        <el-descriptions-item :label="$t('processMonitor.detailsDialog.status')">
           <el-tag :type="getStatusType(currentProcess.status)" size="small">
             {{ currentProcess.status }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="CPU %">{{ currentProcess.cpu }}%</el-descriptions-item>
-        <el-descriptions-item label="Pamięć %">{{ currentProcess.memory }}%</el-descriptions-item>
-        <el-descriptions-item label="Polecenie" :span="2">
+        <el-descriptions-item :label="$t('processMonitor.detailsDialog.cpu')">{{ currentProcess.cpu }}%</el-descriptions-item>
+        <el-descriptions-item :label="$t('processMonitor.detailsDialog.memory')">{{ currentProcess.memory }}%</el-descriptions-item>
+        <el-descriptions-item :label="$t('processMonitor.detailsDialog.command')" :span="2">
           <pre class="command">{{ currentProcess.command }}</pre>
         </el-descriptions-item>
-        <el-descriptions-item label="Ścieżka" :span="2">{{ currentProcess.path || 'N/A' }}</el-descriptions-item>
-        <el-descriptions-item label="Uruchomiono" :span="2">{{ currentProcess.started || 'N/A' }}</el-descriptions-item>
+        <el-descriptions-item :label="$t('processMonitor.detailsDialog.path')" :span="2">{{ currentProcess.path || $t('processMonitor.detailsDialog.notAvailable') }}</el-descriptions-item>
+        <el-descriptions-item :label="$t('processMonitor.detailsDialog.started')" :span="2">{{ currentProcess.started || $t('processMonitor.detailsDialog.notAvailable') }}</el-descriptions-item>
       </el-descriptions>
       <template #footer>
-        <el-button @click="detailsDialogVisible = false">Zamknij</el-button>
+        <el-button @click="detailsDialogVisible = false">{{ $t('processMonitor.detailsDialog.close') }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -172,7 +172,7 @@ const fetchProcesses = async () => {
       protected: p.user === 'root' || p.pid < 100
     }))
   } catch (error) {
-    ElMessage.error('Błąd podczas ładowania procesów')
+    ElMessage.error($t('processMonitor.messages.loadError'))
     console.error(error)
   } finally {
     loading.value = false
@@ -185,20 +185,22 @@ const refreshProcesses = () => {
 
 const killProcess = (pid) => {
   ElMessageBox.confirm(
-    `Czy na pewno chcesz zakończyć proces ${pid}?`,
-    'Potwierdzenie',
+    $t('processMonitor.confirmations.killMessage', { pid }),
+    $t('processMonitor.confirmations.killTitle'),
     {
-      confirmButtonText: 'Zakończ',
-      cancelButtonText: 'Anuluj',
+      confirmButtonText: $t('processMonitor.confirmations.confirmText'),
+      cancelButtonText: $t('processMonitor.confirmations.cancelText'),
       type: 'warning'
     }
   ).then(async () => {
     try {
       await axios.post('/diagnostics/processes/kill', { pid })
-      ElMessage.success(`Proces ${pid} został zakończony`)
+      ElMessage.success($t('processMonitor.messages.killSuccess', { pid }))
       fetchProcesses()
     } catch (error) {
-      ElMessage.error(`Błąd podczas kończenia procesu: ${error.response?.data?.message || error.message}`)
+      ElMessage.error($t('processMonitor.messages.killError', { 
+        error: error.response?.data?.message || error.message 
+      }))
     }
   }).catch(() => {})
 }

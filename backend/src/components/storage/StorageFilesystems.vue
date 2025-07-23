@@ -35,6 +35,16 @@
               <Icon icon="mdi:refresh" width="16" height="16" :class="{ 'spin': loading }" />
             </el-button>
           </el-tooltip>
+          <el-tooltip :content="$t('storageFilesystems.editFstab')">
+            <el-button 
+	      size="small" 
+	      @click="openFstabEditor" 
+	      :disabled="loading"
+	      text
+              >
+            <Icon icon="mdi:file-edit" width="16" height="16" />
+	  </el-button>
+	 </el-tooltip>
         </div>
       </div>
     </template>
@@ -101,6 +111,37 @@
         </el-button>
       </template>
     </el-dialog>
+    
+    <el-dialog 
+  v-model="fstabDialogVisible" 
+  title="Edit /etc/fstab" 
+  width="800px"
+  :close-on-click-modal="false"
+>
+  <div class="fstab-editor-container">
+    <el-alert type="warning" :closable="false" style="margin-bottom: 15px;">
+      Warning: Incorrect modifications may prevent your system from booting properly.
+    </el-alert>
+    
+    <el-input
+      v-model="fstabContent"
+      type="textarea"
+      :rows="20"
+      resize="none"
+      placeholder="Loading fstab content..."
+      :loading="fstabLoading"
+    />
+    
+    <div class="editor-actions" style="margin-top: 15px;">
+      <el-button @click="fetchFstabContent" :loading="fstabLoading">
+        Reload
+      </el-button>
+      <el-button type="primary" @click="saveFstab" :loading="fstabLoading">
+        Save
+      </el-button>
+    </div>
+  </div>
+</el-dialog>
 
     <!-- Format Dialog -->
     <el-dialog v-model="formatDialogVisible" :title="$t('storageFilesystems.formatDialog.title')" width="500px">
@@ -229,6 +270,18 @@
         </template>
       </el-table-column>
       
+	<el-table-column label="Auto-mount" width="120">
+	  <template #default="{ row }">
+	    <el-switch
+	      v-if="!row.isZfs"
+	      v-model="row.inFstab"
+	      @change="toggleFstabEntry(row.device, row.mounted, row.type, row.options, $event)"
+	      :loading="row.fstabLoading"
+	    />
+	    <el-tag v-else type="info" size="small">ZFS</el-tag>
+	  </template>
+	</el-table-column>
+      
       <el-table-column :label="$t('storageFilesystems.reference')" prop="reference" width="120">
         <template #default="{ row }">
           <el-tag v-if="row.reference" size="small" type="info">
@@ -279,20 +332,29 @@ export default {
 </script>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@iconify/vue'
 import axios from 'axios'
 import { ElMessage, ElNotification, ElMessageBox } from 'element-plus'
 
+const abortController = ref(new AbortController())
+
 const { t } = useI18n()
 
-axios.defaults.baseURL = `${window.location.protocol}//${window.location.hostname}:3000`;
+const api = axios.create({
+  baseURL: `${window.location.protocol}//${window.location.hostname}:3000`,
+  signal: abortController.value.signal
+})
 
 const filesystems = ref([])
 const allDevices = ref([])
 const loading = ref(false)
 const error = ref(null)
+const fstabDialogVisible = ref(false);
+const fstabContent = ref('');
+const fstabLoading = ref(false);
+const fstabEntries = ref([]);
 
 // Mount dialog
 const mountDialogVisible = ref(false)
@@ -327,6 +389,29 @@ const supportedFilesystems = ref([
   'zfs'
 ])
 
+const loadFstabEntries = async () => {
+  try {
+    const response = await api.get('/api/storage/fstab-check');
+    fstabEntries.value = response.data.entries;
+  } catch (error) {
+    console.error('Error loading fstab entries:', error);
+  }
+};
+
+const isAutoMounted = (device, mountPoint) => {
+  return fstabEntries.value.some(entry => {
+    // Sprawdzamy po urządzeniu (może być ścieżka, UUID lub LABEL)
+    const deviceMatch = entry.device === device || 
+                       device.includes(entry.device) || 
+                       entry.device.includes(device);
+    
+    // Sprawdzamy po punkcie montowania
+    const mountMatch = entry.mountPoint === mountPoint;
+    
+    return deviceMatch || mountMatch;
+  });
+};
+
 const formatableDevices = computed(() => {
   return allDevices.value.flatMap(device => {
     const base = {
@@ -348,13 +433,15 @@ const formatableDevices = computed(() => {
 // Computed properties
 const unmountedDevices = computed(() => {
   const mountedPaths = filesystems.value.map(fs => fs.device);
-  const allPartitions = allDevices.value.flatMap(device => 
-    device.partitions.map(part => ({
-      ...part,
-      model: device.model,
-      serial: device.serial
-    }))
-  );
+  const allPartitions = allDevices.value.flatMap(device => {
+    return (device.partitions || []).map(part => ({
+      path: part.path,
+      model: device.model || 'Unknown',
+      serial: device.serial || 'Unknown',
+      type: part.type,
+      fstype: part.fstype || ''
+    }));
+  });
 
   return allPartitions.filter(part => 
     !mountedPaths.includes(part.path) && 
@@ -385,7 +472,69 @@ const updatePartitions = (devicePath) => {
   const device = allDevices.value.find(d => d.path === devicePath);
   availablePartitions.value = device?.partitions || [];
   mountForm.value.partition = availablePartitions.value[0]?.path || '';
-};
+}
+
+// FSTAB
+const fetchFstabContent = async () => {
+  try {
+    fstabLoading.value = true;
+    const response = await api.get('/api/storage/fstab-content');
+    fstabContent.value = response.data.content;
+  } catch (error) {
+    ElNotification({
+      title: 'Error',
+      message: error.response?.data?.details || error.message,
+      type: 'error'
+    });
+  } finally {
+    fstabLoading.value = false;
+  }
+}
+
+const saveFstab = async () => {
+  try {
+    fstabLoading.value = true;
+    await api.post('/api/storage/save-fstab', { content: fstabContent.value });
+    ElNotification({
+      title: 'Success',
+      message: 'Fstab saved successfully',
+      type: 'success'
+    });
+    fstabDialogVisible.value = false;
+  } catch (error) {
+    ElNotification({
+      title: 'Error',
+      message: error.response?.data?.details || error.message,
+      type: 'error'
+    });
+  } finally {
+    fstabLoading.value = false;
+  }
+}
+
+const openFstabEditor = async () => {
+  try {
+    await ElMessageBox.confirm(
+      'You are about to edit system fstab file. Make sure you know what you are doing.',
+      'Warning',
+      {
+        confirmButtonText: 'Continue',
+        cancelButtonText: 'Cancel',
+        type: 'warning'
+      }
+    );
+    fstabDialogVisible.value = true;
+    await fetchFstabContent();
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElNotification({
+        title: 'Error',
+        message: error.message,
+        type: 'error'
+      });
+    }
+  }
+}
 
 // Methods
 const showMountDialog = async () => {
@@ -414,6 +563,58 @@ const showFormatDialog = async () => {
   }
 }
 
+const checkFstabEntry = async (device, mountPoint) => {
+  try {
+    const response = await axios.post('/api/storage/fstab', {
+      action: 'check',
+      device,
+      mountPoint
+    });
+    return response.data.exists;
+  } catch (error) {
+    console.error('Error checking fstab:', error);
+    return false;
+  }
+}
+
+const toggleFstabEntry = async (device, mountPoint, fsType, options, enabled) => {
+  try {
+    const response = await axios.post('/api/storage/fstab', {
+      action: enabled ? 'add' : 'remove',
+      device,
+      mountPoint,
+      fsType,
+      options
+    });
+    
+    if (response.data.success) {
+      // Aktualizujemy stan w tablicy filesystems
+      const fsIndex = filesystems.value.findIndex(fs => 
+        fs.device === device && fs.mounted === mountPoint
+      );
+      
+      if (fsIndex !== -1) {
+        filesystems.value[fsIndex].inFstab = enabled;
+      }
+      
+      ElNotification({
+        title: 'Success',
+        message: response.data.message,
+        type: 'success'
+      });
+      return true;
+    }
+    return false;
+  } catch (error) {
+    ElNotification({
+      title: 'Error',
+      message: error.response?.data?.details || error.message,
+      type: 'error'
+    });
+    return false;
+  }
+}
+
 const mountDevice = async () => {
   try {
     mountLoading.value = true;
@@ -422,10 +623,28 @@ const mountDevice = async () => {
     const deviceToMount = mountForm.value.partition || mountForm.value.device;
     const isZfs = mountForm.value.fsType === 'zfs';
     
-    // Dla ZFS używamy nazwy puli jako mountPoint jeśli nie podano
     const mountPoint = isZfs && !mountForm.value.mountPoint ? 
       mountForm.value.zfsPoolName || 'zpool' : 
       mountForm.value.mountPoint;
+
+    // For non-ZFS, ask about fstab
+    let addToFstab = false;
+    if (!isZfs) {
+      try {
+        await ElMessageBox.confirm(
+          'Czy dodać to montowanie do /etc/fstab dla automatycznego montowania przy starcie systemu?',
+          'Dodawanie do fstab',
+          {
+            confirmButtonText: 'Tak, dodaj do fstab',
+            cancelButtonText: 'Nie',
+            type: 'info'
+          }
+        );
+        addToFstab = true;
+      } catch {
+        // User canceled
+      }
+    }
 
     const response = await axios.post('/api/storage/mount', {
       device: deviceToMount,
@@ -436,6 +655,17 @@ const mountDevice = async () => {
     });
 
     if (response.data.success) {
+      // If user wanted to add to fstab but it wasn't added automatically (e.g., already exists)
+      if (addToFstab && !response.data.addedToFstab && !isZfs) {
+        await toggleFstabEntry(
+          deviceToMount,
+          mountPoint,
+          mountForm.value.fsType,
+          mountForm.value.options,
+          true
+        );
+      }
+
       ElNotification({
         title: 'Success',
         message: response.data.isZfs ? 
@@ -457,7 +687,7 @@ const mountDevice = async () => {
   } finally {
     mountLoading.value = false;
   }
-};
+}
 
 const formatDevice = async () => {
   try {
@@ -560,19 +790,126 @@ const fetchDevices = async () => {
 }
 
 const refreshFilesystems = async () => {
+  abortController.value.abort();
+  abortController.value = new AbortController();
+  api.defaults.signal = abortController.value.signal;
+
   try {
-    loading.value = true
-    const response = await axios.get('/api/storage/filesystems')
-    if (Array.isArray(response.data?.data)) {
-      filesystems.value = response.data.data
+    loading.value = true;
+    const [fsResponse, fstabResponse] = await Promise.all([
+      api.get('/api/storage/filesystems'),
+      api.get('/api/storage/fstab-check')
+    ]);
+    
+    if (Array.isArray(fsResponse.data?.data)) {
+      filesystems.value = fsResponse.data.data.map(fs => ({
+        ...fs,
+        inFstab: isAutoMounted(fs.device, fs.mounted),
+        fstabLoading: false
+      }));
     }
-  } catch (err) {
-    error.value = t('storageFilesystems.errorLoading')
-    console.error('Error fetching filesystems:', err)
+    
+    fstabEntries.value = fstabResponse.data.entries || [];
+  } catch (error) {
+    if (!axios.isCancel(error)) {
+      error.value = t('storageFilesystems.errorLoading');
+      console.error('Error fetching filesystems:', error);
+    }
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
+
+const editFstabManually = async () => {
+  let timeoutId;
+  try {
+    await ElMessageBox.confirm(
+      'To będzie otwierać plik /etc/fstab w edytorze systemowym. Kontynuować?',
+      'Ręczna edycja fstab',
+      {
+        confirmButtonText: 'Tak, otwórz',
+        cancelButtonText: 'Anuluj',
+        type: 'warning'
+      }
+    );
+
+    // Używamy axios zamiast bezpośrednio execAsync
+    const response = await api.post('/api/storage/edit-fstab');
+    
+    ElNotification({
+      title: 'Success',
+      message: response.data.message || 'Fstab opened in editor',
+      type: 'success'
+    });
+  } catch (error) {
+    if (error.response) {
+      // Błąd z serwera
+      ElNotification({
+        title: 'Error',
+        message: error.response.data.details || error.message,
+        type: 'error'
+      });
+    } else if (error !== 'cancel') {
+      // Inny błąd (nie anulowanie przez użytkownika)
+      ElNotification({
+        title: 'Error',
+        message: error.message,
+        type: 'error'
+      });
+    }
+  } finally {
+    clearTimeout(timeoutId);
+    // Resetujemy controller dla następnych operacji
+    abortController.value = new AbortController();
+    api.defaults.signal = abortController.value.signal;
+  }
+};
+
+const getFstabOptions = (device, mountPoint) => {
+  const entry = fstabEntries.value.find(e => 
+    e.device === device || e.mountPoint === mountPoint
+  );
+  return entry?.options || 'defaults';
+};
+
+const toggleAutoMount = async (row) => {
+  try {
+    row.fstabLoading = true;
+    const isAuto = isAutoMounted(row.device, row.mounted);
+    
+    if (isAuto) {
+      // Usuń z fstab
+      await api.post('/api/storage/fstab-remove', {
+        device: row.device,
+        mountPoint: row.mounted
+      });
+    } else {
+      // Dodaj do fstab
+      await api.post('/api/storage/fstab-add', {
+        device: row.device,
+        mountPoint: row.mounted,
+        fsType: row.type,
+        options: 'defaults,nofail'
+      });
+    }
+    
+    await loadFstabEntries();
+    ElNotification({
+      title: 'Sukces',
+      message: isAuto ? 'Usunięto z auto-montowania' : 'Dodano do auto-montowania',
+      type: 'success'
+    });
+  } catch (error) {
+    ElNotification({
+      title: 'Błąd',
+      message: error.response?.data?.error || error.message,
+      type: 'error'
+    });
+  } finally {
+    row.fstabLoading = false;
+  }
+};
+
 
 const getDeviceIcon = (device) => {
   if (device?.includes('nvme')) return 'mdi:memory'
@@ -637,7 +974,12 @@ const formatBytes = (bytes, decimals = 2) => {
 onMounted(() => {
   refreshFilesystems()
   fetchDevices()  // Fixed typo here
-})
+  loadFstabEntries();
+});
+
+onUnmounted(() => {
+  abortController.value.abort();
+});
 </script>
 
 <style scoped>
@@ -704,5 +1046,15 @@ onMounted(() => {
   padding: 10px;
   background-color: #f5f7fa;
   border-radius: 4px;
+}
+
+.fstab-editor-container {
+  font-family: monospace;
+}
+
+.fstab-editor-container .el-textarea__inner {
+  font-family: monospace;
+  white-space: pre;
+  overflow-x: auto;
 }
 </style>
