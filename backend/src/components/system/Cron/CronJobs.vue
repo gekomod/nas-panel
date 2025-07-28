@@ -35,13 +35,21 @@
             <el-text truncated>{{ row.command }}</el-text>
           </template>
         </el-table-column>
+        
         <el-table-column :label="$t('cronJobs.status')">
-          <template #default="{row}">
-            <el-tag :type="row.isActive ? 'success' : 'info'">
-              {{ row.isActive ? $t('cronJobs.active') : $t('cronJobs.inactive') }}
-            </el-tag>
-          </template>
-        </el-table-column>
+  <template #default="{row}">
+    <el-tag 
+      :type="row.isActive ? 'success' : 'info'"
+      :class="{'system-job': row.isSystemJob}"
+    >
+      {{ row.isActive ? $t('cronJobs.active') : $t('cronJobs.inactive') }}
+      <el-icon v-if="row.isSystemJob" class="system-icon">
+        <Icon icon="mdi:shield-check" />
+      </el-icon>
+    </el-tag>
+  </template>
+</el-table-column>
+
         <el-table-column :label="$t('cronJobs.lastRun')">
           <template #default="{row}">
             {{ row.lastRun ? formatDate(row.lastRun) : 'N/A' }}
@@ -211,6 +219,12 @@ const addJob = async () => {
 
 const deleteJob = async (id) => {
   try {
+    const job = jobs.value.find(j => j.id === id);
+    if (job?.isSystemJob) {
+      ElMessage.warning('System jobs cannot be deleted');
+      return;
+    }
+
     await ElMessageBox.confirm(
       'Are you sure you want to delete this cron job?',
       'Confirm',
@@ -262,5 +276,16 @@ onMounted(() => {
 
 .cron-help {
   line-height: 1.6;
+}
+
+.system-job {
+  background-color: #f0f9ff;
+  border-color: #d9ecff;
+  color: #409eff;
+}
+
+.system-icon {
+  margin-left: 5px;
+  vertical-align: middle;
 }
 </style>

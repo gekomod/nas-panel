@@ -15,21 +15,6 @@ case "$1" in
             systemctl unmask nas-webdav.service
         fi
 
-        if [ -d /etc/nginx/sites-available ]; then
-            # Usuń domyślną konfigurację jeśli istnieje
-            if [ -f /etc/nginx/sites-enabled/default ]; then
-                rm /etc/nginx/sites-enabled/default
-            fi
-            
-            # Utwórz link do konfiguracji
-            ln -sf /etc/nginx/sites-available/nas-engine /etc/nginx/sites-enabled/
-            
-            # Przeładuj NGINX
-            if systemctl is-active --quiet nginx; then
-                systemctl reload nginx
-            fi
-        fi
-
         # Create nas user if it doesn't exist
         if ! getent passwd nas >/dev/null; then
             adduser --system --group --no-create-home --home /opt/nas-panel nas

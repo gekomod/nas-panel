@@ -2,9 +2,10 @@ const path = require('path');
 const fs = require('fs').promises;
 const { exec } = require('child_process');
 const { promisify } = require('util');
+const os = require('os');
 
 const execAsync = promisify(exec);
-const DOCKER_COMPOSE_DIR = path.join(__dirname, '../docker-compose');
+const DOCKER_COMPOSE_DIR = path.join('/opt/nas-panel/docker-compose');
 
 module.exports = function(app, requireAuth) {
 
@@ -689,6 +690,58 @@ app.delete('/services/docker/container/:id', requireAuth, async (req, res) => {
       details: error.message 
     });
   }
+});
+
+app.get('/services/docker/composer/deploy-stream', requireAuth, async (req, res) => {
+  const { file } = req.query;
+  
+  if (!file) {
+    return res.status(400).json({ error: 'File parameter is required' });
+  }
+
+  const filePath = path.join(DOCKER_COMPOSE_DIR, file);
+  
+  // Ustaw nagłówki dla strumieniowania SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  // Uruchom proces docker compose
+  const child = exec(`docker compose -f ${filePath} up -d`);
+
+  // Funkcja do wysyłania danych w formacie SSE
+  const sendEvent = (data) => {
+    // Normalizuj znaki nowej linii i dodaj znacznik czasu
+    const normalizedData = data
+      .replace(/\r?\n/g, '\r\n') // Zamień wszystkie rodzaje nowych linii na \r\n
+      .replace(/\r\n/g, '\n')    // Tymczasowo na \n
+      .replace(/\n/g, '\r\n');   // Potem na \r\n (dla spójności)
+
+    res.write(`data: ${JSON.stringify({ 
+      message: normalizedData,
+      timestamp: new Date().toISOString()
+    })}\n\n`);
+  };
+
+  child.stdout.on('data', (data) => {
+    sendEvent(data.toString());
+  });
+
+  child.stderr.on('data', (data) => {
+    sendEvent(data.toString());
+  });
+
+  child.on('close', (code) => {
+    sendEvent(`\nProcess exited with code ${code}\n`);
+    res.end();
+  });
+
+  // Obsługa zamknięcia połączenia przez klienta
+  req.on('close', () => {
+    child.kill();
+    res.end();
+  });
 });
 
 };

@@ -182,6 +182,16 @@ const routes = [
       }
     },
     {
+      path: '/services/ssh',
+      name: 'SSH',
+      component: () => import('@/components/services/Ssh/SshSettings.vue'),
+      meta: { 
+        title: 'SSH', 
+        requiresAuth: true,
+        icon: 'mdi:console-network' 
+        }
+    },
+    {
       path: '/services/webdav',
       name: 'WebDAV',
       component: () => import('@/components/services/Webdav/Webdav.vue'),
@@ -189,6 +199,16 @@ const routes = [
         title: 'WebDAV', 
         requiresAuth: true,
         icon: 'mdi:web' 
+      }
+    },
+    {
+      path: '/services/ftp-sftp',
+      name: 'FTP-SFTP',
+      component: () => import('@/components/services/FtpSftp/FtpSftp.vue'),
+      meta: { 
+        title: 'FTP/SFTP', 
+        requiresAuth: true,
+        icon: 'mdi:folder-network' 
       }
     }
   ]
@@ -307,6 +327,16 @@ const routes = [
 	  icon: 'mdi:security'
 	}
       },
+	{
+	  path: '/system/backup',
+	  name: 'Backup',
+	  component: () => import('@/components/system/Backup/Backup.vue'),
+	  meta: { 
+	    title: 'Backup',
+	    requiresAuth: true,
+	    icon: 'mdi:backup-restore' 
+	  }
+	},
       {
         path: '/system/settings',
         name: 'SystemSettings',

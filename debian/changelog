@@ -1,3 +1,11 @@
+nas-panel (1.0.4) UNRELEASED; urgency=medium
+
+  * Add FTP/SFTP      
+  * Fix Errors with storage
+  * Add Backup in System Category
+
+ -- gekomod <zaba141@o2.pl>  Thu, 28 Jul 2025 07:23:10 +0200
+
 nas-panel (1.0.3) UNRELEASED; urgency=medium
 
   * Fix Connect to api

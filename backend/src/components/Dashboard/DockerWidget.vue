@@ -26,7 +26,7 @@
 
     <div v-else v-loading="loading" class="widget-content">
       <div v-if="containers.length === 0" class="no-containers">
-        <el-empty description="Brak uruchomionych kontenerów" />
+        <el-empty :image-size="100" description="Brak uruchomionych kontenerów" />
       </div>
       
       <div v-else v-for="container in containers" :key="container.id" class="container-item">
@@ -188,7 +188,7 @@ onBeforeUnmount(() => {
 
 .widget-content {
   padding: 2px 0;
-  max-height: 300px;
+  max-height: 200px;
   overflow-y: auto;
 }
 
@@ -219,6 +219,10 @@ onBeforeUnmount(() => {
 
 .no-containers {
   padding: 20px 0;
+}
+
+.el-empty {
+    --el-empty-padding: 0px !important;
 }
 
 .button-icon {

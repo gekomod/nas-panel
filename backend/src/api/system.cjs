@@ -564,7 +564,6 @@ function extractDownloadSize(output) {
 function saveCronJobs() {
   try {
     const jobsToSave = Array.from(cronJobs.values())
-      .filter(job => !job.isSystemJob) // Pomijamy zadania systemowe w pliku
       .map(job => ({
         id: job.id,
         name: job.name,
@@ -688,11 +687,12 @@ function initCronJobs() {
   jobs.forEach(job => {
     try {
       createCronJob({
-        id: job.id || uuidv4(),
-        name: job.name || 'New Cron Job',
+        id: job.id,
+        name: job.name,
         schedule: job.schedule,
         command: job.command,
-        description: job.description || ''
+        description: job.description,
+        isSystemJob: job.isSystemJob || false
       });
     } catch (error) {
       console.error('Error initializing cron job:', error);
@@ -724,7 +724,8 @@ app.get('/system/cron-jobs', requireAuth, (req, res) => {
       description: job.description,
       lastRun: job.lastRun?.toISOString(),
       nextRun: nextRun.toISOString(),
-      isActive: !!job.task
+      isActive: !!job.task,
+      isSystemJob: job.isSystemJob || false
     };
   });
   
@@ -746,7 +747,7 @@ app.post('/system/cron-jobs', requireAuth, async (req, res) => {
       command,
       description: description || ''
     };
-
+    saveCronJobs();
     await createCronJob(job);
     res.status(201).json(job);
   } catch (error) {
