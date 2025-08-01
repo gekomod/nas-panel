@@ -1,360 +1,306 @@
 <template>
-  <el-card class="filesystems-widget">
+  <el-card class="updates-widget">
     <template #header>
       <div class="widget-header">
-        <Icon icon="mdi:file-tree" width="20" height="20" />
-        <span>{{ t('storageFilesystems.title') }}</span>
+        <Icon icon="mdi:update" width="20" height="20" />
+        <span>{{ t('systemUpdates.title') }}</span>
         <div class="header-actions">
-          <el-tooltip :content="t('storageFilesystems.mount')">
+          <el-tooltip :content="t('systemUpdates.refresh')">
             <el-button 
               size="small" 
-              @click="showMountDialog" 
-              :disabled="loading"
+              @click="checkUpdates" 
+              :loading="isChecking"
               text
             >
-              <Icon icon="mdi:usb-flash-drive" width="16" height="16" />
-            </el-button>
-          </el-tooltip>
-          <el-tooltip :content="t('storageFilesystems.format')">
-            <el-button 
-              size="small" 
-              @click="showFormatDialog" 
-              :disabled="loading"
-              text
-            >
-              <Icon icon="mdi:format-list-checks" width="16" height="16" />
-            </el-button>
-          </el-tooltip>
-          <el-tooltip :content="t('storageFilesystems.refresh')">
-            <el-button 
-              size="small" 
-              @click="refreshFilesystems" 
-              :loading="loading"
-              text
-            >
-              <Icon icon="mdi:refresh" width="16" height="16" :class="{ 'spin': loading }" />
+              <Icon icon="mdi:refresh" width="16" height="16" :class="{ 'spin': isChecking }" />
             </el-button>
           </el-tooltip>
         </div>
       </div>
     </template>
 
-    <!-- Mount Dialog -->
-    <el-dialog v-model="mountDialogVisible" :title="t('storageFilesystems.mountDialog.title')" width="500px">
-      <el-form :model="mountForm" label-position="top">
-        <el-form-item :label="t('storageFilesystems.mountDialog.device')">
-          <el-select v-model="mountForm.device" placeholder="Select device" style="width: 100%">
-            <el-option
-              v-for="device in unmountedDevices"
-              :key="device.path"
-              :label="`${device.path} (${device.model || 'Unknown'})`"
-              :value="device.path"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="t('storageFilesystems.mountDialog.mountPoint')">
-          <el-input v-model="mountForm.mountPoint" placeholder="/mnt/new_disk" />
-        </el-form-item>
-        <el-form-item :label="t('storageFilesystems.mountDialog.fsType')">
-          <el-select v-model="mountForm.fsType" placeholder="Select filesystem type" style="width: 100%">
-            <el-option
-              v-for="fs in supportedFilesystems"
-              :key="fs"
-              :label="fs"
-              :value="fs"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="t('storageFilesystems.mountDialog.options')">
-          <el-input v-model="mountForm.options" placeholder="defaults,nofail" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="mountDialogVisible = false">
-          {{ t('common.cancel') }}
-        </el-button>
-        <el-button type="primary" @click="mountDevice" :loading="mountLoading">
-          {{ t('storageFilesystems.mountDialog.mount') }}
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <!-- Format Dialog -->
-    <el-dialog v-model="formatDialogVisible" :title="t('storageFilesystems.formatDialog.title')" width="500px">
-      <el-form :model="formatForm" label-position="top">
-        <el-form-item :label="t('storageFilesystems.formatDialog.device')">
-          <el-select v-model="formatForm.device" placeholder="Select device" style="width: 100%">
-            <el-option
-              v-for="device in formatableDevices"
-              :key="device.path"
-              :label="`${device.path} (${device.model || 'Unknown'})`"
-              :value="device.path"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="t('storageFilesystems.formatDialog.fsType')">
-          <el-select v-model="formatForm.fsType" placeholder="Select filesystem type" style="width: 100%">
-            <el-option
-              v-for="fs in supportedFilesystems"
-              :key="fs"
-              :label="fs"
-              :value="fs"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="t('storageFilesystems.formatDialog.label')" v-if="formatForm.fsType">
-          <el-input v-model="formatForm.label" :placeholder="`${formatForm.fsType}_VOLUME`" />
-        </el-form-item>
-        <el-form-item :label="t('storageFilesystems.formatDialog.force')">
-          <el-switch v-model="formatForm.force" />
-        </el-form-item>
-      </el-form>
-      <div class="warning-message" v-if="formatForm.device">
-        <el-alert type="warning" :closable="false">
-          {{ t('storageFilesystems.formatDialog.warning', { device: formatForm.device }) }}
-        </el-alert>
-      </div>
-      <template #footer>
-        <el-button @click="formatDialogVisible = false">
-          {{ t('common.cancel') }}
-        </el-button>
-        <el-button type="danger" @click="formatDevice" :loading="formatLoading">
-          {{ t('storageFilesystems.formatDialog.format') }}
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <el-table :data="filesystems" style="width: 100%" v-loading="loading">
-
-        <el-table-column prop="name" label="Package" width="180" />
-        <el-table-column prop="current_version" label="Current Version" />
-        <el-table-column prop="new_version" label="New Version" />
-        <el-table-column prop="description" label="Description" show-overflow-tooltip />
-        <el-table-column label="Actions" width="120">
+    <el-alert v-if="error" :title="error" type="error" show-icon style="margin: 0 16px 16px;" />
+    
+    <div class="table-container">
+      <el-table 
+        :data="updates"
+        style="width: 100%"
+        v-loading="isChecking"
+        :empty-text="t('systemUpdates.noUpdates')"
+        class="full-width-table"
+        :layout="tableLayout"
+      >
+        <el-table-column 
+          prop="name" 
+          :label="t('systemUpdates.package')" 
+          width="220"
+          min-width="180"
+          fixed="left"
+        >
           <template #default="{ row }">
-            <el-button 
-              size="small" 
-              type="primary" 
-              plain
-              @click="showUpdateDetails(row)"
-            >
-              Details
-            </el-button>
+            <div class="package-name">
+              <Icon icon="mdi:package-variant" width="16" />
+              <span>{{ row.name }}</span>
+            </div>
           </template>
         </el-table-column>
         
-  <el-table-column label="Status" width="220">
-    <template #default="{ row }">
-      <div v-if="isInstallingAll || installationStatus[row.name]" class="status-container">
-        <div class="progress-container">
-          <el-progress 
-            :percentage="installationStatus[row.name].progress"
-            :status="installationStatus[row.name].status"
-            :text-inside="true"
-            :stroke-width="18"
-            :indeterminate="installationStatus[row.name].indeterminate"
-            class="progress-bar"
-          />
-          <el-button
-            v-if="installationStatus[row.name].progress < 100"
-            size="small"
-            type="danger"
-            plain
-            circle
-            @click="cancelInstallation(row.name)"
-            class="cancel-btn"
-          >
-            <icon icon="mdi:close" width="16" />
-          </el-button>
-        </div>
-        <div class="status-details">
-          <span class="status-message">
-            <icon 
-              v-if="installationStatus[row.name].status === 'success'" 
-              icon="mdi:check-circle" 
-              width="14" 
-              class="status-icon"
-            />
-            <icon 
-              v-else-if="installationStatus[row.name].status === 'exception'" 
-              icon="mdi:alert-circle" 
-              width="14" 
-              class="status-icon"
-            />
-            <icon 
-              v-else 
-              icon="mdi:progress-clock" 
-              width="14" 
-              class="status-icon"
-            />
-            {{ installationStatus[row.name].message }}
-          </span>
-          <span class="status-time">
-            {{ installationStatus[row.name].time }}
-          </span>
-        </div>
-      </div>
-      <span v-else class="status-pending">
-        <icon icon="mdi:clock-outline" width="14" class="status-icon" />
-        Pending
-      </span>
-    </template>
-  </el-table-column>
-  
-      </el-table>
-
-      <div v-if="updates.length > 0" class="update-actions">
-	<el-button 
-	  type="primary" 
-	  @click="installUpdates"
-	  :loading="isInstalling"
-	  :disabled="updates.length === 0 || Object.values(installationStatus).some(s => s.progress > 0 && s.progress < 100)"
-	>
-	  <el-icon class="el-icon--left"><Download /></el-icon>
-	  {{ isInstalling ? 'Installing...' : `Install All (${updates.length})` }}
-	</el-button>
-        <el-button 
-          type="danger" 
-          @click="showAutomaticUpdatesDialog"
+        <el-table-column 
+          :label="t('systemUpdates.version')" 
+          width="330"
+          min-width="160"
         >
-          <el-icon class="el-icon--left"><Timer /></el-icon>
-          Automatic Updates
-        </el-button>
-      </div>
+          <template #default="{ row }">
+            <div class="version-container">
+              <el-tag size="small" effect="plain">{{ row.current_version }}</el-tag>
+              <Icon icon="mdi:arrow-right" width="16" />
+              <el-tag size="small" type="success" effect="dark">{{ row.new_version }}</el-tag>
+            </div>
+          </template>
+        </el-table-column>
+        
+        <el-table-column 
+          prop="description" 
+          :label="t('systemUpdates.description')" 
+          min-width="300"
+        >
+          <template #default="{ row }">
+            <div class="package-description">
+              <div class="description-text" v-if="row.description">
+                {{ truncateDescription(row.description) }}
+              </div>
+              <div class="no-description" v-else>
+                <el-tag size="small" type="info">{{ t('systemUpdates.noDescription') }}</el-tag>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        
+        <el-table-column 
+          :label="t('systemUpdates.status')" 
+          width="220"
+          min-width="180"
+        >
+          <template #default="{ row }">
+            <UpdateStatus :status="getStatusForPackage(row.name)" />
+          </template>
+        </el-table-column>
+        
+        <el-table-column 
+          :label="t('systemUpdates.actions')" 
+          width="180"
+          min-width="150"
+          fixed="right"
+          align="center"
+        >
+          <template #default="{ row }">
+            <div class="action-buttons">
+              <el-tooltip :content="t('systemUpdates.details')" placement="top">
+                <el-button 
+                  size="small" 
+                  type="info" 
+                  @click="showUpdateDetails(row)"
+                  circle
+                >
+                  <icon icon="mdi:information-outline" width="16" />
+                </el-button>
+              </el-tooltip>
+              
+              <el-tooltip :content="t('systemUpdates.install')" placement="top">
+                <el-button 
+                  size="small" 
+                  type="success" 
+                  @click="installSingleUpdate(row)"
+                  :loading="installationStatus[row.name]?.progress > 0"
+                  circle
+                >
+                  <icon icon="mdi:package-down" width="16" />
+                </el-button>
+              </el-tooltip>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
 
-      <el-dialog v-model="detailsDialogVisible" title="Update Details" width="50%">
-        <div v-if="selectedUpdate">
-          <h4>{{ selectedUpdate.name }}</h4>
-          <el-divider />
-          <p><strong>Current Version:</strong> {{ selectedUpdate.current_version }}</p>
-          <p><strong>New Version:</strong> {{ selectedUpdate.new_version }}</p>
-          <p><strong>Description:</strong></p>
-          <pre class="update-description">{{ selectedUpdate.description }}</pre>
-          <p v-if="selectedUpdate.changelog"><strong>Changelog:</strong></p>
-          <pre v-if="selectedUpdate.changelog" class="update-changelog">{{ selectedUpdate.changelog }}</pre>
-        </div>
-        <template #footer>
-          <el-button @click="detailsDialogVisible = false">Close</el-button>
-          <el-button 
-            type="primary" 
-            @click="installSingleUpdate(selectedUpdate)"
-          >
-            Install This Update
-          </el-button>
-        </template>
-      </el-dialog>
+    <div v-if="updates.length > 0" class="update-actions">
+      <el-button 
+        type="primary" 
+        @click="installUpdates"
+        :loading="isInstallingAll"
+        :disabled="isInstalling || updates.length === 0"
+        class="install-all-btn"
+      >
+        <el-icon class="el-icon--left"><Download /></el-icon>
+        {{ t('systemUpdates.installAll', { count: updates.length }) }}
+      </el-button>
+      <el-button 
+        type="info" 
+        @click="showAutomaticUpdatesDialog"
+        plain
+      >
+        <el-icon class="el-icon--left"><Timer /></el-icon>
+        {{ t('systemUpdates.automaticUpdates') }}
+      </el-button>
+    </div>
 
-      <el-dialog v-model="automaticUpdatesDialogVisible" title="Automatic Updates Settings" width="40%">
-        <el-form label-position="top">
-          <el-form-item label="Enable Automatic Updates">
-            <el-switch v-model="automaticUpdatesEnabled" />
-          </el-form-item>
-          
-          <el-form-item label="Update Schedule" v-if="automaticUpdatesEnabled">
-            <el-select v-model="updateSchedule" placeholder="Select schedule">
-              <el-option label="Daily" value="daily" />
-              <el-option label="Weekly" value="weekly" />
-              <el-option label="Monthly" value="monthly" />
-            </el-select>
-          </el-form-item>
+    <el-dialog
+  v-model="detailsDialogVisible"
+  :title="t('systemUpdates.updateDetails')"
+  width="50%"
+>
+  <div v-if="selectedUpdate" class="update-details">
+    <h3>{{ selectedUpdate.name }}</h3>
+    
+    <div class="version-display">
+      <el-tag size="medium" effect="plain">{{ selectedUpdate.current_version }}</el-tag>
+      <Icon icon="mdi:arrow-right" width="20" />
+      <el-tag size="medium" type="success" effect="dark">{{ selectedUpdate.new_version }}</el-tag>
+    </div>
+    
+    <el-divider />
+    
+    <h4>{{ t('systemUpdates.description') }}</h4>
+    <div class="description-content">
+      {{ selectedUpdate.fullDescription || t('systemUpdates.noDescription') }}
+    </div>
+  </div>
+  
+  <template #footer>
+    <el-button @click="detailsDialogVisible = false">
+      {{ t('common.close') }}
+    </el-button>
+  </template>
+</el-dialog>
 
-          <el-form-item label="Security Updates Only" v-if="automaticUpdatesEnabled">
-            <el-switch v-model="securityUpdatesOnly" />
-          </el-form-item>
-        </el-form>
-        <template #footer>
-          <el-button @click="automaticUpdatesDialogVisible = false">Cancel</el-button>
-          <el-button type="primary" @click="saveAutomaticUpdatesSettings">Save</el-button>
-        </template>
-      </el-dialog>
-    </el-card>
+  </el-card>
 
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, Download, Timer } from '@element-plus/icons-vue'
+import { Download, Timer, Clock, CircleCheck, Warning, Loading } from '@element-plus/icons-vue'
 import { Icon } from '@iconify/vue'
 import axios from 'axios'
+import { useI18n } from 'vue-i18n'
 
+const tableLayout = ref('fixed')
+import UpdateStatus from './UpdateStatus.vue'
+
+// Import tłumaczeń
+import enLocales from './locales/en'
+import plLocales from './locales/pl'
+
+const { t, mergeLocaleMessage } = useI18n()
+
+// Dodaj tłumaczenia do i18n
+mergeLocaleMessage('en', enLocales)
+mergeLocaleMessage('pl', plLocales)
+
+// Reactive state
 const updates = ref([])
 const isChecking = ref(false)
 const isInstalling = ref(false)
+const isInstallingAll = ref(false)
 const lastChecked = ref('')
 const error = ref('')
 const detailsDialogVisible = ref(false)
 const selectedUpdate = ref(null)
 const automaticUpdatesDialogVisible = ref(false)
-const automaticUpdatesEnabled = ref(false)
-const updateSchedule = ref('daily')
-const securityUpdatesOnly = ref(true)
 const installationStatus = ref({})
 const eventSources = ref({})
-const isInstallingAll = ref(false)
+
+// Automatic updates settings
+const automaticUpdatesEnabled = ref(false)
+const updateSchedule = ref('daily')
+const updateType = ref('security')
+const rebootAfterUpdate = ref(false)
+
+const scheduleOptions = [
+  { value: 'daily', label: t('systemUpdates.daily') },
+  { value: 'weekly', label: t('systemUpdates.weekly') },
+  { value: 'monthly', label: t('systemUpdates.monthly') }
+]
 
 const api = axios.create({
   baseURL: `${window.location.protocol}//${window.location.hostname}:3000`,
-  timeout: 30000 // dłuższy timeout dla operacji apt
+  timeout: 30000
 })
 
+const truncateDescription = (desc) => {
+  if (!desc) return ''
+  return desc.length > 100 
+    ? `${desc.substring(0, 100)}...` 
+    : desc
+}
+
+// Computed
+const hasUpdates = computed(() => updates.value.length > 0)
+const lastCheckedFormatted = computed(() => lastChecked.value ? new Date(lastChecked.value).toLocaleString() : '')
+
+// Methods
 const checkUpdates = async () => {
-  isChecking.value = true
-  error.value = ''
+  isChecking.value = true;
+  error.value = '';
   
   try {
-    const response = await api.get('/system/updates/check')
-    updates.value = response.data.updates
-    lastChecked.value = new Date().toLocaleString()
-    if (updates.value.length === 0) {
-      ElMessage.success('System is up to date')
+    // Wysyłamy force=true aby zignorować cache przy ręcznym sprawdzaniu
+    const response = await api.get('/system/updates/check?force=true');
+    updates.value = response.data.updates || [];
+    lastChecked.value = new Date().toISOString();
+    
+    if (!hasUpdates.value) {
+      ElMessage.success(t('systemUpdates.systemUpToDate'));
     }
   } catch (err) {
-    error.value = 'Failed to check updates: ' + (err.response?.data?.message || err.message)
-    console.error('Update check error:', err)
+    error.value = t('systemUpdates.checkFailed', { 
+      error: err.response?.data?.message || err.message 
+    });
+    console.error('Update check error:', err);
   } finally {
-    isChecking.value = false
+    isChecking.value = false;
   }
-}
+};
 
 const installUpdates = async () => {
   try {
     await ElMessageBox.confirm(
-      `This will install ${updates.value.length} updates. Continue?`,
-      'Confirm Updates',
+      t('systemUpdates.confirmInstallAll', { count: updates.value.length }),
+      t('systemUpdates.confirmTitle'),
       {
-        confirmButtonText: 'Install',
-        cancelButtonText: 'Cancel',
+        confirmButtonText: t('systemUpdates.install'),
+        cancelButtonText: t('common.cancel'),
         type: 'warning'
       }
     )
     
-    isInstalling.value = true
+    isInstallingAll.value = true
     const packageNames = updates.value.map(update => update.name)
     
-    // Rozpocznij śledzenie dla wszystkich pakietów
+    // Initialize installation status for all packages
     updates.value.forEach(update => {
       startInstallation(update.name)
     })
 
-    const response = await api.post('/system/updates/install', {
+    // Start installation
+    await api.post('/system/updates/install', {
       packages: packageNames,
       no_confirm: true
     })
 
-    // Utwórz EventSource dla całej instalacji
-    const eventSource = new EventSource(`${window.location.protocol}//${window.location.hostname}:3000/system/updates/progress/_all`)
+    // Track progress via SSE
+    const eventSource = new EventSource(`${api.defaults.baseURL}/system/updates/progress/_all`)
     eventSources.value['_all'] = eventSource
 
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data)
       
-      // Aktualizuj status dla wszystkich pakietów
       updates.value.forEach(update => {
         updateInstallationStatus(update.name, {
           progress: data.progress,
           status: data.status || '',
-          message: data.message || 'Installing...',
+          message: data.message || t('systemUpdates.installing'),
           indeterminate: data.progress < 30
         })
       })
@@ -363,7 +309,7 @@ const installUpdates = async () => {
         setTimeout(() => {
           eventSource.close()
           delete eventSources.value['_all']
-          checkUpdates() // Odśwież listę po zakończeniu
+          checkUpdates() // Refresh list after completion
         }, 1500)
       }
     }
@@ -374,7 +320,7 @@ const installUpdates = async () => {
         updateInstallationStatus(update.name, {
           progress: 0,
           status: 'exception',
-          message: 'Connection error'
+          message: t('systemUpdates.connectionError')
         })
       })
       eventSource.close()
@@ -383,35 +329,36 @@ const installUpdates = async () => {
 
   } catch (err) {
     if (err !== 'cancel') {
-      ElMessage.error('Installation failed: ' + (err.response?.data?.message || err.message))
+      ElMessage.error(t('systemUpdates.installFailed', { error: err.response?.data?.message || err.message }))
     }
   } finally {
-    isInstalling.value = false
+    isInstallingAll.value = false
   }
 }
 
 const installSingleUpdate = async (pkg) => {
+  if (!pkg) return
+  
   try {
     await ElMessageBox.confirm(
-      `Install ${pkg.name} (${pkg.new_version})?`,
-      'Confirm Update',
+      t('systemUpdates.confirmInstallSingle', { name: pkg.name, version: pkg.new_version }),
+      t('systemUpdates.confirmTitle'),
       {
-        confirmButtonText: 'Install',
-        cancelButtonText: 'Cancel',
+        confirmButtonText: t('systemUpdates.install'),
+        cancelButtonText: t('common.cancel'),
         type: 'info'
       }
     )
 
     startInstallation(pkg.name)
+    isInstalling.value = true
 
-    // Rozpocznij instalację i śledzenie postępu
-    const response = await api.post('/system/updates/install', {
+    await api.post('/system/updates/install', {
       packages: [pkg.name],
       no_confirm: true
     })
 
-    // Utwórz EventSource po rozpoczęciu instalacji
-    const eventSource = new EventSource(`${window.location.protocol}//${window.location.hostname}:3000/system/updates/progress/${pkg.name}`)
+    const eventSource = new EventSource(`${api.defaults.baseURL}/system/updates/progress/${pkg.name}`)
     eventSources.value[pkg.name] = eventSource
 
     eventSource.onmessage = (event) => {
@@ -420,7 +367,7 @@ const installSingleUpdate = async (pkg) => {
         updateInstallationStatus(pkg.name, {
           progress: data.progress,
           status: data.status || '',
-          message: data.message || 'Installing...',
+          message: data.message || t('systemUpdates.installing'),
           indeterminate: data.progress < 30
         })
 
@@ -428,7 +375,7 @@ const installSingleUpdate = async (pkg) => {
           setTimeout(() => {
             eventSource.close()
             delete eventSources.value[pkg.name]
-            checkUpdates() // Odśwież listę po zakończeniu
+            checkUpdates() // Refresh list after completion
           }, 1500)
         }
       } catch (e) {
@@ -441,7 +388,7 @@ const installSingleUpdate = async (pkg) => {
       updateInstallationStatus(pkg.name, {
         progress: 0,
         status: 'exception',
-        message: 'Connection error'
+        message: t('systemUpdates.connectionError')
       })
       eventSource.close()
       delete eventSources.value[pkg.name]
@@ -455,6 +402,17 @@ const installSingleUpdate = async (pkg) => {
         message: err.response?.data?.message || err.message
       })
     }
+  } finally {
+    isInstalling.value = false
+  }
+}
+
+const getStatusForPackage = (pkgName) => {
+  return installationStatus.value[pkgName] || {
+    progress: 0,
+    status: '',
+    message: t('systemUpdates.pending'),
+    time: ''
   }
 }
 
@@ -462,7 +420,7 @@ const startInstallation = (pkgName) => {
   installationStatus.value[pkgName] = {
     progress: 0,
     status: '',
-    message: 'Starting installation...',
+    message: t('systemUpdates.startingInstallation'),
     time: new Date().toLocaleTimeString(),
     indeterminate: true
   }
@@ -473,59 +431,50 @@ const updateInstallationStatus = (pkgName, data) => {
     ...(installationStatus.value[pkgName] || {}),
     ...data,
     time: new Date().toLocaleTimeString(),
-    // Wyłącz animację indeterministic po 1% postępu
     indeterminate: data.progress === 0 && data.message.includes('Downloading')
   }
 }
 
-const cancelInstallation = async (pkgName) => {
-  try {
-    await ElMessageBox.confirm(
-      `Cancel installation of ${pkgName}?`,
-      'Confirm Cancellation',
-      { type: 'warning' }
-    )
-    
-    await axios.delete(`/system/updates/cancel/${pkgName}`)
-    
-    if (eventSources.value[pkgName]) {
-      eventSources.value[pkgName].close()
-      delete eventSources.value[pkgName]
-    }
-    
-    updateInstallationStatus(pkgName, {
-      progress: 0,
-      status: 'exception',
-      message: 'Installation cancelled'
-    })
-    
-  } catch (err) {
-    if (err !== 'cancel') {
-      ElMessage.error(`Failed to cancel: ${err.message}`)
-    }
-  }
-}
-
-const removeInstallationStatus = (pkgName) => {
-  delete installationStatus.value[pkgName]
-}
-
 const showUpdateDetails = (pkg) => {
-  selectedUpdate.value = pkg
-  detailsDialogVisible.value = true
-}
+  selectedUpdate.value = {
+    ...pkg,
+    fullDescription: pkg.description // Zachowaj pełny opis
+  };
+  detailsDialogVisible.value = true;
+};
 
 const showAutomaticUpdatesDialog = () => {
   automaticUpdatesDialogVisible.value = true
 }
 
-const saveAutomaticUpdatesSettings = () => {
-  ElMessage.success('Automatic updates settings saved!')
-  automaticUpdatesDialogVisible.value = false
+const saveAutomaticUpdatesSettings = async () => {
+  try {
+    await api.post('/system/updates/settings', {
+      enabled: automaticUpdatesEnabled.value,
+      schedule: updateSchedule.value,
+      type: updateType.value,
+      reboot: rebootAfterUpdate.value
+    })
+    
+    ElMessage.success(t('systemUpdates.settingsSaved'))
+    automaticUpdatesDialogVisible.value = false
+  } catch (err) {
+    ElMessage.error(t('systemUpdates.saveFailed', { error: err.message }))
+  }
 }
 
+// Lifecycle hooks
 onMounted(() => {
   checkUpdates()
+  
+  // Load automatic updates settings
+//  api.get('/system/updates/settings').then(response => {
+//    const settings = response.data
+//    automaticUpdatesEnabled.value = settings.enabled
+//    updateSchedule.value = settings.schedule || 'daily'
+//    updateType.value = settings.type || 'security'
+//    rebootAfterUpdate.value = settings.reboot || false
+//  }).catch(console.error)
 })
 
 onBeforeUnmount(() => {
@@ -534,134 +483,168 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.status-container {
+.updates-widget {
   width: 100%;
-}
-
-.updates-container {
-  padding: 20px;
-}
-
-.updates-card {
-  height: 100%;
-  margin: 0 auto;
-}
-
-.card-header {
+  max-width: 100%;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 0;
+  flex-direction: column;
+  
+  :deep(.el-card__body) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+  }
 }
 
-.status-alert {
-  margin-bottom: 20px;
-}
-
-.update-actions {
-  margin-top: 20px;
-  display: flex;
-  gap: 10px;
-}
-
-.update-description, .update-changelog {
-  white-space: pre-wrap;
-  background: #f5f7fa;
-  padding: 10px;
-  border-radius: 4px;
-  font-family: monospace;
-}
-
-.status-message {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  margin-top: 4px;
-  text-align: center;
-}
-
-.el-progress {
-  margin: 8px 0;
-}
-
-.progress-container {
+.widget-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
+  
+  span {
+    font-weight: 600;
+    font-size: 16px;
+  }
 }
 
-.progress-bar {
-  flex-grow: 1;
-  min-width: 120px;
-}
-
-.cancel-btn {
+.header-actions {
   margin-left: auto;
-  flex-shrink: 0;
-  padding: 6px;
 }
 
-.status-details {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 4px;
-  font-size: 12px;
+.table-container {
+  flex: 1;
+  padding: 16px;
   width: 100%;
+  overflow-x: auto;
 }
 
-.status-time {
-  color: var(--el-text-color-placeholder);
-  margin-left: 8px;
-  font-size: 11px;
+.full-width-table {
+  width: 100% !important;
+  
+  :deep(.el-table__header-wrapper),
+  :deep(.el-table__body-wrapper) {
+    width: 100% !important;
+  }
+  
+  :deep(.el-table__cell) {
+    padding: 12px 8px;
+  }
 }
 
-.status-pending {
-  display: inline-flex;
+.package-name {
+  display: flex;
   align-items: center;
-  gap: 4px;
-  color: var(--el-text-color-secondary);
+  gap: 8px;
+  font-weight: 500;
+  
+  svg {
+    color: var(--el-color-primary);
+  }
 }
 
-.status-icon {
-  vertical-align: middle;
+.version-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  
+  .el-tag {
+    font-family: monospace;
+    font-size: 0.9em;
+  }
 }
 
-.status-message {
-  font-size: 12px;
-  color: var(--el-text-color-regular);
+.package-description {
+  line-height: 1.4;
+  
+  .description-text {
+    white-space: normal;
+    word-break: break-word;
+  }
+  
+  .no-description {
+    opacity: 0.7;
+  }
 }
 
-/* Kolory dla różnych statusów */
-:deep(.el-progress-bar__inner) {
-  transition: all 0.5s ease;
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  
+  .el-button.is-circle {
+    padding: 8px;
+  }
 }
 
-:deep(.el-progress-bar__innerText) {
-  color: white;
-  font-weight: bold;
-  text-shadow: 0 0 2px rgba(0,0,0,0.5);
+.update-actions {
+  padding: 16px;
+  border-top: 1px solid var(--el-border-color-light);
+  display: flex;
+  gap: 12px;
+  
+  .install-all-btn {
+    margin-right: auto;
+  }
 }
 
-:deep(.el-progress--success .el-progress-bar__inner) {
-  background-color: var(--el-color-success);
-}
-
-:deep(.el-progress--exception .el-progress-bar__inner) {
-  background-color: var(--el-color-error);
+.update-details {
+  padding: 0 20px;
+  
+  h3 {
+    margin-top: 0;
+    color: var(--el-color-primary);
+  }
+  
+  .version-display {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 15px 0;
+  }
+  
+  .description-content {
+    white-space: pre-wrap;
+    line-height: 1.6;
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 10px;
+    background-color: var(--el-fill-color-light);
+    border-radius: 4px;
+  }
 }
 
 /* Animacje */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.3s;
-}
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
+.spin {
+  animation: spin 1s linear infinite;
 }
 
-.error-message {
-  margin-bottom: 20px;
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Responsywność */
+@media (max-width: 1200px) {
+  .full-width-table {
+    :deep(.el-table__cell) {
+      padding: 10px 4px;
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .table-container {
+    padding: 8px;
+  }
+  
+  .update-actions {
+    flex-direction: column;
+    
+    .install-all-btn {
+      margin-right: 0;
+      width: 100%;
+    }
+  }
 }
 </style>

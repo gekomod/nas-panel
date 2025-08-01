@@ -515,6 +515,28 @@ app.post('/services/samba/settings/homedirs', requireAuth, async (req, res) => {
   }
 });
 
+  app.get('/api/services/status/:service', async (req, res) => {
+    const { service } = req.params
+    
+    try {
+      // Sprawdź status usługi (dla systemd)
+      const { stdout } = await execAsync(`systemctl is-active ${service}`)
+      
+      res.json({
+        success: true,
+        active: stdout.trim() === 'active',
+        service
+      })
+    } catch (error) {
+      res.json({
+        success: true,
+        active: false,
+        service,
+        error: error.stderr || error.message
+      })
+    }
+  });
+
 function generateHomesSection(settings) {
   return `
 [homes]

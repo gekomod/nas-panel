@@ -1,5 +1,6 @@
-/etc/nginx/sites-available/nas-engine
 /etc/nas-panel/settings.json
+/etc/nas-panel/webdav.conf
 /etc/nas-panel/settings.json
+/etc/nas-panel/webdav.conf
 /etc/nas-web/settings.json
-/etc/nginx/sites-available/nas-engine
+/etc/nas-web/webdav.conf

@@ -1,2 +1,3 @@
 debian/config/settings.json etc/nas-web/
+debian/config/webdav.conf etc/nas-web/
 debian/scripts/* usr/bin/

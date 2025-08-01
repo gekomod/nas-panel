@@ -1,10 +1,21 @@
 const path = require('path');
 const fs = require('fs').promises;
+const fsa = require('fs');
 const { exec } = require('child_process');
 const { promisify } = require('util');
+const os = require('os');
+const cron = require('node-cron');
+const cronParser = require('cron-parser');
+
+const util = require('util');
+const execPromise = util.promisify(exec);
 
 const execAsync = promisify(exec);
-const DOCKER_COMPOSE_DIR = path.join(__dirname, '../docker-compose');
+const DOCKER_COMPOSE_DIR = path.join('/opt/nas-panel/docker-compose');
+const CRON_JOBS_FILE = '/etc/nas-panel/cron-jobs.json';
+
+// Globalny storage dla zadań cron
+const cronJobs = new Map();
 
 module.exports = function(app, requireAuth) {
 
@@ -67,6 +78,82 @@ app.post('/services/docker/stop', requireAuth, async (req, res) => {
       error: error.message,
       details: 'Check server logs for more information'
     });
+  }
+});
+
+app.post('/services/docker/container/create', requireAuth, async (req, res) => {
+  try {
+    const { name, image, ports, volumes, env } = req.body;
+    
+    // 1. Utwórz plik docker-compose
+    const composeContent = `version: '3'
+services:
+  ${name}:
+    image: ${image}
+    ${ports ? `ports:\n${ports.map(p => `      - "${p}"`).join('\n')}` : ''}
+    ${volumes ? `volumes:\n${volumes.map(v => `      - "${v}"`).join('\n')}` : ''}
+    ${env ? `environment:\n${Object.entries(env).map(([k,v]) => `      - ${k}=${v}`).join('\n')}` : ''}`;
+    
+    const fileName = `docker-compose-${name}.yml`;
+    const filePath = path.join(DOCKER_COMPOSE_DIR, fileName);
+    await fs.writeFile(filePath, composeContent, 'utf8');
+    
+    // 2. Uruchom kontener
+    await execAsync(`docker compose -f ${filePath} up -d`);
+    
+    res.json({
+      success: true,
+      message: `Container ${name} created and started`,
+      composeFile: fileName
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create container',
+      details: error.message
+    });
+  }
+});
+
+app.post('/services/docker/container/:id/connect-network', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { network } = req.body;
+    
+    // Sprawdź czy sieć istnieje, jeśli nie - utwórz
+    try {
+      await execAsync(`docker network inspect ${network}`);
+    } catch {
+      await execAsync(`docker network create ${network}`);
+    }
+    
+    // Podłącz kontener
+    await execAsync(`docker network connect ${network} ${id}`);
+    
+    res.json({ success: true, message: `Connected to network ${network}` });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/services/docker/container/:id/mount-volume', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { volume, containerPath } = req.body;
+    
+    // Sprawdź czy wolumin istnieje, jeśli nie - utwórz
+    try {
+      await execAsync(`docker volume inspect ${volume}`);
+    } catch {
+      await execAsync(`docker volume create ${volume}`);
+    }
+    
+    // Zamontuj wolumin
+    await execAsync(`docker container update ${id} --mount source=${volume},target=${containerPath}`);
+    
+    res.json({ success: true, message: `Mounted volume ${volume} to ${containerPath}` });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -690,5 +777,840 @@ app.delete('/services/docker/container/:id', requireAuth, async (req, res) => {
     });
   }
 });
+
+// docker.js - dodaj te endpointy do istniejącego pliku
+
+// Auto Update Endpoints
+app.get('/services/docker/auto-update', requireAuth, async (req, res) => {
+  try {
+    const configPath = path.join(DOCKER_COMPOSE_DIR, 'auto-update.json');
+    
+    // Try to read existing config
+    let config = {
+      enabled: false,
+      schedule: 'weekly',
+      time: '02:00',
+      images: []
+    };
+    
+    try {
+      const data = await fs.readFile(configPath, 'utf8');
+      config = JSON.parse(data);
+    } catch (e) {
+      // File doesn't exist, use defaults
+    }
+    
+    res.json(config);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get auto-update settings'
+    });
+  }
+});
+
+app.post('/services/docker/auto-update', requireAuth, async (req, res) => {
+  try {
+    const { enabled, schedule, time, images } = req.body;
+    const configPath = path.join(DOCKER_COMPOSE_DIR, 'auto-update.json');
+    
+    // Validate input
+    if (!['daily', 'weekly', 'monthly'].includes(schedule)) {
+      return res.status(400).json({ error: 'Invalid schedule' });
+    }
+    
+    if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(time)) {
+      return res.status(400).json({ error: 'Invalid time format' });
+    }
+    
+    // Save config
+    const config = {
+      enabled: Boolean(enabled),
+      schedule,
+      time,
+      images: Array.isArray(images) ? images : []
+    };
+    
+    await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
+    
+    // If enabling, schedule the job
+    if (enabled) {
+      scheduleAutoUpdates(config);
+    }
+    
+    res.json({
+      success: true,
+      message: 'Auto-update settings saved'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to save auto-update settings'
+    });
+  }
+});
+
+app.get('/services/docker/auto-update/check', requireAuth, async (req, res) => {
+  try {
+    // Get current images
+    const { stdout } = await execAsync('docker images --format "{{.Repository}}:{{.Tag}}"');
+    const currentImages = stdout.trim().split('\n');
+    
+    // Check for updates
+    const updates = [];
+    for (const image of currentImages) {
+      try {
+        // Skip <none> images
+        if (image.includes('<none>')) continue;
+        
+        // Get current digest
+        const { stdout: inspect } = await execAsync(`docker inspect --format='{{.Id}}' ${image}`);
+        const currentDigest = inspect.trim();
+        
+        // Pull without actually downloading
+        await execAsync(`docker pull --quiet --disable-content-trust ${image}`);
+        
+        // Get new digest
+        const { stdout: inspectNew } = await execAsync(`docker inspect --format='{{.Id}}' ${image}`);
+        const newDigest = inspectNew.trim();
+        
+        if (currentDigest !== newDigest) {
+          updates.push({
+            image,
+            currentDigest: currentDigest.substring(0, 12),
+            newDigest: newDigest.substring(0, 12)
+          });
+        }
+      } catch (e) {
+        console.error(`Error checking updates for ${image}:`, e);
+      }
+    }
+    
+    res.json({
+      success: true,
+      updates
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to check for updates'
+    });
+  }
+});
+
+// Registry Endpoints
+app.get('/services/docker/registry/list', requireAuth, async (req, res) => {
+  try {
+    // 1. Pobierz informacje o zużyciu dysku
+    let diskUsage = {};
+    try {
+      const { stdout } = await execAsync('docker system df --format "{{json .}}"');
+      if (stdout.trim()) {
+        diskUsage = stdout.trim();
+      }
+    } catch (diskError) {
+      console.error('Error getting disk usage:', diskError);
+    }
+
+    // 2. Pobierz listę zalogowanych rejestrów
+    let registries = [];
+    try {
+      // Sprawdź czy plik config.json istnieje
+      const configPath = path.join(os.homedir(), '.docker/config.json');
+      await fs.access(configPath);
+
+      // Odczytaj konfigurację Docker
+      const configData = await fs.readFile(configPath, 'utf8');
+      const config = JSON.parse(configData);
+
+      if (config.auths) {
+        registries = Object.entries(config.auths).map(([server, authData]) => {
+          let username = 'unknown';
+          try {
+            // Dekoduj dane uwierzytelniające
+            const authString = Buffer.from(authData.auth, 'base64').toString();
+            username = authString.split(':')[0];
+          } catch (authError) {
+            console.error('Error decoding auth data:', authError);
+          }
+          
+          return {
+            server,
+            username,
+            authConfigured: true
+          };
+        });
+      }
+
+      // Dodaj Docker Hub jeśli nie ma go w konfiguracji
+      if (!registries.some(r => r.server.includes('docker.io'))) {
+        registries.push({
+          server: 'https://index.docker.io/v2/',
+          username: 'anonymous',
+          authConfigured: false
+        });
+      }
+    } catch (configError) {
+      console.error('Error reading docker config:', configError);
+      // Zwróć domyślny Docker Hub jeśli plik nie istnieje
+      registries.push({
+        server: 'https://index.docker.io/v2/',
+        username: 'anonymous',
+        authConfigured: false
+      });
+    }
+
+    res.json({
+      success: true,
+      registries,
+      diskUsage
+    });
+
+  } catch (error) {
+    console.error('Registry list error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to list registries',
+      details: error.message
+    });
+  }
+});
+
+app.post('/services/docker/registry/login', requireAuth, async (req, res) => {
+  try {
+    const { server, username, password } = req.body;
+    
+    if (!server || !username || !password) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    // Execute docker login
+    const { stdout } = await execAsync(
+      `docker login --username ${username} --password ${password} ${server}`,
+      { input: password }
+    );
+    
+    res.json({
+      success: true,
+      message: stdout || 'Logged in successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Login failed',
+      details: error.stderr || error.message
+    });
+  }
+});
+
+// Helper function to schedule auto updates
+function scheduleAutoUpdates(config) {
+  // Clear existing job if any
+  if (global.autoUpdateJob) {
+    clearInterval(global.autoUpdateJob);
+  }
+  
+  // Calculate interval based on schedule
+  let interval;
+  switch (config.schedule) {
+    case 'daily':
+      interval = 24 * 60 * 60 * 1000;
+      break;
+    case 'weekly':
+      interval = 7 * 24 * 60 * 60 * 1000;
+      break;
+    case 'monthly':
+      interval = 30 * 24 * 60 * 60 * 1000; // Approximate
+      break;
+    default:
+      interval = 24 * 60 * 60 * 1000;
+  }
+  
+  // Schedule the job
+  global.autoUpdateJob = setInterval(async () => {
+    try {
+      console.log('Running scheduled image updates...');
+      
+      // Update each image
+      for (const image of config.images) {
+        try {
+          await execAsync(`docker pull ${image}`);
+          console.log(`Successfully updated ${image}`);
+          
+          // Restart containers using this image
+          const { stdout: containers } = await execAsync(
+            `docker ps --filter ancestor=${image} --format "{{.ID}}"`
+          );
+          
+          if (containers.trim()) {
+            const containerIds = containers.trim().split('\n');
+            for (const id of containerIds) {
+              await execAsync(`docker restart ${id}`);
+              console.log(`Restarted container ${id}`);
+            }
+          }
+        } catch (e) {
+          console.error(`Failed to update ${image}:`, e);
+        }
+      }
+    } catch (error) {
+      console.error('Auto-update job failed:', error);
+    }
+  }, interval);
+  
+  // Run immediately if it's time
+  const now = new Date();
+  const [hours, minutes] = config.time.split(':').map(Number);
+  const nextRun = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    hours,
+    minutes
+  );
+  
+  if (now > nextRun) {
+    setTimeout(() => {
+      global.autoUpdateJob._onTimeout();
+    }, 10000); // Run in 10 seconds
+  }
+}
+
+app.get('/services/docker/images/inspect/:imageId', requireAuth, async (req, res) => {
+  try {
+    const { imageId } = req.params;
+    
+    // Walidacja ID obrazu
+    if (!/^[a-f0-9]+$/.test(imageId)) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid image ID format' 
+      });
+    }
+
+    // Pobierz szczegółowe informacje o obrazie
+    const { stdout } = await execAsync(`docker inspect ${imageId}`);
+    
+    res.json({
+      success: true,
+      data: JSON.parse(stdout)
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to inspect image',
+      details: error.message,
+      commandError: error.stderr
+    });
+  }
+});
+
+app.get('/services/docker/composer/deploy-stream', requireAuth, async (req, res) => {
+  const { file } = req.query;
+  
+  if (!file) {
+    return res.status(400).json({ error: 'File parameter is required' });
+  }
+
+  const filePath = path.join(DOCKER_COMPOSE_DIR, file);
+  
+  // Ustaw nagłówki dla strumieniowania SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  // Uruchom proces docker compose
+  const child = exec(`docker compose -f ${filePath} up -d`);
+
+  // Funkcja do wysyłania danych w formacie SSE
+  const sendEvent = (data) => {
+    // Normalizuj znaki nowej linii i dodaj znacznik czasu
+    const normalizedData = data
+      .replace(/\r?\n/g, '\r\n') // Zamień wszystkie rodzaje nowych linii na \r\n
+      .replace(/\r\n/g, '\n')    // Tymczasowo na \n
+      .replace(/\n/g, '\r\n');   // Potem na \r\n (dla spójności)
+
+    res.write(`data: ${JSON.stringify({ 
+      message: normalizedData,
+      timestamp: new Date().toISOString()
+    })}\n\n`);
+  };
+
+  child.stdout.on('data', (data) => {
+    sendEvent(data.toString());
+  });
+
+  child.stderr.on('data', (data) => {
+    sendEvent(data.toString());
+  });
+
+  child.on('close', (code) => {
+    sendEvent(`\nProcess exited with code ${code}\n`);
+    res.end();
+  });
+
+  // Obsługa zamknięcia połączenia przez klienta
+  req.on('close', () => {
+    child.kill();
+    res.end();
+  });
+});
+
+// Backup endpoints
+app.post('/services/docker/backup', requireAuth, async (req, res) => {
+  try {
+    const { location, includes } = req.body;
+    
+    // Validate inputs
+    if (!location || typeof location !== 'string') {
+      return res.status(400).json({ error: 'Invalid backup location' });
+    }
+    
+    if (!Array.isArray(includes)) {
+      return res.status(400).json({ error: 'Invalid includes parameter' });
+    }
+    
+    // Create backup directory if it doesn't exist
+    await fs.mkdir(location, { recursive: true });
+    
+    // Generate timestamp for backup filename
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupName = `docker-backup-${timestamp}.tar.gz`;
+    const backupPath = path.join(location, backupName);
+    
+    // Build backup command based on what to include
+    let commands = [];
+    
+    if (includes.includes('compose')) {
+      commands.push(`tar -czf ${backupPath} ${DOCKER_COMPOSE_DIR}`);
+    }
+    
+    if (includes.includes('volumes')) {
+      // Get list of volumes
+      const { stdout: volumes } = await execAsync('docker volume ls -q');
+      if (volumes.trim()) {
+        const volumeBackup = path.join(location, `volumes-${backupName}`);
+        commands.push(`docker run --rm -v ${volumeBackup}:/backup -v ${volumes.trim().split('\n').map(v => `${v}:/volume/${v}`).join(' -v ')} alpine tar -czf /backup /volume`);
+      }
+    }
+    
+    if (includes.includes('config')) {
+      const dockerConfigPath = '/etc/docker';
+      commands.push(`tar -czf ${path.join(location, `config-${backupName}`)} ${dockerConfigPath}`);
+    }
+    
+    // Execute backup commands
+    const results = [];
+    for (const cmd of commands) {
+      try {
+        const { stdout } = await execAsync(cmd);
+        results.push({ command: cmd, success: true, output: stdout });
+      } catch (error) {
+        results.push({ command: cmd, success: false, error: error.message });
+      }
+    }
+    
+    // Check if any backups were created
+    const backupFiles = (await fs.readdir(location)).filter(f => f.includes(backupName));
+    
+    if (backupFiles.length === 0) {
+      return res.status(500).json({ error: 'No backup files were created' });
+    }
+    
+    res.json({
+      success: true,
+      message: 'Backup completed successfully',
+      files: backupFiles,
+      location,
+      details: results
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      error: 'Backup failed',
+      details: error.message
+    });
+  }
+});
+
+app.get('/services/docker/backup/list', requireAuth, async (req, res) => {
+  try {
+    // Default backup location or use from config if available
+    const backupLocation = '/var/backups/docker';
+    
+    // Create directory if it doesn't exist
+    await fs.mkdir(backupLocation, { recursive: true });
+    
+    // List backup files with details
+    const files = await fs.readdir(backupLocation);
+    const filesWithStats = await Promise.all(
+      files.map(async file => {
+        const stats = await fs.stat(path.join(backupLocation, file));
+        return {
+          name: file,
+          date: stats.mtime.toISOString(),
+          size: formatFileSize(stats.size),
+          path: path.join(backupLocation, file)
+        };
+      })
+    );
+    
+    // Sort by date (newest first)
+    filesWithStats.sort((a, b) => new Date(b.date) - new Date(a.date));
+    
+    res.json({
+      success: true,
+      files: filesWithStats
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to list backup files',
+      details: error.message
+    });
+  }
+});
+
+// Helper function to format file sizes
+function formatFileSize(bytes) {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+app.post('/services/docker/backup/restore', requireAuth, async (req, res) => {
+  try {
+    const { file } = req.body;
+    
+    if (!file) {
+      return res.status(400).json({ error: 'Backup file is required' });
+    }
+    
+    // Validate file exists
+    const filePath = path.join('/var/backups/docker', file);
+    try {
+      await fs.access(filePath);
+    } catch {
+      return res.status(404).json({ error: 'Backup file not found' });
+    }
+    
+    // Determine backup type by filename
+    let restoreCommand = '';
+    if (file.includes('docker-backup-')) {
+      // Main backup
+      restoreCommand = `tar -xzf ${filePath} -C /`;
+    } else if (file.includes('volumes-')) {
+      // Volumes backup
+      restoreCommand = `docker run --rm -v ${filePath}:/backup -v /var/lib/docker/volumes:/target alpine sh -c "tar -xzf /backup -C /target"`;
+    } else if (file.includes('config-')) {
+      // Config backup
+      restoreCommand = `tar -xzf ${filePath} -C /`;
+    } else {
+      return res.status(400).json({ error: 'Unknown backup type' });
+    }
+    
+    // Execute restore
+    const { stdout } = await execAsync(restoreCommand);
+    
+    res.json({
+      success: true,
+      message: 'Restore completed successfully',
+      output: stdout
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Restore failed',
+      details: error.message
+    });
+  }
+});
+
+// Funkcja pomocnicza do ładowania zadań
+function loadCronJobs() {
+  try {
+    if (!fsa.existsSync(CRON_JOBS_FILE)) {
+      fsa.writeFileSync(CRON_JOBS_FILE, JSON.stringify([]));
+      return [];
+    }
+    
+    const data = fsa.readFileSync(CRON_JOBS_FILE, 'utf8');
+    const jobs = JSON.parse(data);
+    
+    // Inicjalizacja zadań przy starcie
+    jobs.forEach(job => {
+      scheduleJob(job);
+    });
+    
+    return jobs;
+  } catch (error) {
+    console.error('Error loading cron jobs:', error);
+    return [];
+  }
+}
+
+// Funkcja zapisująca zadania do pliku
+function saveCronJobs() {
+  try {
+    const jobsToSave = Array.from(cronJobs.values()).map(job => ({
+      id: job.id,
+      name: job.name,
+      schedule: job.schedule,
+      command: job.command,
+      description: job.description,
+      type: job.type,
+      location: job.location,
+      includes: job.includes
+    }));
+
+    fsa.writeFileSync(CRON_JOBS_FILE, JSON.stringify(jobsToSave, null, 2));
+    return true;
+  } catch (error) {
+    console.error('Error saving cron jobs:', error);
+    return false;
+  }
+}
+
+// Funkcja planująca zadanie
+function scheduleJob(jobConfig) {
+  // Usuń istniejące zadanie jeśli istnieje
+  if (cronJobs.has(jobConfig.id)) {
+    cronJobs.get(jobConfig.id).task.stop();
+    cronJobs.delete(jobConfig.id);
+  }
+
+  // Utwórz nowe zadanie cron
+  const task = cron.schedule(jobConfig.schedule, () => {
+    console.log(`Executing job: ${jobConfig.name}`);
+    executeDockerBackup(jobConfig);
+  }, {
+    scheduled: true,
+    timezone: 'Europe/Warsaw'
+  });
+
+  // Zapisz referencję do zadania
+  cronJobs.set(jobConfig.id, {
+    ...jobConfig,
+    task
+  });
+}
+
+// Funkcja wykonująca backup Dockera
+async function executeDockerBackup(job) {
+  try {
+    // Validate job configuration
+    if (!job || !job.includes || !Array.isArray(job.includes)) {
+      throw new Error('Invalid job configuration - missing includes array');
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupDir = job.location || '/var/backups/docker';
+    const backupFile = path.join(backupDir, `docker-backup-${timestamp}.tar.gz`);
+    
+    // Create directory if it doesn't exist
+    await fs.mkdir(backupDir, { recursive: true });
+
+    // Backup commands
+    const commands = [];
+    
+    if (job.includes.includes('compose')) {
+      commands.push(`tar -czf ${backupFile} ${DOCKER_COMPOSE_DIR}`);
+    }
+    
+    if (job.includes.includes('volumes')) {
+      const volumeBackup = path.join(backupDir, `volumes-${timestamp}.tar.gz`);
+      const { stdout: volumes } = await execAsync('docker volume ls -q');
+      if (volumes.trim()) {
+        const volumeList = volumes.trim().split('\n');
+        commands.push(`docker run --rm -v ${volumeBackup}:/backup ${volumeList.map(v => `-v ${v}:/volume/${v}`).join(' ')} alpine tar -czf /backup /volume`);
+      }
+    }
+
+    // Execute commands
+    for (const cmd of commands) {
+      await execAsync(cmd);
+    }
+    
+    console.log(`Backup completed: ${backupFile}`);
+  } catch (error) {
+    console.error('Backup failed:', error);
+  }
+}
+
+// Endpoint do planowania backupów
+app.post('/services/docker/backup/schedule', requireAuth, (req, res) => {
+  try {
+    const { schedule, location, includes, name } = req.body;
+    
+    // Validation
+    if (!cron.validate(schedule)) {
+      return res.status(400).json({ error: 'Invalid cron schedule' });
+    }
+    
+    if (!Array.isArray(includes) || includes.length === 0) {
+      return res.status(400).json({ error: 'Please select at least one backup option' });
+    }
+
+    // Utwórz konfigurację zadania
+    const jobConfig = {
+      id: `backup_${Date.now()}`,
+      name: name || 'Docker Backup',
+      type: 'docker-backup',
+      schedule,
+      location: location || '/var/backups/docker',
+      includes: Array.isArray(includes) ? includes : [],
+      description: 'Automatic Docker backup job'
+    }; 
+
+    // Zaplanuj i zapisz zadanie
+    scheduleJob(jobConfig);
+    saveCronJobs();
+
+    res.json({
+      success: true,
+      jobId: jobConfig.id,
+      message: 'Backup scheduled successfully',
+      nextRun: getNextRunTime(schedule)
+    });
+
+  } catch (error) {
+    console.error('Error scheduling backup:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to schedule backup',
+      details: error.message
+    });
+  }
+});
+
+// Helper do obliczania następnego wykonania
+function getNextRunTime(cronExpr) {
+  const schedule = cronParser.CronExpressionParser.parse(cronExpr);
+  return schedule.next().toISOString();
+}
+
+// Endpoint do listy zaplanowanych zadań
+app.get('/services/docker/backup/schedules', requireAuth, (req, res) => {
+  try {
+    const jobs = Array.from(cronJobs.values())
+      .filter(job => job.type === 'docker-backup')
+      .map(job => ({
+        id: job.id,
+        name: job.name,
+        schedule: job.schedule,
+        location: job.location,
+        includes: job.includes,
+        nextRun: getNextRunTime(job.schedule),
+        description: job.description
+      }));
+
+    res.json({
+      success: true,
+      jobs
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get scheduled jobs'
+    });
+  }
+});
+
+app.delete('/services/docker/backup/schedule/:jobId', requireAuth, (req, res) => {
+  try {
+    const { jobId } = req.params;
+
+    // Check if job exists
+    if (!cronJobs.has(jobId)) {
+      return res.status(404).json({
+        success: false,
+        error: 'Backup job not found'
+      });
+    }
+
+    // Stop the cron job
+    const job = cronJobs.get(jobId);
+    job.task.stop();
+
+    // Remove from memory
+    cronJobs.delete(jobId);
+
+    // Update the stored jobs
+    saveCronJobs();
+
+    res.json({
+      success: true,
+      message: 'Backup schedule deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('Error deleting backup schedule:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete backup schedule',
+      details: error.message
+    });
+  }
+});
+
+app.get('/services/docker/container/status/:name', async (req, res) => {
+  try {
+    const { name } = req.params;
+    const { stdout } = await execPromise(
+      `sudo docker ps -a --filter "name=${name}" --format '{{.ID}}|{{.Names}}|{{.Status}}|{{.Image}}'`
+    );
+
+    if (!stdout.trim()) {
+      return res.json({ 
+        status: 'not_found',
+        message: 'Container not found'
+      });
+    }
+
+    // Przetwarzanie wyniku
+    const containers = stdout.trim().split('\n')
+      .map(line => {
+        const [id, names, status, image] = line.split('|');
+        return { id, names, status, image };
+      });
+
+    // Znajdź kontener którego szukamy (może być wiele gdy używamy compose)
+    const container = containers.find(c => 
+      c.names.includes(name) || 
+      c.names.includes(`docker-compose-${name}-`)
+    );
+
+    if (!container) {
+      return res.json({ status: 'not_found' });
+    }
+
+    // Uproszczona logika statusu
+    const normalizedStatus = container.status.toLowerCase().includes('up') 
+      ? 'running' 
+      : 'stopped';
+
+    res.json({
+      status: normalizedStatus,
+      rawStatus: container.status,
+      containerName: container.names,
+      image: container.image
+    });
+
+  } catch (error) {
+    console.error('Error checking container status:', error);
+    res.status(500).json({ 
+      error: 'Failed to check container status',
+      details: error.message
+    });
+  }
+});
+
+// Inicjalizacja przy starcie
+loadCronJobs();
 
 };

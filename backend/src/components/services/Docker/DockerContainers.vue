@@ -114,7 +114,15 @@
               <el-icon><Icon icon="mdi:restart" /></el-icon>
             </el-button>
             </el-tooltip>
-            
+                  <el-tooltip
+        class="box-item"
+        effect="dark"
+        content="Restart"
+        placement="top-start"
+      >
+            <el-button size="small" type="warning" @click="handleRestart(row.ID)"><el-icon><Icon icon="mdi:restart" /></el-icon></el-button>
+      </el-tooltip>
+           
       <el-tooltip
         class="box-item"
         effect="dark"
@@ -222,6 +230,83 @@
   </el-dialog>
 
   </div>
+
+    <el-dialog v-model="showCreateDialog" title="Create New Container" width="60%">
+    <el-form :model="createForm" label-width="120px">
+      <el-form-item label="Container Name">
+        <el-input v-model="createForm.name" />
+      </el-form-item>
+      <el-form-item label="Image">
+        <el-select
+          v-model="createForm.image"
+          filterable
+          remote
+          :remote-method="searchImages"
+          placeholder="e.g. nginx:latest"
+        >
+          <el-option
+            v-for="img in availableImages"
+            :key="img"
+            :label="img"
+            :value="img"
+          />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="Ports">
+        <el-tag
+          v-for="(port, index) in createForm.ports"
+          :key="index"
+          closable
+          @close="removePort(index)"
+        >
+          {{ port }}
+        </el-tag>
+        <el-input
+          v-model="newPort"
+          placeholder="e.g. 8080:80"
+          style="width: 150px; margin-left: 10px"
+          @keyup.enter="addPort"
+        >
+          <template #append>
+            <el-button icon="plus" @click="addPort" />
+          </template>
+        </el-input>
+      </el-form-item>
+      <el-form-item label="Volumes">
+        <el-tag
+          v-for="(vol, index) in createForm.volumes"
+          :key="index"
+          closable
+          @close="removeVolume(index)"
+        >
+          {{ vol }}
+        </el-tag>
+        <el-input
+          v-model="newVolume"
+          placeholder="e.g. /host/path:/container/path"
+          style="width: 250px; margin-left: 10px"
+          @keyup.enter="addVolume"
+        >
+          <template #append>
+            <el-button icon="plus" @click="addVolume" />
+          </template>
+        </el-input>
+      </el-form-item>
+      <el-form-item label="Environment">
+        <div v-for="(env, index) in createForm.env" :key="index" class="env-row">
+          <el-input v-model="env.key" placeholder="Key" style="width: 150px" />
+          <el-input v-model="env.value" placeholder="Value" style="width: 250px" />
+          <el-button icon="delete" @click="removeEnv(index)" />
+        </div>
+        <el-button @click="addEnv">Add Environment Variable</el-button>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="showCreateDialog = false">Cancel</el-button>
+      <el-button type="primary" @click="createContainer">Create</el-button>
+    </template>
+  </el-dialog>
+
 </template>
 
 <script setup>
@@ -244,6 +329,28 @@ const containerStats = ref({});
 const reloadKey = inject('reloadKey');
 const sshDialogVisible = ref(false);
 const currentSshContainer = ref('');
+const showCreateDialog = ref(false);
+const createForm = ref({
+  name: '',
+  image: '',
+  ports: [],
+  volumes: [],
+  env: []
+});
+const newPort = ref('');
+const newVolume = ref('');
+const availableImages = ref([]);
+
+const emit = defineEmits(['restart-container', 'show-stats']);
+
+// Then when you need to emit these events, use:
+const handleRestart = (containerId) => {
+  emit('restart-container', containerId);
+};
+
+const handleShowStats = (containerId) => {
+  emit('show-stats', containerId);
+};
 
 const handleRowClick = async (row) => {
           expandedRow.value = row.ID;
@@ -432,6 +539,73 @@ const showContainerStats = (id) => {
 const openSshDialog = (containerId) => {
   currentSshContainer.value = containerId;
   sshDialogVisible.value = true;
+};
+
+const searchImages = async (query) => {
+  if (query) {
+    try {
+      const response = await axios.get('https://registry.hub.docker.com/v1/search', {
+        params: { q: query }
+      });
+      availableImages.value = response.data.results.map(r => r.name);
+    } catch (error) {
+      console.error('Error searching images:', error);
+    }
+  }
+};
+
+const addPort = () => {
+  if (newPort.value) {
+    createForm.value.ports.push(newPort.value);
+    newPort.value = '';
+  }
+};
+
+const removePort = (index) => {
+  createForm.value.ports.splice(index, 1);
+};
+
+const addVolume = () => {
+  if (newVolume.value) {
+    createForm.value.volumes.push(newVolume.value);
+    newVolume.value = '';
+  }
+};
+
+const removeVolume = (index) => {
+  createForm.value.volumes.splice(index, 1);
+};
+
+const addEnv = () => {
+  createForm.value.env.push({ key: '', value: '' });
+};
+
+const removeEnv = (index) => {
+  createForm.value.env.splice(index, 1);
+};
+
+const createContainer = async () => {
+  try {
+    const envVars = {};
+    createForm.value.env.forEach(e => {
+      if (e.key) envVars[e.key] = e.value;
+    });
+    
+    const response = await axios.post('/services/docker/container/create', {
+      name: createForm.value.name,
+      image: createForm.value.image,
+      ports: createForm.value.ports,
+      volumes: createForm.value.volumes,
+      env: envVars
+    });
+    
+    ElMessage.success(response.data.message);
+    showCreateDialog.value = false;
+    await fetchContainers();
+  } catch (error) {
+    ElMessage.error('Failed to create container');
+    console.error(error);
+  }
 };
 
 watch(reloadKey, () => {

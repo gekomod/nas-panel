@@ -7,6 +7,7 @@ import { ElNotification } from 'element-plus'
 import './assets/main.scss'
 import { initDatabase } from './database/sqlite-service'
 import { i18n } from './locales'
+import loadsh from 'loadsh'
 
 
 async function initializeApp() {
@@ -18,6 +19,7 @@ async function initializeApp() {
     app.use(router)
     app.use(ElementPlus)
     app.use(i18n)
+    app.use(loadsh)
     app.mount('#app')
     
       app.config.globalProperties.$notify({

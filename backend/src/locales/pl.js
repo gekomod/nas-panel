@@ -69,7 +69,9 @@ export default {
       "options": "Opcje montowania",
       "selectDevice": "Wybierz urządzenie",
       "selectFsType": "Wybierz typ systemu plików",
-      "mount": "Montuj"
+      "mount": "Montuj",
+      partition: "Partycja",
+      zfsPoolName: "ZFS Pool Name"
     },
     "formatDialog": {
       "title": "Formatowanie urządzenia",
@@ -80,7 +82,8 @@ export default {
       "selectDevice": "Wybierz urządzenie",
       "selectFsType": "Wybierz typ systemu plików",
       "format": "Formatuj",
-      "warning": "UWAGA: Wszystkie dane na urządzeniu {device} zostaną utracone!"
+      "warning": "UWAGA: Wszystkie dane na urządzeniu {device} zostaną utracone!",
+      zfsPoolName: "ZFS Pool Name"
     },
     "device": "Urządzenie",
     "tags": "Tagi",
@@ -95,7 +98,20 @@ export default {
     autoMount: 'Auto-mount',
     fstabAddSuccess: 'Added to fstab successfully',
     fstabRemoveSuccess: 'Removed from fstab successfully',
-    fstabError: 'Failed to update fstab'
+    fstabError: 'Failed to update fstab',
+    "partition": "Partition Disk",
+    "partitionDialog": {
+      "title": "Partition Disk",
+      "selectDevice": "Select Device",
+      "scheme": "Partition Scheme",
+      "partitions": "Partitions",
+      "addPartition": "Add Partition",
+      "create": "Create Partitions",
+      "diskSize": "Disk Capacity",
+      "used": "Used",
+      "free": "Free",
+      "device": "Urządzenie"
+    }
   },
   storageSmart: {
     title: 'Monitorowane urządzenia',

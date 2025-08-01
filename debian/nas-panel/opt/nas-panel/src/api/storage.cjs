@@ -6,7 +6,10 @@ const { promisify } = require('util');
 const execAsync = promisify(exec);
 const execAsyncs = promisify(exec);
 const SMART_CONFIG_PATH = '/etc/nas-panel/smart_monitoring.json';
+const FSTAB_PATH = '/etc/fstab';
+const FSTAB_BACKUP_PATH = '/etc/fstab.bak';
 
+//HELPER FUNCTIONS
 async function loadSmartConfig() {
   try {
     const data = await fs.readFile(SMART_CONFIG_PATH, 'utf8');
@@ -22,6 +25,39 @@ async function loadSmartConfig() {
 async function saveSmartConfig(config) {
   await fs.writeFile(SMART_CONFIG_PATH, JSON.stringify(config, null, 2), 'utf8');
 }
+
+async function backupFstab() {
+  try {
+    await execAsync(`sudo cp ${FSTAB_PATH} ${FSTAB_BACKUP_PATH}`);
+  } catch (err) {
+    console.error('Failed to backup fstab:', err);
+  }
+}
+
+async function readFstab() {
+  try {
+    const data = await fs.readFile(FSTAB_PATH, 'utf8');
+    return data.split('\n').filter(line => line.trim() && !line.startsWith('#'));
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      return [];
+    }
+    throw err;
+  }
+}
+
+async function writeFstab(entries) {
+  await backupFstab();
+  const content = [
+    '# /etc/fstab: static file system information.',
+    '#',
+    '# <file system> <mount point>   <type>  <options>       <dump>  <pass>',
+    ...entries
+  ].join('\n');
+  await fs.writeFile(FSTAB_PATH, content, 'utf8');
+}
+
+//END
 
 module.exports = function(app,requireAuth) {
 
@@ -422,7 +458,7 @@ app.get('/api/storage/devices', requireAuth, async (req, res) => {
 });
 // Mount device
 app.post('/api/storage/mount', requireAuth, async (req, res) => {
-  const { device, mountPoint, fsType, options } = req.body;
+  const { device, mountPoint, fsType, options, zfsPoolName } = req.body;
   
   if (!device || !device.startsWith('/dev/')) {
     return res.status(400).json({
@@ -433,21 +469,29 @@ app.post('/api/storage/mount', requireAuth, async (req, res) => {
   }
 
   try {
-    // Sprawdź czy to urządzenie ZFS
     const isZfs = fsType === 'zfs';
     let mountCmd;
+    let actualMountPoint = mountPoint;
 
     if (isZfs) {
-      // Dla ZFS używamy 'zfs mount' zamiast standardowego mount
-      mountCmd = `sudo zpool import ${device} && sudo zfs mount ${device}`;
+      // For ZFS we use 'zfs mount' instead of standard mount
+      mountCmd = `sudo zpool import ${zfsPoolName || 'zpool'} && sudo zfs mount ${device}`;
+      actualMountPoint = zfsPoolName || 'zpool';
     } else {
-      // Standardowe montowanie dla innych systemów plików
+      // Standard mounting for other filesystems
+      if (!mountPoint) {
+        return res.status(400).json({
+          success: false,
+          error: 'Mount point is required',
+          details: 'Please specify a mount point for non-ZFS filesystems'
+        });
+      }
       mountCmd = `sudo mkdir -p "${mountPoint}" && sudo mount -t ${fsType} -o ${options || 'defaults'} ${device} ${mountPoint}`;
     }
 
-    const { stdout, stderr } = await execAsyncs(mountCmd);
+    const { stdout, stderr } = await execAsync(mountCmd);
     
-    // Weryfikacja montowania
+    // Verify mounting
     let verifyCmd;
     if (isZfs) {
       verifyCmd = `sudo zfs list -H -o mounted ${device}`;
@@ -455,18 +499,34 @@ app.post('/api/storage/mount', requireAuth, async (req, res) => {
       verifyCmd = `findmnt -n -o SOURCE --target ${mountPoint}`;
     }
 
-    const { stdout: verifyStdout } = await execAsyncs(verifyCmd);
+    const { stdout: verifyStdout } = await execAsync(verifyCmd);
     
     if ((isZfs && verifyStdout.trim() !== 'yes') || (!isZfs && verifyStdout.trim() !== device)) {
       throw new Error('Mount verification failed');
     }
 
+    // Add to fstab if not ZFS
+    if (!isZfs) {
+      const fstabEntries = await readFstab();
+      const existingEntry = fstabEntries.find(entry => {
+        const parts = entry.split(/\s+/);
+        return parts[0] === device || parts[1] === mountPoint;
+      });
+
+      if (!existingEntry) {
+        const newEntry = `${device} ${mountPoint} ${fsType} ${options || 'defaults'} 0 2`;
+        fstabEntries.push(newEntry);
+        await writeFstab(fstabEntries);
+      }
+    }
+
     res.json({
       success: true,
       message: 'Device mounted successfully',
-      mountPoint: isZfs ? device : mountPoint,
+      mountPoint: actualMountPoint,
       device: device,
-      isZfs: isZfs
+      isZfs: isZfs,
+      addedToFstab: !isZfs
     });
   } catch (error) {
     let errorDetails = error.stderr || error.message;
@@ -495,13 +555,13 @@ app.post('/api/storage/unmount', requireAuth, async (req, res) => {
   const { mountPoint } = req.body;
   
   try {
-    // Sprawdź czy to ZFS
+    // Check if it's ZFS
     let isZfs = false;
     try {
-      const { stdout } = await execAsyncs(`sudo zfs list -H -o name ${mountPoint}`);
+      const { stdout } = await execAsync(`sudo zfs list -H -o name ${mountPoint}`);
       isZfs = stdout.trim() === mountPoint;
     } catch (e) {
-      // Nie jest ZFS
+      // Not ZFS
     }
 
     let unmountCmd;
@@ -509,14 +569,27 @@ app.post('/api/storage/unmount', requireAuth, async (req, res) => {
       unmountCmd = `sudo zfs unmount ${mountPoint} && sudo zpool export ${mountPoint}`;
     } else {
       unmountCmd = `sudo umount "${mountPoint}"`;
+      
+      // Remove from fstab if not ZFS
+      const fstabEntries = await readFstab();
+      const initialLength = fstabEntries.length;
+      const newEntries = fstabEntries.filter(entry => {
+        const parts = entry.split(/\s+/);
+        return parts[1] !== mountPoint;
+      });
+      
+      if (newEntries.length < initialLength) {
+        await writeFstab(newEntries);
+      }
     }
 
-    await execAsyncs(unmountCmd);
+    await execAsync(unmountCmd);
     
     res.json({
       success: true,
       message: 'Filesystem unmounted successfully',
-      isZfs: isZfs
+      isZfs: isZfs,
+      removedFromFstab: !isZfs
     });
   } catch (error) {
     res.status(500).json({
@@ -529,7 +602,7 @@ app.post('/api/storage/unmount', requireAuth, async (req, res) => {
 
 // Format device
 app.post('/api/storage/format', requireAuth, async (req, res) => {
-  const { device, fsType, label } = req.body;
+  const { device, fsType, force, label } = req.body;
   
     const { exec } = require('child_process');
   const util = require('util');
@@ -652,6 +725,173 @@ app.post('/api/filesystems/list-directories', requireAuth, async (req, res) => {
   }
 });
 
+app.post('/api/storage/fstab', requireAuth, async (req, res) => {
+  const { action, device, mountPoint, fsType, options } = req.body;
+  
+  try {
+    const fstabEntries = await readFstab();
+    
+    if (action === 'add') {
+      // Check if entry already exists
+      const exists = fstabEntries.some(entry => {
+        const parts = entry.split(/\s+/);
+        return parts[0] === device || parts[1] === mountPoint;
+      });
+      
+      if (exists) {
+        return res.json({
+          success: true,
+          message: 'Entry already exists in fstab',
+          updated: false
+        });
+      }
+      
+      const newEntry = `${device} ${mountPoint} ${fsType} ${options || 'defaults'} 0 2`;
+      fstabEntries.push(newEntry);
+      await writeFstab(fstabEntries);
+      
+      return res.json({
+        success: true,
+        message: 'Entry added to fstab',
+        updated: true
+      });
+    }
+    else if (action === 'remove') {
+      const initialLength = fstabEntries.length;
+      const newEntries = fstabEntries.filter(entry => {
+        const parts = entry.split(/\s+/);
+        return !(parts[0] === device || parts[1] === mountPoint);
+      });
+      
+      if (newEntries.length === initialLength) {
+        return res.json({
+          success: true,
+          message: 'Entry not found in fstab',
+          updated: false
+        });
+      }
+      
+      await writeFstab(newEntries);
+      return res.json({
+        success: true,
+        message: 'Entry removed from fstab',
+        updated: true
+      });
+    }
+    else {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid action',
+        details: 'Action must be either "add" or "remove"'
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update fstab',
+      details: error.message
+    });
+  }
+});
+
+app.post('/api/storage/edit-fstab', requireAuth, async (req, res) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
+  try {
+    // Sprawdzamy czy nano jest dostępne
+    await execAsync('which nano');
+    
+    // Uruchamiamy edytor z timeoutem
+    const { stdout, stderr } = await execAsync('sudo nano /etc/fstab', { 
+      signal: controller.signal 
+    });
+    
+    res.json({
+      success: true,
+      message: 'Fstab edited successfully'
+    });
+  } catch (error) {
+    if (error.killed || error.signal) {
+      return res.status(500).json({
+        success: false,
+        error: 'Operation timed out or was aborted',
+        details: 'Editing fstab took too long or was interrupted'
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: 'Failed to edit fstab',
+      details: error.message
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+});
+
+app.get('/api/storage/fstab-content', requireAuth, async (req, res) => {
+  try {
+    const content = await fs.readFile(FSTAB_PATH, 'utf8');
+    res.json({
+      success: true,
+      content: content
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to read fstab',
+      details: error.message
+    });
+  }
+});
+
+app.get('/api/storage/fstab-check', requireAuth, async (req, res) => {
+  try {
+    const { stdout } = await execAsync('cat /etc/fstab | grep -v "^#"');
+    const entries = stdout.split('\n')
+      .filter(line => line.trim())
+      .map(line => {
+        const [device, mountPoint, fsType, options, dump, pass] = line.split(/\s+/);
+        return { device, mountPoint, fsType, options, dump, pass };
+      });
+    
+    res.json({ success: true, entries });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/storage/save-fstab', requireAuth, async (req, res) => {
+  try {
+    // Create backup
+    await execAsync(`sudo cp ${FSTAB_PATH} ${FSTAB_BACKUP_PATH}`);
+    
+    // Save new content
+    await fs.writeFile(FSTAB_PATH, req.body.content, 'utf8');
+    
+    // Verify fstab
+    try {
+      await execAsync('sudo findmnt --verify');
+    } catch (verifyError) {
+      // Restore backup if verification fails
+      await execAsync(`sudo cp ${FSTAB_BACKUP_PATH} ${FSTAB_PATH}`);
+      throw new Error('Fstab verification failed. Changes reverted. Error: ' + verifyError.message);
+    }
+    
+    res.json({
+      success: true,
+      message: 'Fstab saved successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to save fstab',
+      details: error.message
+    });
+  }
+});
+
 async function isDirectoryEmpty(path) {
   try {
     const files = await fs.readdir(path);
@@ -679,6 +919,46 @@ async function getTestHistory(device) {
     return []
   }
 }
+
+app.post('/api/storage/exec-command', requireAuth, async (req, res) => {
+  const { command, timeout = 30000 } = req.body;
+  
+  try {
+    const { stdout, stderr } = await execAsync(command, { timeout });
+    res.json({
+      success: true,
+      stdout,
+      stderr
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Command failed',
+      details: error.message,
+      stderr: error.stderr
+    });
+  }
+});
+
+app.get('/api/storage/disk-size', requireAuth, async (req, res) => {
+  const { device } = req.query;
+  
+  try {
+    const { stdout } = await execAsync(`lsblk -b -n -o SIZE ${device}`);
+    const size = parseInt(stdout.trim());
+    
+    res.json({
+      success: true,
+      size: size
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get disk size',
+      details: error.message
+    });
+  }
+});
 
   // Sync function
   async function syncSmartMonitoring() {

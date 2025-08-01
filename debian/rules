@@ -33,6 +33,7 @@ override_dh_auto_install:
 	# Create directory in /etc/
 	install -d debian/nas-panel/etc/nas-panel
 	install -m 644 debian/config/settings.json debian/nas-panel/etc/nas-panel/
+	install -m 644 debian/config/webdav.conf debian/nas-panel/etc/nas-panel/
 
 	install -d debian/nas-panel/usr/bin/
 	install -d debian/nas-panel/usr/local/bin/

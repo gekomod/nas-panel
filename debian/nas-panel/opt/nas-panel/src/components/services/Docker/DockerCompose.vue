@@ -24,6 +24,16 @@
       <el-table-column prop="name" label="File Name" />
       <el-table-column prop="size" label="Size" width="120" />
       <el-table-column prop="modified" label="Modified" width="180" />
+      <el-table-column label="Status" width="150">
+        <template #default="{row}">
+          <el-tag :type="getContainerStatus(row).type">
+            <el-icon v-if="getContainerStatus(row).loading" class="is-loading">
+              <Icon icon="mdi:loading" />
+            </el-icon>
+            {{ getContainerStatus(row).text }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="Actions" width="200">
         <template #default="{ row }">
           <el-button-group>
@@ -53,49 +63,52 @@
       </el-table-column>
     </el-table>
 
-<el-dialog v-model="showCreateDialog" title="Create Compose File" width="80%">
-  <el-form :model="composeForm" ref="composeFormRef">
-    <el-form-item 
-      label="File Name"
-      prop="filename"
-      :rules="[
-        { required: true, message: 'Please input file name', trigger: 'blur' },
-        { pattern: /\.(yml|yaml)$/, message: 'File must end with .yml or .yaml' }
-      ]"
-    >
-      <el-input v-model="composeForm.filename" placeholder="docker-compose.yml" />
-    </el-form-item>
-    <el-form-item 
-      label="Content"
-      prop="content"
-      :rules="[
-        { required: true, message: 'Please input compose content', trigger: 'blur' }
-      ]"
-    >
-      <el-input
-        v-model="composeForm.content"
-        type="textarea"
-        :rows="15"
-        placeholder="version: '3'
+    <el-dialog v-model="showCreateDialog" title="Create Compose File" width="80%">
+      <el-form :model="composeForm" ref="composeFormRef">
+        <el-form-item 
+          label="File Name"
+          prop="filename"
+          :rules="[
+            { required: true, message: 'Please input file name', trigger: 'blur' },
+            { pattern: /\.(yml|yaml)$/, message: 'File must end with .yml or .yaml' }
+          ]"
+        >
+          <el-input v-model="composeForm.filename" placeholder="docker-compose.yml" />
+        </el-form-item>
+        <el-form-item 
+          label="Content"
+          prop="content"
+          :rules="[
+            { required: true, message: 'Please input compose content', trigger: 'blur' }
+          ]"
+        >
+          <el-input
+            v-model="composeForm.content"
+            type="textarea"
+            :rows="15"
+            placeholder="version: '3'
 services:
   web:
     image: nginx
     ports:
       - '80:80'"
-      />
-    </el-form-item>
-  </el-form>
-  <template #footer>
-    <el-button @click="showCreateDialog = false">Cancel</el-button>
-    <el-button 
-      type="primary" 
-      @click="submitComposeForm"
-      :loading="creatingCompose"
-    >
-      Save
-    </el-button>
-  </template>
-</el-dialog>
+          />
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="composeForm.autoStart" label="Start containers immediately after creation" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showCreateDialog = false">Cancel</el-button>
+        <el-button 
+          type="primary" 
+          @click="submitComposeForm"
+          :loading="creatingCompose"
+        >
+          Save
+        </el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog v-model="showEditDialog" title="Edit Compose File" width="80%">
       <el-form :model="editForm">
@@ -113,14 +126,20 @@ services:
       </template>
     </el-dialog>
 
-    <el-dialog v-model="deployDialogVisible" title="Deploy Status" width="60%">
-      <pre class="deploy-log">{{ deployLog }}</pre>
+    <el-dialog 
+      v-model="deployDialogVisible" 
+      title="Deploy Status" 
+      width="80%"
+      @closed="handleDeployDialogClosed"
+    >
+      <div class="terminal-container">
+        <div ref="deployTerminalRef" class="terminal"></div>
+      </div>
       <template #footer>
-        <el-button @click="deployDialogVisible = false">Close</el-button>
+        <el-button @click="closeDeploy">Close</el-button>
       </template>
     </el-dialog>
     
-    <!-- Nowy dialog z szablonami -->
     <el-dialog v-model="showTemplatesDialog" title="Add from Templates" width="60%">
       <el-table
         :data="templates"
@@ -133,35 +152,46 @@ services:
           <template #default="{ row }">
             <el-button
               size="small"
-              type="text"
+              type="primary"
               @click.stop="previewTemplate(row)"
             >
               Preview
+            </el-button>
+            <el-button
+              size="small"
+              type="success"
+              @click.stop="deployTemplateDirectly(row)"
+              v-if="row.metadata?.autoStart !== false"
+            >
+              Deploy Now
             </el-button>
           </template>
         </el-table-column>
       </el-table>
     </el-dialog>
 
-    <!-- Dialog podglądu szablonu -->
     <el-dialog v-model="showTemplatePreview" title="Template Preview" width="80%">
       <pre class="template-preview">{{ previewTemplateContent }}</pre>
       <template #footer>
+        <el-checkbox v-model="autoStartContainer" label="Start containers immediately" />
         <el-button @click="showTemplatePreview = false">Cancel</el-button>
         <el-button type="primary" @click="useTemplate">
           Use This Template
         </el-button>
       </template>
     </el-dialog>
-    
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import axios from 'axios';
 import { Icon } from '@iconify/vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+
+import { Terminal } from 'xterm';
+import { FitAddon } from 'xterm-addon-fit';
+import 'xterm/css/xterm.css';
 
 const composeFiles = ref([]);
 const loading = ref(false);
@@ -170,6 +200,13 @@ const showEditDialog = ref(false);
 const deployDialogVisible = ref(false);
 const deployLog = ref('');
 const creatingCompose = ref(false);
+const autoStartContainer = ref(true);
+const containerStatuses = ref({});
+
+const deployTerminalRef = ref(null);
+const deployTerminal = ref(null);
+const deployFitAddon = ref(null);
+const deployEventSource = ref(null);
 
 const showTemplatesDialog = ref(false);
 const showTemplatePreview = ref(false);
@@ -189,7 +226,11 @@ services:
       - "80:80"
     volumes:
       - ./html:/usr/share/nginx/html
-    restart: unless-stopped`
+    restart: unless-stopped`,
+    metadata: {
+      autoStart: true,
+      waitForPorts: [80]
+    }
   },
   {
     name: 'WordPress with MySQL',
@@ -220,7 +261,11 @@ services:
       WORDPRESS_DB_PASSWORD: example_password
       WORDPRESS_DB_NAME: wordpress
 volumes:
-  db_data: {}`
+  db_data: {}`,
+    metadata: {
+      autoStart: true,
+      waitForPorts: [8000]
+    }
   },
   {
     name: 'PostgreSQL',
@@ -238,14 +283,20 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 volumes:
-  postgres_data: {}`
+  postgres_data: {}`,
+    metadata: {
+      autoStart: true,
+      waitForPorts: [5432]
+    }
   }
 ];
 
 const composeForm = ref({
   filename: 'docker-compose.yml',
-  content: ''
+  content: '',
+  autoStart: true
 });
+
 const editForm = ref({
   filename: '',
   content: ''
@@ -257,15 +308,77 @@ const fetchComposeFiles = async () => {
     const response = await axios.get('/services/docker/compose');
     composeFiles.value = response.data.files.map(file => ({
       name: file,
-      size: 'N/A', // Would need additional API endpoint for file details
+      size: 'N/A',
       modified: 'N/A'
     }));
+    
+    // Check status for all compose files
+await Promise.all(composeFiles.value.map(async file => {
+  const normalizedName = normalizeContainerName(file.name);
+  containerStatuses.value[file.name] = await checkContainerStatus(normalizedName);
+}));
   } catch (error) {
     ElMessage.error('Failed to fetch compose files');
     console.error(error);
   } finally {
     loading.value = false;
   }
+};
+
+const checkContainerStatus = async (composeFileName) => {
+  try {
+    // Usuń rozszerzenie .yml/.yaml i dodatkowe prefixy
+    const cleanName = composeFileName
+      .replace('.yml', '')
+      .replace('.yaml', '')
+      .replace('docker-compose-', '')
+      .replace(/-1$/, '');
+
+    const response = await axios.get(`/services/docker/container/status/${cleanName}`);
+    
+    // Logika dopasowania nazw dla Docker Compose
+    if (response.data.status === 'running') {
+      return 'running';
+    }
+    
+    // Dodatkowe sprawdzenie dla nazw z compose (np. "docker-compose-overseerr-1")
+    if (response.data.containerName?.includes(cleanName)) {
+      return response.data.status === 'running' ? 'running' : 'stopped';
+    }
+
+    return 'not_found';
+    
+  } catch (error) {
+    console.error('Error checking container status:', error);
+    return 'error';
+  }
+};
+
+const getContainerStatus = (row) => {
+  const status = containerStatuses.value[row.name] || 'not_found';
+  
+  const statusMap = {
+    running: { type: 'success', text: 'Running', icon: 'mdi:check-circle' },
+    stopped: { type: 'danger', text: 'Stopped', icon: 'mdi:stop-circle' },
+    not_found: { type: 'info', text: 'Not running', icon: 'mdi:help-circle' },
+    error: { type: 'danger', text: 'Error', icon: 'mdi:alert-circle' },
+    default: { type: 'info', text: 'Unknown', icon: 'mdi:help-circle' }
+  };
+
+  const config = statusMap[status] || statusMap.default;
+  
+  return {
+    ...config,
+    loading: false
+  };
+};
+
+const normalizeContainerName = (composeFileName) => {
+  return composeFileName
+    .replace('.yml', '')
+    .replace('.yaml', '')
+    .replace('docker-compose-', '')
+    .split('-')[0]; // Usuń numery (np. "-1" z "docker-compose-overseerr-1")
 };
 
 const submitComposeForm = async () => {
@@ -280,7 +393,6 @@ const submitComposeForm = async () => {
 
 const createComposeFile = async () => {
   try {
-    // Basic validation
     if (!composeForm.value.filename) {
       ElMessage.warning('Please specify a file name');
       return;
@@ -291,7 +403,6 @@ const createComposeFile = async () => {
       return;
     }
 
-    // Ensure filename ends with .yml or .yaml
     const filename = composeForm.value.filename.endsWith('.yml') || 
                      composeForm.value.filename.endsWith('.yaml') 
                      ? composeForm.value.filename 
@@ -299,12 +410,22 @@ const createComposeFile = async () => {
 
     const response = await axios.post('/services/docker/compose_add', {
       filename: filename,
-      content: composeForm.value.content
+      content: composeForm.value.content,
+      autoStart: composeForm.value.autoStart
     });
 
     ElMessage.success(response.data.message || 'Compose file created successfully');
+    
+    if (composeForm.value.autoStart) {
+      const containerName = filename.replace('.yml', '').replace('.yaml', '');
+      containerStatuses.value[containerName] = 'starting';
+      setTimeout(() => {
+        deployCompose(filename);
+      }, 1000);
+    }
+
     showCreateDialog.value = false;
-    composeForm.value = { filename: 'docker-compose.yml', content: '' };
+    composeForm.value = { filename: 'docker-compose.yml', content: '', autoStart: true };
     await fetchComposeFiles();
   } catch (error) {
     const errorMsg = error.response?.data?.message || 
@@ -366,27 +487,168 @@ const deleteCompose = async (filename) => {
   }
 };
 
+const deployTemplateDirectly = async (template) => {
+  try {
+    const result = await ElMessageBox.confirm(
+      `Deploy ${template.name} stack?`,
+      'Confirm Deployment',
+      { 
+        confirmButtonText: 'Deploy', 
+        cancelButtonText: 'Cancel',
+        showCheckbox: true,
+        checkboxLabel: 'Start containers immediately'
+      }
+    );
+
+    const shouldStart = result.value;
+    const loadingKey = `deploy-${template.name}`;
+    
+    ElMessage.info({
+      message: `Deploying ${template.name}...`,
+      key: loadingKey,
+      duration: 0
+    });
+
+    const filename = `${template.name.toLowerCase().replace(/ /g, '-')}.yml`;
+    const response = await axios.post('/services/docker/compose_add', {
+      filename: filename,
+      content: template.content,
+      autoStart: shouldStart
+    });
+
+    ElMessage.success({
+      message: response.data.message,
+      key: loadingKey
+    });
+
+    if (shouldStart) {
+      containerStatuses.value[filename.replace('.yml', '')] = 'starting';
+      setTimeout(() => {
+        deployCompose(filename);
+      }, 1000);
+    }
+
+    await fetchComposeFiles();
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('Deployment failed: ' + error.message);
+    }
+  }
+};
+
+const initDeployTerminal = () => {
+  if (deployTerminal.value) {
+    try {
+      deployTerminal.value.dispose();
+    } catch (e) {
+      console.warn('Error disposing terminal:', e);
+    }
+  }
+
+  deployTerminal.value = new Terminal({
+    cursorBlink: false,
+    fontFamily: 'monospace',
+    fontSize: 14,
+    convertEol: true,
+    theme: {
+      background: '#1e1e1e',
+      foreground: '#f0f0f0'
+    },
+    rendererType: 'canvas',
+    disableStdin: true,
+    scrollback: 1000
+  });
+
+  deployFitAddon.value = new FitAddon();
+  deployTerminal.value.loadAddon(deployFitAddon.value);
+  
+  if (deployTerminalRef.value) {
+    deployTerminal.value.open(deployTerminalRef.value);
+    deployFitAddon.value.fit();
+  }
+};
+
+const closeDeployStream = () => {
+  if (deployEventSource.value) {
+    deployEventSource.value.close();
+    deployEventSource.value = null;
+  }
+
+  if (deployTerminal.value) {
+    try {
+      if (deployFitAddon.value) {
+        deployTerminal.value.loadAddon(deployFitAddon.value);
+        deployFitAddon.value.dispose();
+        deployFitAddon.value = null;
+      }
+      deployTerminal.value.dispose();
+      deployTerminal.value = null;
+    } catch (e) {
+      console.warn('Error cleaning up terminal:', e);
+    }
+  }
+};
+
+const handleDeployDialogClosed = () => {
+  closeDeployStream();
+  deployDialogVisible.value = false;
+};
+
+const closeDeploy = () => {
+  handleDeployDialogClosed();
+};
+
 const deployCompose = async (filename) => {
   try {
     deployDialogVisible.value = true;
-    deployLog.value = 'Starting deployment...\n';
     
-    const response = await axios.post('/services/docker/compose/deploy', {
-      file: filename
-    });
+    await nextTick();
+    initDeployTerminal();
     
-    deployLog.value += response.data.output;
-    ElMessage.success('Compose file deployed successfully');
+    deployTerminal.value.writeln('Starting deployment...');
+    deployTerminal.value.writeln('========================\r\n');
+
+    const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+    const wsUrl = `${protocol}//${window.location.hostname}:3000`;
+    deployEventSource.value = new EventSource(`${wsUrl}/services/docker/composer/deploy-stream?file=${filename}`);
+    
+    deployEventSource.value.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.message) {
+          const lines = data.message.split('\r\n');
+          lines.forEach(line => {
+            if (line.trim().length > 0) {
+              deployTerminal.value.writeln(line);
+            }
+          });
+        }
+      } catch (e) {
+        console.error('Error parsing event data:', e);
+      }
+    };
+
+    deployEventSource.value.onerror = (error) => {
+      deployTerminal.value.writeln('\r\nError in deployment stream');
+      closeDeployStream();
+    };
+
+    // Update container status after deployment
+    const containerName = filename.replace('.yml', '').replace('.yaml', '');
+    setTimeout(async () => {
+      const status = await checkContainerStatus(containerName);
+      containerStatuses.value[containerName] = status;
+    }, 5000);
   } catch (error) {
-    deployLog.value += error.response?.data?.details || error.message;
-    ElMessage.error('Failed to deploy compose file');
-    console.error(error);
+    console.error('Deployment error:', error);
+    if (deployTerminal.value) {
+      deployTerminal.value.writeln('Error: ' + error.message);
+    }
   }
 };
 
 const loadTemplates = async () => {
   try {
-    // Najpierw spróbuj pobrać z GitHub
     const response = await axios.get(
       'https://raw.githubusercontent.com/gekomod/docker-templates/main/contents/templates.json',
       {
@@ -414,7 +676,8 @@ const useTemplate = () => {
   showTemplatesDialog.value = false;
   composeForm.value = {
     filename: `${selectedTemplate.value.name.toLowerCase().replace(/ /g, '-')}.yml`,
-    content: selectedTemplate.value.content
+    content: selectedTemplate.value.content,
+    autoStart: autoStartContainer.value
   };
 };
 
@@ -422,19 +685,39 @@ const handleTemplateSelect = (row) => {
   selectedTemplate.value = row;
   composeForm.value = {
     filename: `${row.name.toLowerCase().replace(/ /g, '-')}.yml`,
-    content: row.content
+    content: row.content,
+    autoStart: row.metadata?.autoStart !== false
   };
   showTemplatesDialog.value = false;
   showCreateDialog.value = true;
 };
 
 const loadTemplatesDialog = async () => {
-    showTemplatesDialog.value = true;
-    loadTemplates();
+  showTemplatesDialog.value = true;
+  loadTemplates();
 }
 
 onMounted(() => {
   fetchComposeFiles();
+  
+  // Aktualizuj status co 10 sekund
+  const interval = setInterval(async () => {
+    if (!composeFiles.value.length) return;
+    
+    await Promise.all(composeFiles.value.map(async file => {
+      const name = file.name.replace('.yml', '').replace('.yaml', '');
+      containerStatuses.value[name] = await checkContainerStatus(name);
+    }));
+  }, 10000);
+
+  onBeforeUnmount(() => {
+    clearInterval(interval);
+    closeDeployStream();
+  });
+});
+
+onBeforeUnmount(() => {
+  closeDeployStream();
 });
 </script>
 
@@ -473,5 +756,33 @@ onMounted(() => {
   font-family: monospace;
   white-space: pre-wrap;
   border: 1px solid #eaeaea;
+}
+
+.terminal-container {
+  width: 100%;
+  height: 70vh;
+  background: #1e1e1e;
+  padding: 10px;
+  border-radius: 4px;
+}
+
+.terminal {
+  width: 100%;
+  height: 100%;
+}
+
+.el-tag .el-icon.is-loading {
+  margin-right: 5px;
+  animation: rotating 2s linear infinite;
+}
+
+@keyframes rotating {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.el-dialog .el-checkbox {
+  margin-right: auto;
+  margin-left: 10px;
 }
 </style>

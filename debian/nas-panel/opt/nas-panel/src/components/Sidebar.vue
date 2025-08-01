@@ -97,6 +97,42 @@ const menuItems = computed(() => {
 </script>
 
 <style lang="scss" scoped>
+.sidebar-menu {
+  height: 100%;
+  overflow-y: auto;
+  transition: width 0.3s ease;
+  
+  &:not(.el-menu--collapse) {
+    width: 260px;
+    @media (max-width: 768px) {
+      width: 200px;
+    }
+    @media (max-width: 480px) {
+      width: 180px;
+    }
+  }
+
+  .el-menu-item,
+  .el-sub-menu__title {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .menu-icon {
+    margin-right: 12px;
+    @media (max-width: 480px) {
+      margin-right: 8px;
+    }
+  }
+}
+
+/* Ukrywamy strzałki na małych ekranach gdy sidebar jest złożony */
+@media (max-width: 768px) {
+  .el-menu--collapse .el-sub-menu > .el-sub-menu__title .el-sub-menu__icon-arrow {
+    display: none;
+  }
+}
 
 .sidebar-menu {
   background-color: var(--sidebar-bg) !important;
@@ -122,9 +158,6 @@ const menuItems = computed(() => {
     }
   }
 
-  &:not(.el-menu--collapse) {
-    width: 260px;
-  }
 
 
   .el-sub-menu {
@@ -133,24 +166,10 @@ const menuItems = computed(() => {
     }
   
     .el-menu-item {
-      padding-left: 60px !important;
+      padding-left: 40px !important;
     }
 
-    .el-sub-menu__title {
-      padding-left: 20px !important;
-    }
-
-    .el-sub-menu {
-      .el-menu-item {
-        padding-left: 80px !important;
-      }
-    }
   }
 
-  .menu-icon {
-    margin-right: 16px;
-    font-size: 18px;
-    vertical-align: middle;
-  }
 }
 </style>

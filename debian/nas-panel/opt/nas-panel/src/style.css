@@ -33,6 +33,7 @@ body {
 h1 {
   font-size: 3.2em;
   line-height: 1.1;
+  margin: 0.5em 0;
 }
 
 button {
@@ -63,6 +64,46 @@ button:focus-visible {
   margin: 0 auto;
   padding: 2rem;
   text-align: center;
+  width: 100%;
+}
+
+/* Responsywność - Tablet */
+@media (max-width: 768px) {
+  h1 {
+    font-size: 2.5em;
+  }
+  
+  #app {
+    padding: 1.5rem;
+  }
+  
+  .card {
+    padding: 1.5em;
+  }
+}
+
+/* Responsywność - Mobile */
+@media (max-width: 480px) {
+  h1 {
+    font-size: 2em;
+    line-height: 1.2;
+  }
+  
+  body {
+    padding: 0.5rem;
+  }
+  
+  #app {
+    padding: 1rem;
+  }
+  
+  .card {
+    padding: 1em;
+  }
+  
+  button {
+    padding: 0.5em 1em;
+  }
 }
 
 @media (prefers-color-scheme: light) {

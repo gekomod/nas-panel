@@ -1,2 +1,3 @@
 ./debian/config/settings.json
+./debian/config/webdav.conf
 ./debian/scripts/update-dynamic-dns.py

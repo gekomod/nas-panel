@@ -602,7 +602,7 @@ app.post('/api/storage/unmount', requireAuth, async (req, res) => {
 
 // Format device
 app.post('/api/storage/format', requireAuth, async (req, res) => {
-  const { device, fsType, label } = req.body;
+  const { device, fsType, force, label } = req.body;
   
     const { exec } = require('child_process');
   const util = require('util');
@@ -919,6 +919,46 @@ async function getTestHistory(device) {
     return []
   }
 }
+
+app.post('/api/storage/exec-command', requireAuth, async (req, res) => {
+  const { command, timeout = 30000 } = req.body;
+  
+  try {
+    const { stdout, stderr } = await execAsync(command, { timeout });
+    res.json({
+      success: true,
+      stdout,
+      stderr
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Command failed',
+      details: error.message,
+      stderr: error.stderr
+    });
+  }
+});
+
+app.get('/api/storage/disk-size', requireAuth, async (req, res) => {
+  const { device } = req.query;
+  
+  try {
+    const { stdout } = await execAsync(`lsblk -b -n -o SIZE ${device}`);
+    const size = parseInt(stdout.trim());
+    
+    res.json({
+      success: true,
+      size: size
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get disk size',
+      details: error.message
+    });
+  }
+});
 
   // Sync function
   async function syncSmartMonitoring() {

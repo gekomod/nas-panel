@@ -182,6 +182,16 @@ const routes = [
       }
     },
     {
+      path: '/services/ssh',
+      name: 'SSH',
+      component: () => import('@/components/services/Ssh/SshSettings.vue'),
+      meta: { 
+        title: 'SSH', 
+        requiresAuth: true,
+        icon: 'mdi:console-network' 
+        }
+    },
+    {
       path: '/services/webdav',
       name: 'WebDAV',
       component: () => import('@/components/services/Webdav/Webdav.vue'),
@@ -189,6 +199,16 @@ const routes = [
         title: 'WebDAV', 
         requiresAuth: true,
         icon: 'mdi:web' 
+      }
+    },
+    {
+      path: '/services/ftp-sftp',
+      name: 'FTP-SFTP',
+      component: () => import('@/components/services/FtpSftp/FtpSftp.vue'),
+      meta: { 
+        title: 'FTP/SFTP', 
+        requiresAuth: true,
+        icon: 'mdi:folder-network' 
       }
     }
   ]
@@ -288,6 +308,36 @@ const routes = [
 	}
       },
       {
+	path: '/system/cron-jobs',
+	name: 'CronJobs',
+	component: () => import('@/components/system/Cron/CronJobs.vue'),
+	meta: { 
+	  title: 'Cron Jobs',
+	  requiresAuth: true,
+	  icon: 'mdi:firework'
+	}
+      },
+      {
+	path: '/system/antivirus',
+	name: 'Antivirus',
+	component: () => import('@/components/system/Antivirus/Antivirus.vue'),
+	meta: { 
+	  title: 'Antivirus',
+	  requiresAuth: true,
+	  icon: 'mdi:security'
+	}
+      },
+	{
+	  path: '/system/backup',
+	  name: 'Backup',
+	  component: () => import('@/components/system/Backup/Backup.vue'),
+	  meta: { 
+	    title: 'Backup',
+	    requiresAuth: true,
+	    icon: 'mdi:backup-restore' 
+	  }
+	},
+      {
         path: '/system/settings',
         name: 'SystemSettings',
         component: () => import('@/components/system/Settings/Settings.vue'),
@@ -315,7 +365,37 @@ const routes = [
           requiresAuth: true,
           icon: 'mdi:chart-box-outline' 
         }
-      }
+      },
+      {
+	  path: '/diagnostics/system-logs',
+	  meta: { 
+	    title: 'System Logs',
+	    requiresAuth: true,
+	    icon: 'mdi:file-document-outline' 
+	  },
+	  children: [
+	    {
+	      path: '/diagnostics/system-logs/local',
+	      name: 'SystemLogs',
+	      component: () => import('@/components/diagnostics/system-logs/LocalLogs.vue'),
+	      meta: { 
+		title: 'Local Logs', 
+		requiresAuth: true,
+		icon: 'mdi:file-document-multiple-outline' 
+	      }
+	    },
+	    {
+	      path: '/diagnostics/system-logs/remote',
+	      name: 'RemoteLogs',
+	      component: () => import('@/components/diagnostics/system-logs/RemoteLogs.vue'),
+	      meta: { 
+		title: 'Remote Logs', 
+		requiresAuth: true,
+		icon: 'mdi:server-network' 
+	      }
+	    }
+	  ]
+	}
     ]
   }
 ]

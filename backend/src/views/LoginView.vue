@@ -41,6 +41,11 @@
             </template>
           </el-dropdown>
         </el-tooltip>
+          <el-tooltip effect="dark" :content="darkMode ? $t('theme.light') : $t('theme.dark')" placement="left">
+    <el-button circle class="theme-btn" @click="toggleDarkMode">
+      <Icon :icon="darkMode ? 'mdi:weather-sunny' : 'mdi:weather-night'" width="20" />
+    </el-button>
+  </el-tooltip>
       </div>
       
         <div class="brand-logo">
@@ -119,7 +124,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/services/AuthService'
 import { Icon } from '@iconify/vue'
@@ -165,6 +170,34 @@ const handleLogin = async () => {
     error.value = t('login.error')
   } finally {
     loading.value = false
+  }
+}
+
+const darkMode = ref(false)
+
+// Sprawdź zapisane preferencje przy załadowaniu
+onMounted(() => {
+  const savedMode = localStorage.getItem('darkMode')
+  if (savedMode) {
+    darkMode.value = savedMode === 'true'
+    updateDarkMode()
+  } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    darkMode.value = true
+    updateDarkMode()
+  }
+})
+
+const toggleDarkMode = () => {
+  darkMode.value = !darkMode.value
+  localStorage.setItem('darkMode', darkMode.value)
+  updateDarkMode()
+}
+
+const updateDarkMode = () => {
+  if (darkMode.value) {
+    document.documentElement.classList.add('dark')
+  } else {
+    document.documentElement.classList.remove('dark')
   }
 }
 </script>
@@ -420,6 +453,10 @@ const handleLogin = async () => {
   top: 20px;
   right: 20px;
   z-index: 10;
+
+  display: flex;
+  gap: 8px;
+
 }
 
 .lang-btn {
@@ -462,6 +499,80 @@ const handleLogin = async () => {
     transform: translateY(0);
   }
 }
+
+
+:root.dark {
+  --el-color-primary: #409EFF;
+  --el-bg-color: #1a1a1a;
+  --el-text-color-primary: #e5e5e5;
+  --el-text-color-regular: #d0d0d0;
+  --el-border-color-light: #333;
+  --el-fill-color-light: #2a2a2a;
+}
+
+:root.dark .login-container {
+  background: linear-gradient(135deg, #121212 0%, #1e1e1e 100%);
+}
+
+:root.dark .login-card {
+  background: rgba(30, 30, 30, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+:root.dark .logo-subtext {
+  color: #a0a0a0;
+}
+
+:root.dark .login-title {
+  color: #f0f0f0;
+}
+
+:root.dark .login-subtitle {
+  color: #a0a0a0;
+}
+
+:root.dark .forgot-password {
+  color: #a0a0a0;
+}
+
+:root.dark .forgot-password:hover {
+  color: var(--el-color-primary);
+}
+
+:root.dark .shape-1 {
+  opacity: 0.5;
+}
+
+:root.dark .shape-2 {
+  opacity: 0.5;
+}
+
+:root.dark .lang-btn,
+:root.dark .theme-btn {
+  background: rgba(30, 30, 30, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+:root.dark .lang-btn:hover,
+:root.dark .theme-btn:hover {
+  background: rgba(60, 60, 60, 0.5);
+}
+
+/* Style dla przycisku theme */
+.theme-btn {
+  padding: 8px;
+  border: none;
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(5px);
+  transition: all 0.3s ease;
+  margin-left: 8px;
+}
+
+.theme-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(1.1);
+}
+
 </style>
 
 

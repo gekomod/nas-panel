@@ -1,8 +1,8 @@
 Package: nas-panel
-Version: 1.0.2
+Version: 1.0.4
 Architecture: amd64
 Maintainer: Gekomod <zaba141@o2.pl>
-Installed-Size: 419266
+Installed-Size: 492479
 Depends: libc6 (>= 2.34), libgcc-s1 (>= 4.2), libpam0g (>= 0.99.7.1), libstdc++6 (>= 11), nodejs (>= 22), npm, sqlite3, ethtool, ufw, network-manager, smartmontools, net-tools, iperf3, iproute2, jq, python3, make, g++, musl-dev, samba
 Section: web
 Priority: optional

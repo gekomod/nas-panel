@@ -68,12 +68,17 @@ export default {
     mount: 'Mount',
     format: 'Format',
     unmount: 'Unmount',
-        "mountDialog": {
+    "mountDialog": {
       "title": "Montowanie urządzenia",
       "device": "Urządzenie",
       "mountPoint": "Punkt montowania",
       "fsType": "Typ systemu plików",
       "options": "Opcje montowania",
+      "selectDevice": "Select Device",
+      "selectFsType": "Wybierz typ systemu plików",
+      "mount": "Mount",
+      partition: "Partition",
+      zfsPoolName: "ZFS Pool Name",
       "selectDevice": "Wybierz urządzenie",
       "selectFsType": "Wybierz typ systemu plików",
       "mount": "Montuj"
@@ -87,8 +92,22 @@ export default {
       "selectDevice": "Wybierz urządzenie",
       "selectFsType": "Wybierz typ systemu plików",
       "format": "Formatuj",
-      "warning": "UWAGA: Wszystkie dane na urządzeniu {device} zostaną utracone!"
+      "warning": "UWAGA: Wszystkie dane na urządzeniu {device} zostaną utracone!",
+      zfsPoolName: "ZFS Pool Name"
     },
+    "partition": "Partition Disk",
+    "partitionDialog": {
+      "title": "Partition Disk",
+      "selectDevice": "Select Device",
+      "scheme": "Partition Scheme",
+      "partitions": "Partitions",
+      "addPartition": "Add Partition",
+      "create": "Create Partitions",
+      "diskSize": "Disk Capacity",
+      "used": "Used",
+      "free": "Free",
+      "device": "Device"
+    }
   },
   storageSmart: {
     title: 'Monitored Devices',

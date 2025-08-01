@@ -78,9 +78,16 @@
         </template>
       </el-table-column>
       
-      <el-table-column label="Actions" width="220">
+      <el-table-column label="Actions" width="240">
         <template #default="{row}">
           <el-button-group>
+
+      <el-tooltip
+        class="box-item"
+        effect="dark"
+        content="Start/Stop Container"
+        placement="top-start"
+      >
             <el-button
               v-if="!isContainerRunning(row.status)"
               size="small"
@@ -89,6 +96,7 @@
             >
               <el-icon><Icon icon="mdi:play" /></el-icon>
             </el-button>
+     
             <el-button
               v-else
               size="small"
@@ -105,6 +113,22 @@
             >
               <el-icon><Icon icon="mdi:restart" /></el-icon>
             </el-button>
+            </el-tooltip>
+                  <el-tooltip
+        class="box-item"
+        effect="dark"
+        content="Restart"
+        placement="top-start"
+      >
+            <el-button size="small" type="warning" @click="handleRestart(row.ID)"><el-icon><Icon icon="mdi:restart" /></el-icon></el-button>
+      </el-tooltip>
+            
+      <el-tooltip
+        class="box-item"
+        effect="dark"
+        content="Show Container Stats"
+        placement="top-start"
+      >
             <el-button
               size="small"
               type="info"
@@ -112,6 +136,14 @@
             >
               <el-icon><Icon icon="mdi:chart-box" /></el-icon>
             </el-button>
+      </el-tooltip>
+       
+      <el-tooltip
+        class="box-item"
+        effect="dark"
+        content="Show Container Logs"
+        placement="top-start"
+      >
             <el-button
               size="small"
               type="primary"
@@ -119,6 +151,14 @@
             >
               <el-icon><Icon icon="mdi:file-document" /></el-icon>
             </el-button>
+      </el-tooltip>
+            
+      <el-tooltip
+        class="box-item"
+        effect="dark"
+        content="Delete Container"
+        placement="top-start"
+      >
             <el-button
               size="small"
               type="danger"
@@ -127,6 +167,24 @@
             >
             <el-icon><Icon icon="mdi:delete" /></el-icon>
             </el-button>
+      </el-tooltip>
+      
+      
+      <el-tooltip
+        class="box-item"
+        effect="dark"
+        content="Open SSH"
+        placement="top-start"
+      >
+      <el-button
+        size="small"
+        type="success"
+        @click.stop="openSshDialog(row.ID)"
+      >
+        <el-icon><Icon icon="mdi:console" /></el-icon>
+      </el-button>
+      </el-tooltip>
+      
           </el-button-group>
         </template>
       </el-table-column>
@@ -156,14 +214,105 @@
   </template>
 </el-dialog>
 
+  <el-dialog
+    v-model="sshDialogVisible"
+    title="SSH Connection"
+    width="70%"
+  >
+    <div class="ssh-terminal">
+      <div class="ssh-output">
+        <pre>KIEDYŚ</pre>
+      </div>
+    </div>
+    <template #footer>
+      <el-button @click="sshDialogVisible = false">Close</el-button>
+    </template>
+  </el-dialog>
+
   </div>
+  
+    <el-dialog v-model="showCreateDialog" title="Create New Container" width="60%">
+    <el-form :model="createForm" label-width="120px">
+      <el-form-item label="Container Name">
+        <el-input v-model="createForm.name" />
+      </el-form-item>
+      <el-form-item label="Image">
+        <el-select
+          v-model="createForm.image"
+          filterable
+          remote
+          :remote-method="searchImages"
+          placeholder="e.g. nginx:latest"
+        >
+          <el-option
+            v-for="img in availableImages"
+            :key="img"
+            :label="img"
+            :value="img"
+          />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="Ports">
+        <el-tag
+          v-for="(port, index) in createForm.ports"
+          :key="index"
+          closable
+          @close="removePort(index)"
+        >
+          {{ port }}
+        </el-tag>
+        <el-input
+          v-model="newPort"
+          placeholder="e.g. 8080:80"
+          style="width: 150px; margin-left: 10px"
+          @keyup.enter="addPort"
+        >
+          <template #append>
+            <el-button icon="plus" @click="addPort" />
+          </template>
+        </el-input>
+      </el-form-item>
+      <el-form-item label="Volumes">
+        <el-tag
+          v-for="(vol, index) in createForm.volumes"
+          :key="index"
+          closable
+          @close="removeVolume(index)"
+        >
+          {{ vol }}
+        </el-tag>
+        <el-input
+          v-model="newVolume"
+          placeholder="e.g. /host/path:/container/path"
+          style="width: 250px; margin-left: 10px"
+          @keyup.enter="addVolume"
+        >
+          <template #append>
+            <el-button icon="plus" @click="addVolume" />
+          </template>
+        </el-input>
+      </el-form-item>
+      <el-form-item label="Environment">
+        <div v-for="(env, index) in createForm.env" :key="index" class="env-row">
+          <el-input v-model="env.key" placeholder="Key" style="width: 150px" />
+          <el-input v-model="env.value" placeholder="Value" style="width: 250px" />
+          <el-button icon="delete" @click="removeEnv(index)" />
+        </div>
+        <el-button @click="addEnv">Add Environment Variable</el-button>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="showCreateDialog = false">Cancel</el-button>
+      <el-button type="primary" @click="createContainer">Create</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, inject, watch } from 'vue';
+import { ref, computed, onMounted, inject, watch, nextTick } from 'vue';
 import axios from 'axios';
 import { Icon } from '@iconify/vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessage, ElMessageBox, ElTooltip } from 'element-plus';
 import ContainerStats from './ContainerStats.vue';
 
 const containers = ref([]);
@@ -177,6 +326,30 @@ const loadingActions = ref({});
 const expandedRow = ref(null);
 const containerStats = ref({});
 const reloadKey = inject('reloadKey');
+const sshDialogVisible = ref(false);
+const currentSshContainer = ref('');
+const showCreateDialog = ref(false);
+const createForm = ref({
+  name: '',
+  image: '',
+  ports: [],
+  volumes: [],
+  env: []
+});
+const newPort = ref('');
+const newVolume = ref('');
+const availableImages = ref([]);
+
+const emit = defineEmits(['restart-container', 'show-stats']);
+
+// Then when you need to emit these events, use:
+const handleRestart = (containerId) => {
+  emit('restart-container', containerId);
+};
+
+const handleShowStats = (containerId) => {
+  emit('show-stats', containerId);
+};
 
 const handleRowClick = async (row) => {
           expandedRow.value = row.ID;
@@ -362,6 +535,78 @@ const showContainerStats = (id) => {
   statsDialogVisible.value = true;
 };
 
+const openSshDialog = (containerId) => {
+  currentSshContainer.value = containerId;
+  sshDialogVisible.value = true;
+};
+
+const searchImages = async (query) => {
+  if (query) {
+    try {
+      const response = await axios.get('https://registry.hub.docker.com/v1/search', {
+        params: { q: query }
+      });
+      availableImages.value = response.data.results.map(r => r.name);
+    } catch (error) {
+      console.error('Error searching images:', error);
+    }
+  }
+};
+
+const addPort = () => {
+  if (newPort.value) {
+    createForm.value.ports.push(newPort.value);
+    newPort.value = '';
+  }
+};
+
+const removePort = (index) => {
+  createForm.value.ports.splice(index, 1);
+};
+
+const addVolume = () => {
+  if (newVolume.value) {
+    createForm.value.volumes.push(newVolume.value);
+    newVolume.value = '';
+  }
+};
+
+const removeVolume = (index) => {
+  createForm.value.volumes.splice(index, 1);
+};
+
+const addEnv = () => {
+  createForm.value.env.push({ key: '', value: '' });
+};
+
+const removeEnv = (index) => {
+  createForm.value.env.splice(index, 1);
+};
+
+const createContainer = async () => {
+  try {
+    const envVars = {};
+    createForm.value.env.forEach(e => {
+      if (e.key) envVars[e.key] = e.value;
+    });
+    
+    const response = await axios.post('/services/docker/container/create', {
+      name: createForm.value.name,
+      image: createForm.value.image,
+      ports: createForm.value.ports,
+      volumes: createForm.value.volumes,
+      env: envVars
+    });
+    
+    ElMessage.success(response.data.message);
+    showCreateDialog.value = false;
+    await fetchContainers();
+  } catch (error) {
+    ElMessage.error('Failed to create container');
+    console.error(error);
+  }
+};
+
 watch(reloadKey, () => {
   fetchContainers();
 });
@@ -446,5 +691,24 @@ onMounted(() => {
 .loading-stats .el-icon {
   margin-right: 8px;
   font-size: 16px;
+}
+
+/* Dodaj nowe style */
+.ssh-terminal {
+  height: 60vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.ssh-output {
+  flex-grow: 1;
+  overflow: auto;
+  background: #1e1e1e;
+  color: #f0f0f0;
+  padding: 10px;
+  border-radius: 4px;
+  font-family: monospace;
+  white-space: pre-wrap;
+  margin-top: 10px;
 }
 </style>

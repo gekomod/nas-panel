@@ -222,7 +222,19 @@ onMounted(() => {
   color: #999;
   text-decoration: line-through;
 }
+.widget-wrapper {
+  background: var(--card-bg);
+  border-radius: 16px;
+  box-shadow: var(--card-shadow);
+  border: var(--card-border);
+  transition: var(--transition);
+  }
 
+
+.disabled-widget {
+  color: var(--text-light);
+  text-decoration: line-through;
+}
 .widget-wrapper {
   display: flex;
   flex-direction: column;

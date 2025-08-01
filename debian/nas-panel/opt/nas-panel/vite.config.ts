@@ -30,7 +30,8 @@ export default defineConfig({
             "Cross-Origin-Opener-Policy": "same-origin"
           }
         : {}),
-      
+      "Cross-Origin-Embedder-Policy": "require-corp",
+      "Cross-Origin-Opener-Policy": "same-origin",
       // Inne przydatne nagłówki:
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS"

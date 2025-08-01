@@ -162,15 +162,11 @@ app.get('/services/webdav/available-disks', requireAuth, async (req, res) => {
       })
       .filter(disk => disk.mountpoint); // Filtruj tylko zamontowane dyski
 
-    // Debugowanie - wyświetl znalezione dyski
-    console.log('Znalezione dyski:', disks);
-
     res.json({ 
       success: true,
       data: disks
     });
   } catch (error) {
-    console.error('Błąd pobierania listy dysków:', error);
     res.status(500).json({ 
       success: false,
       error: 'Nie udało się pobrać listy dysków',

@@ -35,6 +35,26 @@
               <Icon icon="mdi:refresh" width="16" height="16" :class="{ 'spin': loading }" />
             </el-button>
           </el-tooltip>
+          <el-tooltip :content="$t('storageFilesystems.partition')">
+	    <el-button 
+	      size="small" 
+	      @click="showPartitionDialog" 
+	      :disabled="loading"
+	      text
+	    >
+	      <Icon icon="mdi:harddisk-plus" width="16" height="16" />
+	    </el-button>
+	  </el-tooltip>
+          <el-tooltip :content="$t('storageFilesystems.editFstab')">
+            <el-button 
+	      size="small" 
+	      @click="openFstabEditor" 
+	      :disabled="loading"
+	      text
+              >
+            <Icon icon="mdi:file-edit" width="16" height="16" />
+	  </el-button>
+	 </el-tooltip>
         </div>
       </div>
     </template>
@@ -101,6 +121,37 @@
         </el-button>
       </template>
     </el-dialog>
+    
+    <el-dialog 
+  v-model="fstabDialogVisible" 
+  title="Edit /etc/fstab" 
+  width="800px"
+  :close-on-click-modal="false"
+>
+  <div class="fstab-editor-container">
+    <el-alert type="warning" :closable="false" style="margin-bottom: 15px;">
+      Warning: Incorrect modifications may prevent your system from booting properly.
+    </el-alert>
+    
+    <el-input
+      v-model="fstabContent"
+      type="textarea"
+      :rows="20"
+      resize="none"
+      placeholder="Loading fstab content..."
+      :loading="fstabLoading"
+    />
+    
+    <div class="editor-actions" style="margin-top: 15px;">
+      <el-button @click="fetchFstabContent" :loading="fstabLoading">
+        Reload
+      </el-button>
+      <el-button type="primary" @click="saveFstab" :loading="fstabLoading">
+        Save
+      </el-button>
+    </div>
+  </div>
+</el-dialog>
 
     <!-- Format Dialog -->
     <el-dialog v-model="formatDialogVisible" :title="$t('storageFilesystems.formatDialog.title')" width="500px">
@@ -229,6 +280,18 @@
         </template>
       </el-table-column>
       
+	<el-table-column label="Auto-mount" width="120">
+	  <template #default="{ row }">
+	    <el-switch
+	      v-if="!row.isZfs"
+	      v-model="row.inFstab"
+	      @change="toggleFstabEntry(row.device, row.mounted, row.type, row.options, $event)"
+	      :loading="row.fstabLoading"
+	    />
+	    <el-tag v-else type="info" size="small">ZFS</el-tag>
+	  </template>
+	</el-table-column>
+      
       <el-table-column :label="$t('storageFilesystems.reference')" prop="reference" width="120">
         <template #default="{ row }">
           <el-tag v-if="row.reference" size="small" type="info">
@@ -269,6 +332,109 @@
       <span>{{ error }}</span>
     </div>
   </el-card>
+  
+  <!-- Partition Dialog -->
+<el-dialog v-model="partitionDialogVisible" :title="$t('storageFilesystems.partitionDialog.title')" width="700px">
+  <el-form :model="partitionForm" label-position="top">
+    <el-form-item :label="$t('storageFilesystems.partitionDialog.device')">
+      <el-select 
+        v-model="partitionForm.device" 
+        :placeholder="$t('storageFilesystems.partitionDialog.selectDevice')" 
+        style="width: 100%"
+        @change="checkSystemDisk"
+      >
+        <el-option
+          v-for="device in partitionableDevices"
+          :key="device.path"
+          :label="`${device.path} (${device.model || 'Unknown'})`"
+          :value="device.path"
+          :disabled="isSystemDisk(device.path)"
+        />
+      </el-select>
+    </el-form-item>
+    
+    <el-form-item :label="$t('storageFilesystems.partitionDialog.diskSize')" v-if="partitionForm.device">
+  <div class="disk-usage-container">
+    <el-progress 
+      :percentage="diskUsagePercentage"
+      :color="getUsageColor(diskUsagePercentage)"
+      :show-text="false"
+      :stroke-width="20"
+    />
+    <div class="disk-size-info">
+      <span>{{ formatBytes(usedDiskSpace) }} / {{ formatBytes(totalDiskSize) }}</span>
+      <span>({{ diskUsagePercentage }}%)</span>
+    </div>
+  </div>
+</el-form-item>
+    
+    <el-form-item :label="$t('storageFilesystems.partitionDialog.scheme')">
+      <el-radio-group v-model="partitionForm.scheme">
+        <el-radio value="gpt">GPT</el-radio>
+        <el-radio value="mbr">MBR</el-radio>
+      </el-radio-group>
+    </el-form-item>
+    
+    <el-form-item :label="$t('storageFilesystems.partitionDialog.partitions')">
+      <div class="partition-list">
+    <div v-for="(part, index) in partitionForm.partitions" :key="index" class="partition-item">
+
+        <el-input-number 
+  v-model="part.size" 
+  :min="1" 
+  :max="getMaxSize(part)" 
+  :step="part.unit === '%' ? 1 : (part.unit === 'G' ? 10 : 100)"
+  :precision="0"
+/>
+        <el-select 
+  v-model="part.unit" 
+  style="width: 100px; margin-left: 10px;"
+  @change="(val) => changePartitionUnit(part, val)"
+>
+          <el-option label="MB" value="M" />
+          <el-option label="GB" value="G" />
+          <el-option label="%" value="%" />
+        </el-select>
+        <el-select v-model="part.type" style="width: 150px; margin-left: 10px;">
+          <el-option label="Linux" value="8300" />
+          <el-option label="Linux swap" value="8200" />
+          <el-option label="EFI System" value="EF00" />
+          <el-option label="Microsoft basic data" value="0700" />
+        </el-select>
+        <el-button 
+          @click="removePartition(index)" 
+          type="danger" 
+          size="small"
+        >
+        <Icon icon="mdi:delete" /> 
+        </el-button>
+        
+              <span class="partition-size-info">
+        {{ calculatePartitionSize(part) }}
+      </span>
+    </div>
+  </div>
+ 
+      <el-button @click="addPartition" type="primary" size="small">
+        {{ $t('storageFilesystems.partitionDialog.addPartition') }}
+      </el-button>
+    </el-form-item>
+  </el-form>
+  
+  <template #footer>
+    <el-button @click="partitionDialogVisible = false">
+      {{ $t('common.cancel') }}
+    </el-button>
+    <el-button 
+      type="primary" 
+      @click="createPartitions" 
+      :loading="partitionLoading"
+      :disabled="partitionForm.partitions.length === 0"
+    >
+      {{ $t('storageFilesystems.partitionDialog.create') }}
+    </el-button>
+  </template>
+</el-dialog>
 </template>
 
 <script>
@@ -279,20 +445,29 @@ export default {
 </script>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@iconify/vue'
 import axios from 'axios'
 import { ElMessage, ElNotification, ElMessageBox } from 'element-plus'
 
+const abortController = ref(new AbortController())
+
 const { t } = useI18n()
 
-axios.defaults.baseURL = `${window.location.protocol}//${window.location.hostname}:3000`;
+const api = axios.create({
+  baseURL: `${window.location.protocol}//${window.location.hostname}:3000`,
+  signal: abortController.value.signal
+})
 
 const filesystems = ref([])
 const allDevices = ref([])
 const loading = ref(false)
 const error = ref(null)
+const fstabDialogVisible = ref(false);
+const fstabContent = ref('');
+const fstabLoading = ref(false);
+const fstabEntries = ref([]);
 
 // Mount dialog
 const mountDialogVisible = ref(false)
@@ -327,6 +502,33 @@ const supportedFilesystems = ref([
   'zfs'
 ])
 
+const totalDiskSize = ref(0);
+const usedDiskSpace = ref(0);
+const diskUsagePercentage = ref(0);
+
+const loadFstabEntries = async () => {
+  try {
+    const response = await api.get('/api/storage/fstab-check');
+    fstabEntries.value = response.data.entries;
+  } catch (error) {
+    console.error('Error loading fstab entries:', error);
+  }
+};
+
+const isAutoMounted = (device, mountPoint) => {
+  return fstabEntries.value.some(entry => {
+    // Sprawdzamy po urządzeniu (może być ścieżka, UUID lub LABEL)
+    const deviceMatch = entry.device === device || 
+                       device.includes(entry.device) || 
+                       entry.device.includes(device);
+    
+    // Sprawdzamy po punkcie montowania
+    const mountMatch = entry.mountPoint === mountPoint;
+    
+    return deviceMatch || mountMatch;
+  });
+};
+
 const formatableDevices = computed(() => {
   return allDevices.value.flatMap(device => {
     const base = {
@@ -348,26 +550,19 @@ const formatableDevices = computed(() => {
 // Computed properties
 const unmountedDevices = computed(() => {
   const mountedPaths = filesystems.value.map(fs => fs.device);
-  const allPartitions = allDevices.value.flatMap(device => 
-    device.partitions.map(part => ({
-      ...part,
-      model: device.model,
-      serial: device.serial
-    }))
-  );
-
-  return allPartitions.filter(part => 
-    !mountedPaths.includes(part.path) && 
-    !part.path.includes('loop') &&
-    !part.path.includes('ram') &&
-    part.type === 'part'
+  return allDevices.value.filter(device => 
+    !mountedPaths.includes(device.path) && 
+    !device.path.includes('loop') &&
+    !device.path.includes('ram') &&
+    device.type === 'disk' &&
+    !isSystemDisk(device.path) // Exclude system disks
   );
 });
 
 const unmountedPartitions = computed(() => {
   const mountedPaths = filesystems.value.map(fs => fs.device);
   return allDevices.value.flatMap(device => 
-    device.partitions
+    (device.partitions || [])
       .filter(part => 
         !mountedPaths.includes(part.path) &&
         !part.path.includes('loop') &&
@@ -375,17 +570,85 @@ const unmountedPartitions = computed(() => {
       )
       .map(part => ({
         ...part,
-        model: part.model || 'Unknown'
+        model: device.model || 'Unknown'
       }))
   );
 });
+
+// Helper function to identify system disks
+function isSystemDisk(devicePath) {
+  const systemDiskPatterns = ['/dev/sda', '/dev/nvme0n1']; // Add more patterns if needed
+  return systemDiskPatterns.some(pattern => devicePath.startsWith(pattern));
+}
 
 const availablePartitions = ref([]);
 const updatePartitions = (devicePath) => {
   const device = allDevices.value.find(d => d.path === devicePath);
   availablePartitions.value = device?.partitions || [];
   mountForm.value.partition = availablePartitions.value[0]?.path || '';
-};
+}
+
+// FSTAB
+const fetchFstabContent = async () => {
+  try {
+    fstabLoading.value = true;
+    const response = await api.get('/api/storage/fstab-content');
+    fstabContent.value = response.data.content;
+  } catch (error) {
+    ElNotification({
+      title: 'Error',
+      message: error.response?.data?.details || error.message,
+      type: 'error'
+    });
+  } finally {
+    fstabLoading.value = false;
+  }
+}
+
+const saveFstab = async () => {
+  try {
+    fstabLoading.value = true;
+    await api.post('/api/storage/save-fstab', { content: fstabContent.value });
+    ElNotification({
+      title: 'Success',
+      message: 'Fstab saved successfully',
+      type: 'success'
+    });
+    fstabDialogVisible.value = false;
+  } catch (error) {
+    ElNotification({
+      title: 'Error',
+      message: error.response?.data?.details || error.message,
+      type: 'error'
+    });
+  } finally {
+    fstabLoading.value = false;
+  }
+}
+
+const openFstabEditor = async () => {
+  try {
+    await ElMessageBox.confirm(
+      'You are about to edit system fstab file. Make sure you know what you are doing.',
+      'Warning',
+      {
+        confirmButtonText: 'Continue',
+        cancelButtonText: 'Cancel',
+        type: 'warning'
+      }
+    );
+    fstabDialogVisible.value = true;
+    await fetchFstabContent();
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElNotification({
+        title: 'Error',
+        message: error.message,
+        type: 'error'
+      });
+    }
+  }
+}
 
 // Methods
 const showMountDialog = async () => {
@@ -414,6 +677,58 @@ const showFormatDialog = async () => {
   }
 }
 
+const checkFstabEntry = async (device, mountPoint) => {
+  try {
+    const response = await axios.post('/api/storage/fstab', {
+      action: 'check',
+      device,
+      mountPoint
+    });
+    return response.data.exists;
+  } catch (error) {
+    console.error('Error checking fstab:', error);
+    return false;
+  }
+}
+
+const toggleFstabEntry = async (device, mountPoint, fsType, options, enabled) => {
+  try {
+    const response = await axios.post('/api/storage/fstab', {
+      action: enabled ? 'add' : 'remove',
+      device,
+      mountPoint,
+      fsType,
+      options
+    });
+    
+    if (response.data.success) {
+      // Aktualizujemy stan w tablicy filesystems
+      const fsIndex = filesystems.value.findIndex(fs => 
+        fs.device === device && fs.mounted === mountPoint
+      );
+      
+      if (fsIndex !== -1) {
+        filesystems.value[fsIndex].inFstab = enabled;
+      }
+      
+      ElNotification({
+        title: 'Success',
+        message: response.data.message,
+        type: 'success'
+      });
+      return true;
+    }
+    return false;
+  } catch (error) {
+    ElNotification({
+      title: 'Error',
+      message: error.response?.data?.details || error.message,
+      type: 'error'
+    });
+    return false;
+  }
+}
+
 const mountDevice = async () => {
   try {
     mountLoading.value = true;
@@ -422,10 +737,30 @@ const mountDevice = async () => {
     const deviceToMount = mountForm.value.partition || mountForm.value.device;
     const isZfs = mountForm.value.fsType === 'zfs';
     
-    // Dla ZFS używamy nazwy puli jako mountPoint jeśli nie podano
     const mountPoint = isZfs && !mountForm.value.mountPoint ? 
       mountForm.value.zfsPoolName || 'zpool' : 
       mountForm.value.mountPoint;
+
+    // For non-ZFS, ask about fstab
+    let addToFstab = false;
+    if (!isZfs) {
+      try {
+        await ElMessageBox.confirm(
+          'Czy dodać to montowanie do /etc/fstab dla automatycznego montowania przy starcie systemu?',
+          'Dodawanie do fstab',
+          {
+            confirmButtonText: 'Tak, dodaj do fstab',
+            cancelButtonText: 'Nie',
+            type: 'info'
+          }
+        );
+        addToFstab = true;
+      } catch {
+        // User canceled
+      }
+    }
+
+    await fetchDevices();
 
     const response = await axios.post('/api/storage/mount', {
       device: deviceToMount,
@@ -436,6 +771,17 @@ const mountDevice = async () => {
     });
 
     if (response.data.success) {
+      // If user wanted to add to fstab but it wasn't added automatically (e.g., already exists)
+      if (addToFstab && !response.data.addedToFstab && !isZfs) {
+        await toggleFstabEntry(
+          deviceToMount,
+          mountPoint,
+          mountForm.value.fsType,
+          mountForm.value.options,
+          true
+        );
+      }
+
       ElNotification({
         title: 'Success',
         message: response.data.isZfs ? 
@@ -457,7 +803,7 @@ const mountDevice = async () => {
   } finally {
     mountLoading.value = false;
   }
-};
+}
 
 const formatDevice = async () => {
   try {
@@ -560,19 +906,126 @@ const fetchDevices = async () => {
 }
 
 const refreshFilesystems = async () => {
+  abortController.value.abort();
+  abortController.value = new AbortController();
+  api.defaults.signal = abortController.value.signal;
+
   try {
-    loading.value = true
-    const response = await axios.get('/api/storage/filesystems')
-    if (Array.isArray(response.data?.data)) {
-      filesystems.value = response.data.data
+    loading.value = true;
+    const [fsResponse, fstabResponse] = await Promise.all([
+      api.get('/api/storage/filesystems'),
+      api.get('/api/storage/fstab-check')
+    ]);
+    
+    if (Array.isArray(fsResponse.data?.data)) {
+      filesystems.value = fsResponse.data.data.map(fs => ({
+        ...fs,
+        inFstab: isAutoMounted(fs.device, fs.mounted),
+        fstabLoading: false
+      }));
     }
-  } catch (err) {
-    error.value = t('storageFilesystems.errorLoading')
-    console.error('Error fetching filesystems:', err)
+    
+    fstabEntries.value = fstabResponse.data.entries || [];
+  } catch (error) {
+    if (!axios.isCancel(error)) {
+      error.value = t('storageFilesystems.errorLoading');
+      console.error('Error fetching filesystems:', error);
+    }
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
+
+const editFstabManually = async () => {
+  let timeoutId;
+  try {
+    await ElMessageBox.confirm(
+      'To będzie otwierać plik /etc/fstab w edytorze systemowym. Kontynuować?',
+      'Ręczna edycja fstab',
+      {
+        confirmButtonText: 'Tak, otwórz',
+        cancelButtonText: 'Anuluj',
+        type: 'warning'
+      }
+    );
+
+    // Używamy axios zamiast bezpośrednio execAsync
+    const response = await api.post('/api/storage/edit-fstab');
+    
+    ElNotification({
+      title: 'Success',
+      message: response.data.message || 'Fstab opened in editor',
+      type: 'success'
+    });
+  } catch (error) {
+    if (error.response) {
+      // Błąd z serwera
+      ElNotification({
+        title: 'Error',
+        message: error.response.data.details || error.message,
+        type: 'error'
+      });
+    } else if (error !== 'cancel') {
+      // Inny błąd (nie anulowanie przez użytkownika)
+      ElNotification({
+        title: 'Error',
+        message: error.message,
+        type: 'error'
+      });
+    }
+  } finally {
+    clearTimeout(timeoutId);
+    // Resetujemy controller dla następnych operacji
+    abortController.value = new AbortController();
+    api.defaults.signal = abortController.value.signal;
+  }
+};
+
+const getFstabOptions = (device, mountPoint) => {
+  const entry = fstabEntries.value.find(e => 
+    e.device === device || e.mountPoint === mountPoint
+  );
+  return entry?.options || 'defaults';
+};
+
+const toggleAutoMount = async (row) => {
+  try {
+    row.fstabLoading = true;
+    const isAuto = isAutoMounted(row.device, row.mounted);
+    
+    if (isAuto) {
+      // Usuń z fstab
+      await api.post('/api/storage/fstab-remove', {
+        device: row.device,
+        mountPoint: row.mounted
+      });
+    } else {
+      // Dodaj do fstab
+      await api.post('/api/storage/fstab-add', {
+        device: row.device,
+        mountPoint: row.mounted,
+        fsType: row.type,
+        options: 'defaults,nofail'
+      });
+    }
+    
+    await loadFstabEntries();
+    ElNotification({
+      title: 'Sukces',
+      message: isAuto ? 'Usunięto z auto-montowania' : 'Dodano do auto-montowania',
+      type: 'success'
+    });
+  } catch (error) {
+    ElNotification({
+      title: 'Błąd',
+      message: error.response?.data?.error || error.message,
+      type: 'error'
+    });
+  } finally {
+    row.fstabLoading = false;
+  }
+};
+
 
 const getDeviceIcon = (device) => {
   if (device?.includes('nvme')) return 'mdi:memory'
@@ -634,13 +1087,293 @@ const formatBytes = (bytes, decimals = 2) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i]
 }
 
+// Partition dialog
+const partitionDialogVisible = ref(false);
+const partitionLoading = ref(false);
+const partitionForm = ref({
+  device: '',
+  scheme: 'gpt',
+  partitions: [
+    { size: 100, unit: '%', type: '8300' }
+  ]
+});
+
+const partitionableDevices = computed(() => {
+  return allDevices.value.filter(device => 
+    device.type === 'disk' && 
+    !device.path.includes('loop') &&
+    !isSystemDisk(device.path)
+  );
+});
+
+const showPartitionDialog = async () => {
+  try {
+    loading.value = true;
+    await fetchDevices();
+    partitionDialogVisible.value = true;
+  } catch (err) {
+    error.value = t('storageFilesystems.errorLoadingDevices');
+    console.error('Error loading devices:', err);
+  } finally {
+    loading.value = false;
+  }
+};
+
+const addPartition = () => {
+  partitionForm.value.partitions.push({ size: 10, unit: 'G', type: '8300' });
+};
+
+const removePartition = (index) => {
+  partitionForm.value.partitions.splice(index, 1);
+};
+
+const checkSystemDisk = (devicePath) => {
+  if (isSystemDisk(devicePath)) {
+    ElMessage.warning('This appears to be a system disk. Partitioning system disks is not recommended.');
+  }
+};
+
+const createPartitions = async () => {
+  try {
+    partitionLoading.value = true;
+    
+    // Validate
+    validatePartitions();
+    if (isSystemDisk(partitionForm.value.device)) {
+      throw new Error('Cannot partition system disk');
+    }
+    
+    // Create partition command
+    let cmd = `sudo sgdisk --zap-all ${partitionForm.value.device} && `;
+    cmd += `sudo parted -s ${partitionForm.value.device} mklabel ${partitionForm.value.scheme} && `;
+    
+    partitionForm.value.partitions.forEach((part, index) => {
+      const size = part.unit === '%' ? `${part.size}%` : `${part.size}${part.unit}`;
+      cmd += `sudo sgdisk -n ${index + 1}:0:+${size} -t ${index + 1}:${part.type} ${partitionForm.value.device} && `;
+    });
+    
+    cmd += `sudo partprobe ${partitionForm.value.device}`;
+    
+    const response = await axios.post('/api/storage/exec-command', { 
+      command: cmd,
+      timeout: 60000 
+    });
+    
+    ElNotification({
+      title: 'Success',
+      message: 'Partitions created successfully',
+      type: 'success'
+    });
+    
+    partitionDialogVisible.value = false;
+    await fetchDevices();
+    await refreshFilesystems();
+  } catch (error) {
+    ElNotification({
+      title: 'Error',
+      message: error.response?.data?.details || error.message,
+      type: 'error'
+    });
+  } finally {
+    partitionLoading.value = false;
+  }
+};
+
+// Nowe metody
+const getDiskSize = async (devicePath) => {
+  try {
+    const response = await axios.get('/api/storage/disk-size', {
+      params: { device: devicePath }
+    });
+    totalDiskSize.value = response.data.size;
+    updateDiskUsage();
+  } catch (error) {
+    console.error('Error getting disk size:', error);
+    totalDiskSize.value = 0;
+  }
+};
+
+const updateDiskUsage = () => {
+  let used = 0;
+  
+  partitionForm.value.partitions.forEach(part => {
+    if (part.unit === '%') {
+      used += (part.size / 100) * totalDiskSize.value;
+    } else if (part.unit === 'G') {
+      used += part.size * 1024 * 1024 * 1024;
+    } else { // MB
+      used += part.size * 1024 * 1024;
+    }
+  });
+  
+  usedDiskSpace.value = Math.min(used, totalDiskSize.value);
+  diskUsagePercentage.value = Math.round((usedDiskSpace.value / totalDiskSize.value) * 100);
+};
+
+const calculatePartitionSize = (part) => {
+  if (part.unit === '%') {
+    const size = (part.size / 100) * totalDiskSize.value;
+    return formatBytes(size);
+  } else if (part.unit === 'G') {
+    return `${part.size} GB`;
+  } else {
+    return `${part.size} MB`;
+  }
+};
+
+const getMaxSize = (part) => {
+  if (part.unit === '%') {
+    return 100;
+  } else if (part.unit === 'G') {
+    return Math.floor(totalDiskSize.value / (1024 * 1024 * 1024));
+  } else {
+    return Math.floor(totalDiskSize.value / (1024 * 1024));
+  }
+};
+
+const getMaxSizeForUnit = (unit) => {
+  if (!totalDiskSize.value) return 100;
+  
+  if (unit === '%') return 100;
+  if (unit === 'G') return Math.floor(totalDiskSize.value / (1024 * 1024 * 1024));
+  return Math.floor(totalDiskSize.value / (1024 * 1024));
+};
+
+const changePartitionUnit = (part, newUnit) => {
+  const oldUnit = part.unit;
+  part.unit = newUnit;
+  
+  if (oldUnit === '%' && newUnit !== '%') {
+    // Konwersja z % na MB/GB
+    const sizeInBytes = (part.size / 100) * totalDiskSize.value;
+    if (newUnit === 'G') {
+      part.size = Math.floor(sizeInBytes / (1024 * 1024 * 1024));
+    } else {
+      part.size = Math.floor(sizeInBytes / (1024 * 1024));
+    }
+  } else if (oldUnit !== '%' && newUnit === '%') {
+    // Konwersja z MB/GB na %
+    const sizeInBytes = oldUnit === 'G' 
+      ? part.size * 1024 * 1024 * 1024 
+      : part.size * 1024 * 1024;
+    part.size = Math.floor((sizeInBytes / totalDiskSize.value) * 100);
+  }
+  
+  // Upewnij się, że nie przekraczamy maksimum
+  const maxSize = getMaxSizeForUnit(newUnit);
+  if (part.size > maxSize) {
+    part.size = maxSize;
+  }
+};
+
+const validatePartitions = () => {
+  let totalPercent = 0;
+  let totalBytes = 0;
+  
+  for (const part of partitionForm.value.partitions) {
+    if (part.unit === '%') {
+      totalPercent += part.size;
+    } else {
+      const bytes = part.unit === 'G' 
+        ? part.size * 1024 * 1024 * 1024 
+        : part.size * 1024 * 1024;
+      totalBytes += bytes;
+    }
+  }
+  
+  if (totalPercent > 100) {
+    throw new Error('Suma partycji procentowych nie może przekroczyć 100%');
+  }
+  
+  if (totalBytes > totalDiskSize.value) {
+    throw new Error('Suma partycji nie może przekroczyć rozmiaru dysku');
+  }
+  
+  return true;
+};
+
+const isPartitionExceeding = (part) => {
+  if (part.unit === '%') {
+    return part.size > 100;
+  }
+  
+  const sizeInBytes = part.unit === 'G' 
+    ? part.size * 1024 * 1024 * 1024 
+    : part.size * 1024 * 1024;
+  
+  return sizeInBytes > totalDiskSize.value;
+};
+
+// Aktualizujemy watch na zmianę urządzenia
+watch(() => partitionForm.value.device, (newVal) => {
+  if (newVal) {
+    getDiskSize(newVal);
+  } else {
+    totalDiskSize.value = 0;
+    usedDiskSpace.value = 0;
+    diskUsagePercentage.value = 0;
+  }
+});
+
+// Aktualizujemy watch na zmianę partycji
+watch(() => partitionForm.value.partitions, () => {
+  updateDiskUsage();
+}, { deep: true });
+
 onMounted(() => {
   refreshFilesystems()
   fetchDevices()  // Fixed typo here
-})
+  loadFstabEntries();
+});
+
+onUnmounted(() => {
+  abortController.value.abort();
+});
 </script>
 
 <style scoped>
+.error-text {
+  color: var(--el-color-danger);
+}
+
+.partition-item .el-icon {
+  margin-left: 5px;
+  vertical-align: middle;
+}
+
+.disk-usage-container {
+  width: 100%;
+  margin-bottom: 15px;
+}
+
+.disk-size-info {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 5px;
+  font-size: 0.9em;
+  color: var(--el-text-color-secondary);
+}
+
+.partition-list {
+  width: 100%;
+}
+
+.partition-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 10px;
+  background-color: var(--el-fill-color-light);
+  border-radius: 4px;
+}
+
+.partition-size-info {
+  margin-left: auto;
+  font-size: 0.8em;
+  color: var(--el-text-color-secondary);
+}
+
 .filesystems-widget {
   height: 100%;
 }
@@ -689,7 +1422,7 @@ onMounted(() => {
 
 .el-progress {
   display: inline-block;
-  width: 200px;
+  width: 100%;
   margin-right: 10px;
   vertical-align: middle;
 }
@@ -704,5 +1437,15 @@ onMounted(() => {
   padding: 10px;
   background-color: #f5f7fa;
   border-radius: 4px;
+}
+
+.fstab-editor-container {
+  font-family: monospace;
+}
+
+.fstab-editor-container .el-textarea__inner {
+  font-family: monospace;
+  white-space: pre;
+  overflow-x: auto;
 }
 </style>

@@ -35,6 +35,16 @@
               <Icon icon="mdi:refresh" width="16" height="16" :class="{ 'spin': loading }" />
             </el-button>
           </el-tooltip>
+          <el-tooltip :content="$t('storageFilesystems.partition')">
+	    <el-button 
+	      size="small" 
+	      @click="showPartitionDialog" 
+	      :disabled="loading"
+	      text
+	    >
+	      <Icon icon="mdi:harddisk-plus" width="16" height="16" />
+	    </el-button>
+	  </el-tooltip>
           <el-tooltip :content="$t('storageFilesystems.editFstab')">
             <el-button 
 	      size="small" 
@@ -322,6 +332,109 @@
       <span>{{ error }}</span>
     </div>
   </el-card>
+
+  <!-- Partition Dialog -->
+<el-dialog v-model="partitionDialogVisible" :title="$t('storageFilesystems.partitionDialog.title')" width="700px">
+  <el-form :model="partitionForm" label-position="top">
+    <el-form-item :label="$t('storageFilesystems.partitionDialog.device')">
+      <el-select 
+        v-model="partitionForm.device" 
+        :placeholder="$t('storageFilesystems.partitionDialog.selectDevice')" 
+        style="width: 100%"
+        @change="checkSystemDisk"
+      >
+        <el-option
+          v-for="device in partitionableDevices"
+          :key="device.path"
+          :label="`${device.path} (${device.model || 'Unknown'})`"
+          :value="device.path"
+          :disabled="isSystemDisk(device.path)"
+        />
+      </el-select>
+    </el-form-item>
+    
+    <el-form-item :label="$t('storageFilesystems.partitionDialog.diskSize')" v-if="partitionForm.device">
+  <div class="disk-usage-container">
+    <el-progress 
+      :percentage="diskUsagePercentage"
+      :color="getUsageColor(diskUsagePercentage)"
+      :show-text="false"
+      :stroke-width="20"
+    />
+    <div class="disk-size-info">
+      <span>{{ formatBytes(usedDiskSpace) }} / {{ formatBytes(totalDiskSize) }}</span>
+      <span>({{ diskUsagePercentage }}%)</span>
+    </div>
+  </div>
+</el-form-item>
+    
+    <el-form-item :label="$t('storageFilesystems.partitionDialog.scheme')">
+      <el-radio-group v-model="partitionForm.scheme">
+        <el-radio value="gpt">GPT</el-radio>
+        <el-radio value="mbr">MBR</el-radio>
+      </el-radio-group>
+    </el-form-item>
+    
+    <el-form-item :label="$t('storageFilesystems.partitionDialog.partitions')">
+      <div class="partition-list">
+    <div v-for="(part, index) in partitionForm.partitions" :key="index" class="partition-item">
+
+        <el-input-number 
+  v-model="part.size" 
+  :min="1" 
+  :max="getMaxSize(part)" 
+  :step="part.unit === '%' ? 1 : (part.unit === 'G' ? 10 : 100)"
+  :precision="0"
+/>
+        <el-select 
+  v-model="part.unit" 
+  style="width: 100px; margin-left: 10px;"
+  @change="(val) => changePartitionUnit(part, val)"
+>
+          <el-option label="MB" value="M" />
+          <el-option label="GB" value="G" />
+          <el-option label="%" value="%" />
+        </el-select>
+        <el-select v-model="part.type" style="width: 150px; margin-left: 10px;">
+          <el-option label="Linux" value="8300" />
+          <el-option label="Linux swap" value="8200" />
+          <el-option label="EFI System" value="EF00" />
+          <el-option label="Microsoft basic data" value="0700" />
+        </el-select>
+        <el-button 
+          @click="removePartition(index)" 
+          type="danger" 
+          size="small"
+        >
+        <Icon icon="mdi:delete" /> 
+        </el-button>
+        
+              <span class="partition-size-info">
+        {{ calculatePartitionSize(part) }}
+      </span>
+    </div>
+  </div>
+ 
+      <el-button @click="addPartition" type="primary" size="small">
+        {{ $t('storageFilesystems.partitionDialog.addPartition') }}
+      </el-button>
+    </el-form-item>
+  </el-form>
+  
+  <template #footer>
+    <el-button @click="partitionDialogVisible = false">
+      {{ $t('common.cancel') }}
+    </el-button>
+    <el-button 
+      type="primary" 
+      @click="createPartitions" 
+      :loading="partitionLoading"
+      :disabled="partitionForm.partitions.length === 0"
+    >
+      {{ $t('storageFilesystems.partitionDialog.create') }}
+    </el-button>
+  </template>
+</el-dialog>
 </template>
 
 <script>
@@ -332,7 +445,7 @@ export default {
 </script>
 
 <script setup>
-import { ref, onMounted, computed, onUnmounted } from 'vue'
+import { ref, onMounted, computed, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@iconify/vue'
 import axios from 'axios'
@@ -389,6 +502,10 @@ const supportedFilesystems = ref([
   'zfs'
 ])
 
+const totalDiskSize = ref(0);
+const usedDiskSpace = ref(0);
+const diskUsagePercentage = ref(0);
+
 const loadFstabEntries = async () => {
   try {
     const response = await api.get('/api/storage/fstab-check');
@@ -400,14 +517,11 @@ const loadFstabEntries = async () => {
 
 const isAutoMounted = (device, mountPoint) => {
   return fstabEntries.value.some(entry => {
-    // Sprawdzamy po urządzeniu (może być ścieżka, UUID lub LABEL)
     const deviceMatch = entry.device === device || 
                        device.includes(entry.device) || 
                        entry.device.includes(device);
-    
-    // Sprawdzamy po punkcie montowania
+
     const mountMatch = entry.mountPoint === mountPoint;
-    
     return deviceMatch || mountMatch;
   });
 };
@@ -433,28 +547,19 @@ const formatableDevices = computed(() => {
 // Computed properties
 const unmountedDevices = computed(() => {
   const mountedPaths = filesystems.value.map(fs => fs.device);
-  const allPartitions = allDevices.value.flatMap(device => {
-    return (device.partitions || []).map(part => ({
-      path: part.path,
-      model: device.model || 'Unknown',
-      serial: device.serial || 'Unknown',
-      type: part.type,
-      fstype: part.fstype || ''
-    }));
-  });
-
-  return allPartitions.filter(part => 
-    !mountedPaths.includes(part.path) && 
-    !part.path.includes('loop') &&
-    !part.path.includes('ram') &&
-    part.type === 'part'
+  return allDevices.value.filter(device => 
+    !mountedPaths.includes(device.path) && 
+    !device.path.includes('loop') &&
+    !device.path.includes('ram') &&
+    device.type === 'disk' &&
+    !isSystemDisk(device.path) // Exclude system disks
   );
 });
 
 const unmountedPartitions = computed(() => {
   const mountedPaths = filesystems.value.map(fs => fs.device);
   return allDevices.value.flatMap(device => 
-    device.partitions
+    (device.partitions || [])
       .filter(part => 
         !mountedPaths.includes(part.path) &&
         !part.path.includes('loop') &&
@@ -462,10 +567,16 @@ const unmountedPartitions = computed(() => {
       )
       .map(part => ({
         ...part,
-        model: part.model || 'Unknown'
+        model: device.model || 'Unknown'
       }))
   );
 });
+
+// Helper function to identify system disks
+function isSystemDisk(devicePath) {
+  const systemDiskPatterns = ['/dev/sda', '/dev/nvme0n1']; // Add more patterns if needed
+  return systemDiskPatterns.some(pattern => devicePath.startsWith(pattern));
+}
 
 const availablePartitions = ref([]);
 const updatePartitions = (devicePath) => {
@@ -645,6 +756,8 @@ const mountDevice = async () => {
         // User canceled
       }
     }
+
+    await fetchDevices();
 
     const response = await axios.post('/api/storage/mount', {
       device: deviceToMount,
@@ -971,6 +1084,239 @@ const formatBytes = (bytes, decimals = 2) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i]
 }
 
+// Partition dialog
+const partitionDialogVisible = ref(false);
+const partitionLoading = ref(false);
+const partitionForm = ref({
+  device: '',
+  scheme: 'gpt',
+  partitions: [
+    { size: 100, unit: '%', type: '8300' }
+  ]
+});
+
+const partitionableDevices = computed(() => {
+  return allDevices.value.filter(device => 
+    device.type === 'disk' && 
+    !device.path.includes('loop') &&
+    !isSystemDisk(device.path)
+  );
+});
+
+const showPartitionDialog = async () => {
+  try {
+    loading.value = true;
+    await fetchDevices();
+    partitionDialogVisible.value = true;
+  } catch (err) {
+    error.value = t('storageFilesystems.errorLoadingDevices');
+    console.error('Error loading devices:', err);
+  } finally {
+    loading.value = false;
+  }
+};
+
+const addPartition = () => {
+  partitionForm.value.partitions.push({ size: 10, unit: 'G', type: '8300' });
+};
+
+const removePartition = (index) => {
+  partitionForm.value.partitions.splice(index, 1);
+};
+
+const checkSystemDisk = (devicePath) => {
+  if (isSystemDisk(devicePath)) {
+    ElMessage.warning('This appears to be a system disk. Partitioning system disks is not recommended.');
+  }
+};
+
+const createPartitions = async () => {
+  try {
+    partitionLoading.value = true;
+    
+    // Validate
+    validatePartitions();
+    if (isSystemDisk(partitionForm.value.device)) {
+      throw new Error('Cannot partition system disk');
+    }
+    
+    // Create partition command
+    let cmd = `sudo sgdisk --zap-all ${partitionForm.value.device} && `;
+    cmd += `sudo parted -s ${partitionForm.value.device} mklabel ${partitionForm.value.scheme} && `;
+    
+    partitionForm.value.partitions.forEach((part, index) => {
+      const size = part.unit === '%' ? `${part.size}%` : `${part.size}${part.unit}`;
+      cmd += `sudo sgdisk -n ${index + 1}:0:+${size} -t ${index + 1}:${part.type} ${partitionForm.value.device} && `;
+    });
+    
+    cmd += `sudo partprobe ${partitionForm.value.device}`;
+    
+    const response = await axios.post('/api/storage/exec-command', { 
+      command: cmd,
+      timeout: 60000 
+    });
+    
+    ElNotification({
+      title: 'Success',
+      message: 'Partitions created successfully',
+      type: 'success'
+    });
+    
+    partitionDialogVisible.value = false;
+    await fetchDevices();
+    await refreshFilesystems();
+  } catch (error) {
+    ElNotification({
+      title: 'Error',
+      message: error.response?.data?.details || error.message,
+      type: 'error'
+    });
+  } finally {
+    partitionLoading.value = false;
+  }
+};
+
+// Nowe metody
+const getDiskSize = async (devicePath) => {
+  try {
+    const response = await axios.get('/api/storage/disk-size', {
+      params: { device: devicePath }
+    });
+    totalDiskSize.value = response.data.size;
+    updateDiskUsage();
+  } catch (error) {
+    console.error('Error getting disk size:', error);
+    totalDiskSize.value = 0;
+  }
+};
+
+const updateDiskUsage = () => {
+  let used = 0;
+  
+  partitionForm.value.partitions.forEach(part => {
+    if (part.unit === '%') {
+      used += (part.size / 100) * totalDiskSize.value;
+    } else if (part.unit === 'G') {
+      used += part.size * 1024 * 1024 * 1024;
+    } else { // MB
+      used += part.size * 1024 * 1024;
+    }
+  });
+  
+  usedDiskSpace.value = Math.min(used, totalDiskSize.value);
+  diskUsagePercentage.value = Math.round((usedDiskSpace.value / totalDiskSize.value) * 100);
+};
+
+const calculatePartitionSize = (part) => {
+  if (part.unit === '%') {
+    const size = (part.size / 100) * totalDiskSize.value;
+    return formatBytes(size);
+  } else if (part.unit === 'G') {
+    return `${part.size} GB`;
+  } else {
+    return `${part.size} MB`;
+  }
+};
+
+const getMaxSize = (part) => {
+  if (part.unit === '%') {
+    return 100;
+  } else if (part.unit === 'G') {
+    return Math.floor(totalDiskSize.value / (1024 * 1024 * 1024));
+  } else {
+    return Math.floor(totalDiskSize.value / (1024 * 1024));
+  }
+};
+
+const getMaxSizeForUnit = (unit) => {
+  if (!totalDiskSize.value) return 100;
+  
+  if (unit === '%') return 100;
+  if (unit === 'G') return Math.floor(totalDiskSize.value / (1024 * 1024 * 1024));
+  return Math.floor(totalDiskSize.value / (1024 * 1024));
+};
+
+const changePartitionUnit = (part, newUnit) => {
+  const oldUnit = part.unit;
+  part.unit = newUnit;
+  
+  if (oldUnit === '%' && newUnit !== '%') {
+    // Konwersja z % na MB/GB
+    const sizeInBytes = (part.size / 100) * totalDiskSize.value;
+    if (newUnit === 'G') {
+      part.size = Math.floor(sizeInBytes / (1024 * 1024 * 1024));
+    } else {
+      part.size = Math.floor(sizeInBytes / (1024 * 1024));
+    }
+  } else if (oldUnit !== '%' && newUnit === '%') {
+    // Konwersja z MB/GB na %
+    const sizeInBytes = oldUnit === 'G' 
+      ? part.size * 1024 * 1024 * 1024 
+      : part.size * 1024 * 1024;
+    part.size = Math.floor((sizeInBytes / totalDiskSize.value) * 100);
+  }
+  
+  // Upewnij się, że nie przekraczamy maksimum
+  const maxSize = getMaxSizeForUnit(newUnit);
+  if (part.size > maxSize) {
+    part.size = maxSize;
+  }
+};
+
+const validatePartitions = () => {
+  let totalPercent = 0;
+  let totalBytes = 0;
+  
+  for (const part of partitionForm.value.partitions) {
+    if (part.unit === '%') {
+      totalPercent += part.size;
+    } else {
+      const bytes = part.unit === 'G' 
+        ? part.size * 1024 * 1024 * 1024 
+        : part.size * 1024 * 1024;
+      totalBytes += bytes;
+    }
+  }
+  
+  if (totalPercent > 100) {
+    throw new Error('Suma partycji procentowych nie może przekroczyć 100%');
+  }
+  
+  if (totalBytes > totalDiskSize.value) {
+    throw new Error('Suma partycji nie może przekroczyć rozmiaru dysku');
+  }
+  
+  return true;
+};
+
+const isPartitionExceeding = (part) => {
+  if (part.unit === '%') {
+    return part.size > 100;
+  }
+  
+  const sizeInBytes = part.unit === 'G' 
+    ? part.size * 1024 * 1024 * 1024 
+    : part.size * 1024 * 1024;
+  
+  return sizeInBytes > totalDiskSize.value;
+};
+
+// Aktualizujemy watch na zmianę urządzenia
+watch(() => partitionForm.value.device, (newVal) => {
+  if (newVal) {
+    getDiskSize(newVal);
+  } else {
+    totalDiskSize.value = 0;
+    usedDiskSpace.value = 0;
+    diskUsagePercentage.value = 0;
+  }
+});
+
+// Aktualizujemy watch na zmianę partycji
+watch(() => partitionForm.value.partitions, () => {
+  updateDiskUsage();
+}, { deep: true });
+
 onMounted(() => {
   refreshFilesystems()
   fetchDevices()  // Fixed typo here
@@ -983,6 +1329,48 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.error-text {
+  color: var(--el-color-danger);
+}
+
+.partition-item .el-icon {
+  margin-left: 5px;
+  vertical-align: middle;
+}
+
+.disk-usage-container {
+  width: 100%;
+  margin-bottom: 15px;
+}
+
+.disk-size-info {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 5px;
+  font-size: 0.9em;
+  color: var(--el-text-color-secondary);
+}
+
+.partition-list {
+  width: 100%;
+}
+
+.partition-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 10px;
+  background-color: var(--el-fill-color-light);
+  border-radius: 4px;
+}
+
+.partition-size-info {
+  margin-left: auto;
+  font-size: 0.8em;
+  color: var(--el-text-color-secondary);
+}
+
 .filesystems-widget {
   height: 100%;
 }
@@ -1031,7 +1419,7 @@ onUnmounted(() => {
 
 .el-progress {
   display: inline-block;
-  width: 200px;
+  width: 100%;
   margin-right: 10px;
   vertical-align: middle;
 }

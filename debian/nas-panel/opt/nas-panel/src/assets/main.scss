@@ -360,3 +360,15 @@ border: 2px solid #2d2d2d !important;
     }
   }
 }
+
+@media (max-width: 992px) {
+  .widgets-container {
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .widgets-container {
+    grid-template-columns: 1fr;
+  }
+}
