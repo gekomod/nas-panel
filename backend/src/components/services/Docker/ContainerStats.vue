@@ -1,7 +1,7 @@
 <template>
   <div class="container-stats">
     <div class="header">
-      <h3>Container Statistics</h3>
+      <h3>Container Statistics - {{ containerId }}</h3>
       <div class="controls">
         <el-button
           size="small"
@@ -17,13 +17,6 @@
           inactive-text="Static"
           :disabled="loading"
         />
-        <el-button
-          size="small"
-          @click="showSettings = true"
-          circle
-        >
-          <Icon icon="mdi:cog" />
-        </el-button>
       </div>
     </div>
 
@@ -39,89 +32,7 @@
     </div>
 
     <div v-else class="stats-container">
-      <el-tabs v-model="activeTab" type="card">
-        <el-tab-pane label="Overview" name="overview">
-          <div class="stats-grid">
-            <!-- CPU Stats -->
-            <el-card class="stat-card">
-              <div class="stat-header">
-                <Icon icon="mdi:cpu-64-bit" />
-                <span>CPU Usage</span>
-              </div>
-              <div class="stat-value">{{ cpuPercentage }}%</div>
-              <el-progress
-                :percentage="cpuPercentage"
-                :color="getProgressColor(cpuPercentage)"
-                :show-text="false"
-                :stroke-width="12"
-              />
-              <div class="stat-details">
-                <div>Cores: {{ cpuCores }}</div>
-                <div>Load: {{ cpuLoad }}</div>
-              </div>
-            </el-card>
-
-            <!-- Memory Stats -->
-            <el-card class="stat-card">
-              <div class="stat-header">
-                <Icon icon="mdi:memory" />
-                <span>Memory Usage</span>
-              </div>
-              <div class="stat-value">{{ memPercentage }}%</div>
-              <el-progress
-                :percentage="memPercentage"
-                :color="getProgressColor(memPercentage)"
-                :show-text="false"
-                :stroke-width="12"
-              />
-              <div class="stat-details">
-                <div>Used: {{ formattedMemUsage.used }}</div>
-                <div>Total: {{ formattedMemUsage.total }}</div>
-              </div>
-            </el-card>
-
-            <!-- Network Stats -->
-            <el-card class="stat-card">
-              <div class="stat-header">
-                <Icon icon="mdi:network" />
-                <span>Network I/O</span>
-              </div>
-              <div class="network-stats">
-                <div class="network-row">
-                  <Icon icon="mdi:download" />
-                  <span class="label">In:</span>
-                  <span class="value">{{ formattedNetIO.rx }}</span>
-                </div>
-                <div class="network-row">
-                  <Icon icon="mdi:upload" />
-                  <span class="label">Out:</span>
-                  <span class="value">{{ formattedNetIO.tx }}</span>
-                </div>
-              </div>
-            </el-card>
-
-            <!-- Disk Stats -->
-            <el-card class="stat-card">
-              <div class="stat-header">
-                <Icon icon="mdi:harddisk" />
-                <span>Disk I/O</span>
-              </div>
-              <div class="disk-stats">
-                <div class="disk-row">
-                  <Icon icon="mdi:download" />
-                  <span class="label">Read:</span>
-                  <span class="value">{{ formattedBlockIO.rx }}</span>
-                </div>
-                <div class="disk-row">
-                  <Icon icon="mdi:upload" />
-                  <span class="label">Write:</span>
-                  <span class="value">{{ formattedBlockIO.tx }}</span>
-                </div>
-              </div>
-            </el-card>
-          </div>
-        </el-tab-pane>
-
+      <el-tabs v-model="activeTab">
         <el-tab-pane label="Charts" name="charts">
           <div class="charts-container">
             <div ref="cpuChart" class="chart"></div>
@@ -132,7 +43,7 @@
         </el-tab-pane>
 
         <el-tab-pane label="History" name="history">
-          <el-table :data="historyStats" style="width: 100%" height="300">
+          <el-table :data="historyStats" style="width: 100%" height="400">
             <el-table-column prop="timestamp" label="Time" width="180">
               <template #default="{row}">
                 {{ new Date(row.timestamp).toLocaleTimeString() }}
@@ -162,50 +73,6 @@
         </el-tab-pane>
       </el-tabs>
     </div>
-
-    <!-- Settings Dialog -->
-    <el-dialog v-model="showSettings" title="Statistics Settings" width="500px">
-      <el-form label-width="150px">
-        <el-form-item label="Refresh Interval (ms)">
-          <el-input-number
-            v-model="refreshInterval"
-            :min="1000"
-            :max="30000"
-            :step="1000"
-          />
-        </el-form-item>
-        <el-form-item label="History Size">
-          <el-input-number
-            v-model="maxHistory"
-            :min="10"
-            :max="1000"
-            :step="10"
-          />
-        </el-form-item>
-        <el-form-item label="CPU Warning Threshold">
-          <el-slider
-            v-model="thresholds.cpu"
-            :min="0"
-            :max="100"
-            :step="5"
-            show-input
-          />
-        </el-form-item>
-        <el-form-item label="Memory Warning Threshold">
-          <el-slider
-            v-model="thresholds.memory"
-            :min="0"
-            :max="100"
-            :step="5"
-            show-input
-          />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showSettings = false">Cancel</el-button>
-        <el-button type="primary" @click="saveSettings">Save</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -219,21 +86,16 @@ const props = defineProps({
   containerId: String
 });
 
+const emit = defineEmits(['close']);
+
 const stats = ref({});
 const historyStats = ref([]);
 const initialLoading = ref(true);
 const loading = ref(false);
 const error = ref(null);
-const liveStats = ref(false);
-const activeTab = ref('overview');
-const showSettings = ref(false);
-
+const liveStats = ref(true);
+const activeTab = ref('charts');
 const refreshInterval = ref(2000);
-const maxHistory = ref(100);
-const thresholds = ref({
-  cpu: 80,
-  memory: 80
-});
 
 // Charts
 const cpuChart = ref(null);
@@ -241,27 +103,14 @@ const memoryChart = ref(null);
 const networkChart = ref(null);
 const diskChart = ref(null);
 
+const chartInstances = ref({
+  cpu: null,
+  memory: null,
+  network: null,
+  disk: null
+});
+
 // Computed
-const formattedMemUsage = computed(() => {
-  if (!stats.value.MemUsage) return { used: 'N/A', total: 'N/A' };
-  const [used, total] = stats.value.MemUsage.split('/').map(s => s.trim());
-  return { used, total };
-});
-
-const formattedNetIO = computed(() => {
-  if (!stats.value.NetIO) return { rx: 'N/A', tx: 'N/A' };
-  const cleaned = stats.value.NetIO.replace(/\n/g, '').trim();
-  const [rx, tx] = cleaned.split('/').map(s => s.trim());
-  return { rx, tx };
-});
-
-const formattedBlockIO = computed(() => {
-  if (!stats.value.BlockIO) return { rx: 'N/A', tx: 'N/A' };
-  const cleaned = stats.value.BlockIO.replace(/\n/g, '').trim();
-  const [rx, tx] = cleaned.split('/').map(s => s.trim());
-  return { rx, tx };
-});
-
 const cpuPercentage = computed(() => {
   const perc = parseFloat(stats.value.CPUPerc?.replace('%', '')) || 0;
   return Math.min(100, Math.max(0, perc));
@@ -272,14 +121,6 @@ const memPercentage = computed(() => {
   return Math.min(100, Math.max(0, perc));
 });
 
-const cpuCores = computed(() => {
-  return stats.value.CPUCores || 'N/A';
-});
-
-const cpuLoad = computed(() => {
-  return stats.value.CPULoad || 'N/A';
-});
-
 // Methods
 const fetchStats = async () => {
   try {
@@ -288,7 +129,6 @@ const fetchStats = async () => {
     
     stats.value = response.data.stats || {};
     addHistoryRecord();
-    checkThresholds();
     error.value = null;
   } catch (err) {
     error.value = err.response?.data?.error || 'Failed to fetch stats';
@@ -304,36 +144,18 @@ const addHistoryRecord = () => {
     timestamp: new Date().toISOString(),
     cpu: cpuPercentage.value,
     memory: memPercentage.value,
-    networkIn: parseBytes(formattedNetIO.value.rx),
-    networkOut: parseBytes(formattedNetIO.value.tx),
-    diskRead: parseBytes(formattedBlockIO.value.rx),
-    diskWrite: parseBytes(formattedBlockIO.value.tx)
+    networkIn: parseBytes(stats.value.NetIO?.split('/')[0] || '0B'),
+    networkOut: parseBytes(stats.value.NetIO?.split('/')[1] || '0B')
   };
   
   historyStats.value.unshift(record);
-  if (historyStats.value.length > maxHistory.value) {
+  if (historyStats.value.length > 50) {
     historyStats.value.pop();
   }
 };
 
-const checkThresholds = () => {
-  if (cpuPercentage.value > thresholds.value.cpu) {
-    showAlert('CPU', cpuPercentage.value, `High CPU usage: ${cpuPercentage.value}%`);
-  }
-  
-  if (memPercentage.value > thresholds.value.memory) {
-    showAlert('Memory', memPercentage.value, `High Memory usage: ${memPercentage.value}%`);
-  }
-};
-
-const showAlert = (metric, value, message) => {
-  console.warn(`[ALERT] ${message}`);
-};
-
 const refreshStats = () => {
-  if (!liveStats.value) {
-    fetchStats();
-  }
+  fetchStats();
 };
 
 const parseBytes = (str) => {
@@ -352,46 +174,86 @@ const formatBytes = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-const getProgressColor = (percentage) => {
-  if (percentage < 50) return '#67C23A';
-  if (percentage < 80) return '#E6A23C';
-  return '#F56C6C';
+const initCharts = () => {
+  if (!cpuChart.value || historyStats.value.length === 0) return;
+  
+  // Destroy old instances if they exist
+  [cpuChart, memoryChart, networkChart, diskChart].forEach(chart => {
+    if (chart.value && echarts.getInstanceByDom(chart.value)) {
+      echarts.dispose(chart.value);
+    }
+  });
+
+  // Initialize or reinitialize charts
+  chartInstances.value.cpu = echarts.init(cpuChart.value);
+  chartInstances.value.memory = echarts.init(memoryChart.value);
+  chartInstances.value.network = echarts.init(networkChart.value);
+  chartInstances.value.disk = echarts.init(diskChart.value);
+
+  const updateCharts = () => {
+  if (historyStats.value.length === 0 || 
+      !chartInstances.value.cpu || 
+      !chartInstances.value.memory || 
+      !chartInstances.value.network || 
+      !chartInstances.value.disk) return;
+    
+  const timestamps = historyStats.value.map(r => new Date(r.timestamp).toLocaleTimeString()).reverse();
+  const cpuData = historyStats.value.map(r => r.cpu).reverse();
+  const memoryData = historyStats.value.map(r => r.memory).reverse();
+  const networkInData = historyStats.value.map(r => r.networkIn / 1024 / 1024).reverse();
+  const networkOutData = historyStats.value.map(r => r.networkOut / 1024 / 1024).reverse();
+  const diskReadData = historyStats.value.map(r => r.diskRead / 1024 / 1024).reverse();
+  const diskWriteData = historyStats.value.map(r => r.diskWrite / 1024 / 1024).reverse();
+  
+  chartInstances.value.cpu.setOption(getChartOption('CPU Usage (%)', timestamps, cpuData, '#E6A23C'));
+  chartInstances.value.memory.setOption(getChartOption('Memory Usage (%)', timestamps, memoryData, '#67C23C'));
+  chartInstances.value.network.setOption(getChartOption('Network Traffic (MB)', timestamps, [
+    { name: 'In', data: networkInData },
+    { name: 'Out', data: networkOutData }
+  ], ['#409EFF', '#F56C6C']));
+  chartInstances.value.disk.setOption(getChartOption('Disk I/O (MB)', timestamps, [
+    { name: 'Read', data: diskReadData },
+    { name: 'Write', data: diskWriteData }
+  ], ['#409EFF', '#F56C6C']));
 };
 
-const initCharts = () => {
-  if (!cpuChart.value) return;
-  
-  const cpuChartInstance = echarts.init(cpuChart.value);
-  const memoryChartInstance = echarts.init(memoryChart.value);
-  const networkChartInstance = echarts.init(networkChart.value);
-  const diskChartInstance = echarts.init(diskChart.value);
-  
-  const updateCharts = () => {
-    if (historyStats.value.length === 0) return;
-    
-    const timestamps = historyStats.value.map(r => new Date(r.timestamp).toLocaleTimeString()).reverse();
-    const cpuData = historyStats.value.map(r => r.cpu).reverse();
-    const memoryData = historyStats.value.map(r => r.memory).reverse();
-    const networkInData = historyStats.value.map(r => r.networkIn / 1024 / 1024).reverse(); // MB
-    const networkOutData = historyStats.value.map(r => r.networkOut / 1024 / 1024).reverse(); // MB
-    const diskReadData = historyStats.value.map(r => r.diskRead / 1024 / 1024).reverse(); // MB
-    const diskWriteData = historyStats.value.map(r => r.diskWrite / 1024 / 1024).reverse(); // MB
-    
-    cpuChartInstance.setOption(getChartOption('CPU Usage (%)', timestamps, cpuData, '#E6A23C'));
-    memoryChartInstance.setOption(getChartOption('Memory Usage (%)', timestamps, memoryData, '#67C23C'));
-    networkChartInstance.setOption(getChartOption('Network Traffic (MB)', timestamps, [
-      { name: 'In', data: networkInData },
-      { name: 'Out', data: networkOutData }
-    ], ['#409EFF', '#F56C6C']));
-    diskChartInstance.setOption(getChartOption('Disk I/O (MB)', timestamps, [
-      { name: 'Read', data: diskReadData },
-      { name: 'Write', data: diskWriteData }
-    ], ['#409EFF', '#F56C6C']));
+const resizeCharts = () => {
+  Object.values(chartInstances.value).forEach(instance => {
+    if (instance) instance.resize();
+  });
+};
+
+const disposeCharts = () => {
+  Object.values(chartInstances.value).forEach(instance => {
+    if (instance && !instance.isDisposed()) {
+      instance.dispose();
+    }
+  });
+  chartInstances.value = {
+    cpu: null,
+    memory: null,
+    network: null,
+    disk: null
   };
+};
   
   const getChartOption = (title, xAxis, series, color) => ({
+    animationDuration: 1000,
+    animationEasing: 'cubicOut',
     title: { text: title, left: 'center' },
-    tooltip: { trigger: 'axis' },
+    tooltip: {
+    trigger: 'axis',
+    formatter: (params) => {
+      let result = `${params[0].axisValue}<br>`;
+      params.forEach(param => {
+        result += `${param.marker} ${param.seriesName}: ${param.value}`;
+        if (param.seriesName.includes('Usage')) result += '%';
+        if (param.seriesName.includes('Traffic') || param.seriesName.includes('I/O')) result += ' MB';
+        result += '<br>';
+      });
+      return result;
+    }
+  },
     xAxis: { type: 'category', data: xAxis },
     yAxis: { type: 'value' },
     series: Array.isArray(series) 
@@ -412,24 +274,42 @@ const initCharts = () => {
   });
   
   updateCharts();
-  window.addEventListener('resize', () => {
+  
+  const resizeHandler = () => {
     cpuChartInstance.resize();
     memoryChartInstance.resize();
     networkChartInstance.resize();
     diskChartInstance.resize();
+  };
+  
+  window.addEventListener('resize', resizeHandler);
+  
+  onBeforeUnmount(() => {
+    window.removeEventListener('resize', resizeHandler);
   });
   
   watch(historyStats, updateCharts, { deep: true });
 };
 
-const saveSettings = () => {
-  showSettings.value = false;
-};
+watch(activeTab, (newTab) => {
+  if (newTab === 'charts') {
+    nextTick(() => {
+      initCharts();
+    });
+  }
+});
+
+const resizeObserver = new ResizeObserver(() => {
+  resizeCharts();
+});
 
 // Lifecycle hooks
 onMounted(() => {
   fetchStats();
-  nextTick(initCharts);
+
+  if (cpuChart.value) {
+    resizeObserver.observe(cpuChart.value);
+  }
   
   watch(liveStats, (enabled) => {
     if (enabled) {
@@ -437,15 +317,18 @@ onMounted(() => {
       onBeforeUnmount(() => clearInterval(interval));
     }
   }, { immediate: true });
+  nextTick(() => {
+    initCharts();
+  });
 });
 
 onBeforeUnmount(() => {
-  if (cpuChart.value) {
-    echarts.dispose(cpuChart.value);
-    echarts.dispose(memoryChart.value);
-    echarts.dispose(networkChart.value);
-    echarts.dispose(diskChart.value);
-  }
+  resizeObserver.disconnect();
+  [cpuChart, memoryChart, networkChart, diskChart].forEach(chart => {
+    if (chart.value && echarts.getInstanceByDom(chart.value)) {
+      echarts.dispose(chart.value);
+    }
+  });
 });
 </script>
 
@@ -486,78 +369,15 @@ onBeforeUnmount(() => {
   height: calc(100% - 50px);
 }
 
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 15px;
-  margin-top: 15px;
-}
-
-.stat-card {
-  height: 100%;
-}
-
-.stat-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-  font-weight: bold;
-}
-
-.stat-value {
-  font-size: 24px;
-  font-weight: bold;
-  margin: 10px 0;
-}
-
-.stat-details {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-top: 10px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-
-.network-stats,
-.disk-stats {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 15px;
-}
-
-.network-row,
-.disk-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.label {
-  min-width: 40px;
-  color: var(--el-text-color-secondary);
-}
-
-.value {
-  font-weight: bold;
-}
-
 .charts-container {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 15px;
-  margin-top: 15px;
 }
 
 .chart {
-  height: 250px;
+  height: 300px;
   width: 100%;
-}
-
-:deep(.el-tabs__content) {
-  padding: 15px 0;
 }
 
 .spin {

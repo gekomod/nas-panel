@@ -9,6 +9,10 @@ const cronParser = require('cron-parser');
 
 const util = require('util');
 const execPromise = util.promisify(exec);
+const YAML = require('yaml');
+const Docker = require('dockerode');
+
+var docker = new Docker();
 
 const execAsync = promisify(exec);
 const DOCKER_COMPOSE_DIR = path.join('/opt/nas-panel/docker-compose');
@@ -1605,6 +1609,155 @@ app.get('/services/docker/container/status/:name', async (req, res) => {
       error: 'Failed to check container status',
       details: error.message
     });
+  }
+});
+
+app.get('/api/services/config', async (req, res) => {
+  try {
+    const { service, filePath } = req.query;
+    
+    if (!service || !filePath) {
+      return res.status(400).json({ error: 'Service name and file path are required' });
+    }
+
+    // Bezpieczna ścieżka - zapobiega atakom directory traversal
+    const safePath = path.normalize(filePath).replace(/^(\.\.[\/\\])+/, '');
+    const fullPath = `/opt/nas-panel/docker-compose/${safePath}`;
+    
+    const content = await fsa.readFileSync(fullPath, 'utf-8');
+    res.json({ content });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Zapisywanie pliku i restart usługi
+app.put('/api/services/config', async (req, res) => {
+  try {
+    const { service, filePath, content } = req.body;
+    
+    if (!service || !filePath || !content) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Walidacja YAML
+    YAML.parse(content);
+
+    // Bezpieczna ścieżka
+    const safePath = path.normalize(filePath).replace(/^(\.\.[\/\\])+/, '');
+    const fullPath = `/opt/nas-panel/docker-compose/${safePath}`;
+    
+    // Backup starego pliku
+    const backupPath = `${fullPath}.bak_${Date.now()}`;
+    await fsa.copyFileSync(fullPath, backupPath);
+    
+    // Zapis nowej zawartości
+    await fsa.writeFileSync(fullPath, content);
+    
+    // Restart usługi
+    await execPromise(`docker compose -f /opt/nas-panel/docker-compose/${safePath} down`);
+    await execPromise(`docker compose -f /opt/nas-panel/docker-compose/${safePath} up -d`);
+    
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Pobierz konfigurację kontenera
+app.get('/services/docker/container/:id/config', async (req, res) => {
+  try {
+    const container = docker.getContainer(req.params.id);
+    const inspectData = await container.inspect();
+    
+    // Przekształć dane inspect na nasz format
+    const config = {
+      name: inspectData.Name.replace(/^\//, ''),
+      image: inspectData.Config.Image,
+      command: inspectData.Config.Cmd ? inspectData.Config.Cmd.join(' ') : '',
+      ports: inspectData.HostConfig.PortBindings ? 
+        Object.entries(inspectData.HostConfig.PortBindings).map(([containerPort, hostConfig]) => ({
+          host: hostConfig[0].HostPort,
+          container: containerPort.split('/')[0],
+          protocol: containerPort.split('/')[1] || 'tcp'
+        })) : [],
+      volumes: inspectData.HostConfig.Binds ? 
+        inspectData.HostConfig.Binds.map(bind => {
+          const [host, container, mode] = bind.split(':');
+          return {
+            host,
+            container,
+            mode: mode || 'rw'
+          };
+        }) : [],
+      env: inspectData.Config.Env ? 
+        inspectData.Config.Env.map(env => {
+          const [key, ...value] = env.split('=');
+          return {
+            key,
+            value: value.join('=')
+          };
+        }) : []
+    };
+
+    res.json({ config });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Zaktualizuj konfigurację kontenera
+app.put('/services/docker/container/:id/config', async (req, res) => {
+  try {
+    const { config } = req.body;
+    const container = docker.getContainer(req.params.id);
+    
+    // Zatrzymaj kontener przed aktualizacją
+    await container.stop();
+    
+    // Usuń stary kontener
+    await container.remove();
+    
+    // Utwórz nowy kontener z nową konfiguracją
+    const newContainer = await docker.createContainer({
+      Image: config.image,
+      name: config.name,
+      Cmd: config.command ? config.command.split(' ') : null,
+      Env: config.env.map(e => `${e.key}=${e.value}`),
+      HostConfig: {
+        PortBindings: config.ports.reduce((acc, port) => {
+          acc[`${port.container}/${port.protocol}`] = [{ HostPort: port.host }];
+          return acc;
+        }, {}),
+        Binds: config.volumes.map(v => `${v.host}:${v.container}:${v.mode}`)
+      }
+    });
+    
+    // Uruchom nowy kontener
+    await newContainer.start();
+    
+    res.json({ message: 'Container updated successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/services/docker/images/search', async (req, res) => {
+  try {
+    const images = await docker.listImages();
+    const searchTerm = req.query.q.toLowerCase();
+    
+    const filteredImages = images
+      .filter(img => 
+        img.RepoTags && 
+        img.RepoTags.some(tag => tag.toLowerCase().includes(searchTerm))
+      )
+      .flatMap(img => img.RepoTags)
+      .filter(tag => tag !== '<none>:<none>');
+    
+    res.json({ images: filteredImages });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

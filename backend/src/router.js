@@ -1,7 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '@/views/HomeView.vue'
-import FilesView from '@/views/FilesView.vue'
-import AppsView from '@/views/AppsView.vue'
 import TerminalView from '@/views/TerminalView.vue'
 import FileManager from '@/components/FileManager/FileBrowser.vue'
 import { useAuth } from './services/AuthService'
