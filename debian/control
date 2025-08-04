@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: Gekomod <zaba141@o2.pl>
 Build-Depends: debhelper-compat (= 13), nodejs, npm
 Standards-Version: 4.5.1
-Homepage: https://example.com/nas-panel
+Homepage: https://naspanel.site
 
 Package: nas-panel
 Architecture: any

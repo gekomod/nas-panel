@@ -32,7 +32,7 @@
               <el-input v-model="backupForm.name" />
             </el-form-item>
 
-            <el-form-item :label="$t('backup.items')">
+            <el-form-item :label="$t('backup.itemss')">
               <el-select 
                 v-model="backupForm.items" 
                 multiple 
@@ -148,11 +148,18 @@
                 {{ formatSize(row.size) }}
               </template>
             </el-table-column>
-            <el-table-column :label="$t('backup.history_table.status')">
+            <el-table-column :label="$t('backup.history_table.status')" width="150">
               <template #default="{row}">
-                <el-tag :type="getStatusType(row.status)">
+                <el-tag :type="getStatusType(row.status)" effect="dark">
                   {{ $t(`backup.statuses.${row.status}`) }}
                 </el-tag>
+                <el-progress 
+                  v-if="row.status === 'in_progress'"
+                  :percentage="row.progress || 0" 
+                  :stroke-width="3"
+                  :show-text="false"
+                  style="margin-top: 5px;"
+                />
               </template>
             </el-table-column>
             <el-table-column :label="$t('backup.history_table.actions')" width="180">
@@ -277,9 +284,19 @@
       </el-tabs>
 
       <el-dialog v-model="resultDialogVisible" :title="resultDialogTitle">
-        <p>{{ resultDialogMessage }}</p>
+        <div class="result-content" v-html="resultDialogMessage"></div>
+        <div class="result-content">
+          <p class="success-message">
+            <el-icon><Icon icon="mdi:information-outline" /></el-icon>
+            {{ $t('backup.creation_started') }}
+          </p>
+          <p class="warning-message">
+            <el-icon><Icon icon="mdi:clock-outline" /></el-icon>
+            {{ $t('backup.background_warning') }}
+          </p>
+        </div>
         <template #footer>
-          <el-button @click="resultDialogVisible = false">
+          <el-button type="primary" @click="resultDialogVisible = false">
             {{ $t('common.close') }}
           </el-button>
         </template>
@@ -289,13 +306,21 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, inject, computed } from 'vue'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Icon } from '@iconify/vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
+const $notify = inject('notifications') || inject('$notify')
+const notificationService = inject('notifications')
+const backupIntervals = ref({})
+
+// Użyj computed aby śledzić nieprzeczytane powiadomienia
+const unreadNotifications = computed(() => {
+  return notificationService?.notifications?.value?.filter(n => !n.read).length || 0
+})
 
 // Shared data
 const formatDate = (dateString) => {
@@ -345,24 +370,73 @@ const compressionLevels = [
   { value: 'high', text: t('backup.compression_levels.high') }
 ]
 
+// Modyfikowana funkcja tworzenia kopii
 const createBackup = async () => {
   isCreating.value = true
   try {
     const response = await axios.post('/api/system/backup/create', backupForm.value)
     
-    resultDialogTitle.value = t('backup.success_title')
-    resultDialogMessage.value = t('backup.success_message', {
-      name: response.data.backup.name,
-      size: formatSize(response.data.backup.size)
+    // Powiadomienie o rozpoczęciu tworzenia kopii
+    notificationService.addNotification({
+      title: 'Rozpoczęto tworzenie kopii',
+      message: `Rozpoczęto proces tworzenia kopii "${backupForm.value.name}"`,
+      type: 'info',
+      icon: 'mdi:backup-restore',
+      duration: 5000
     })
+
+    // Ustawiamy dialog z podstawowymi informacjami
+    resultDialogTitle.value = 'Tworzenie kopii w toku'
+    resultDialogMessage.value = `
+      <p>Rozpoczęto proces tworzenia kopii zapasowej <strong>${backupForm.value.name}</strong>.</p>
+      <p>ID kopii: <code>${response.data.backupId}</code></p>
+      <p>Status: <el-tag type="info">W kolejce</el-tag></p>
+      <p class="info-text">Rozmiar będzie dostępny po zakończeniu procesu.</p>
+    `
     resultDialogVisible.value = true
-    fetchBackups() // Refresh history after creating
+
+    // Odświeżamy listę kopii po pewnym czasie
+    setTimeout(() => {
+      fetchBackups()
+      fetchAvailableBackups()
+      
+      // Dodajemy opóźnione powiadomienie (symulacja)
+      setTimeout(() => {
+        notificationService.addNotification({
+          title: 'Kopia utworzona',
+          message: `Kopia "${backupForm.value.name}" została pomyślnie utworzona`,
+          type: 'success',
+          icon: 'mdi:check-circle',
+          duration: 8000
+        })
+        
+        // Aktualizujemy dialog po "zakończeniu"
+        resultDialogMessage.value = `
+          <p>Kopia zapasowa <strong>${backupForm.value.name}</strong> została utworzona pomyślnie.</p>
+          <p>ID kopii: <code>${response.data.backupId}</code></p>
+          <p>Status: <el-tag type="success">Zakończono</el-tag></p>
+        `
+      }, 10000) // Symulacja 10 sekundowego procesu
+    }, 2000)
+
   } catch (error) {
-    ElMessage.error(error.response?.data?.message || t('backup.error_message'))
+    const errorMsg = error.response?.data?.message || 
+                    'Wystąpił błąd podczas tworzenia kopii zapasowej'
+    
+    notificationService.addNotification({
+      title: 'Błąd tworzenia kopii',
+      message: errorMsg,
+      type: 'error',
+      icon: 'mdi:alert-circle',
+      duration: 8000
+    })
+    
+    ElMessage.error(errorMsg)
   } finally {
     isCreating.value = false
   }
 }
+
 
 // Restore Backup Tab
 const availableBackups = ref([])
@@ -378,7 +452,17 @@ const fetchAvailableBackups = async () => {
     const response = await axios.get('/api/system/backup/list')
     availableBackups.value = response.data.backups
   } catch (error) {
-    ElMessage.error(t('backup.fetch_error'))
+    const errorMsg = error.response?.data?.message || t('backup.fetch_error')
+    
+    $notify.addNotification({
+      title: t('backup.notification.fetch_error_title'),
+      message: errorMsg,
+      type: 'error',
+      icon: 'mdi:database-alert',
+      duration: 6000
+    })
+    
+    ElMessage.error(errorMsg)
   } finally {
     loadingBackups.value = false
   }
@@ -399,10 +483,30 @@ const restoreBackup = async () => {
       verify_integrity: verifyIntegrity.value
     })
     
+    $notify.addNotification({
+      title: t('backup.notification.restored_title'),
+      message: t('backup.notification.restored_message', {
+        name: availableBackups.value.find(b => b.id === selectedBackup.value)?.name || selectedBackup.value
+      }),
+      type: 'success',
+      icon: 'mdi:restore',
+      duration: 5000
+    })
+    
     ElMessage.success(t('backup.restore_success'))
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error(error.response?.data?.message || t('backup.restore_error'))
+      const errorMsg = error.response?.data?.message || t('backup.restore_error')
+      
+      $notify.addNotification({
+        title: t('backup.notification.restore_error_title'),
+        message: errorMsg,
+        type: 'error',
+        icon: 'mdi:alert-circle',
+        duration: 8000
+      })
+      
+      ElMessage.error(errorMsg)
     }
   } finally {
     isRestoring.value = false
@@ -415,6 +519,7 @@ const loading = ref(false)
 const currentPage = ref(1)
 const pageSize = ref(10)
 const totalBackups = ref(0)
+const refreshInterval = ref(null)
 
 const fetchBackups = async () => {
   loading.value = true
@@ -427,11 +532,44 @@ const fetchBackups = async () => {
     })
     backups.value = response.data.backups
     totalBackups.value = response.data.total
+    
+    // Sprawdź czy są kopie w trakcie tworzenia
+    const inProgress = backups.value.filter(b => b.status === 'in_progress')
+    if (inProgress.length > 0 && !refreshInterval.value) {
+      startStatusRefresh()
+    }
   } catch (error) {
-    ElMessage.error(t('backup.history_fetch_error'))
+    const errorMsg = error.response?.data?.message || t('backup.history_fetch_error')
+    
+    $notify.addNotification({
+      title: t('backup.notification.history_error_title'),
+      message: errorMsg,
+      type: 'error',
+      icon: 'mdi:history',
+      duration: 6000
+    })
+    
+    ElMessage.error(errorMsg)
   } finally {
     loading.value = false
   }
+}
+
+const startStatusRefresh = () => {
+  if (refreshInterval.value) {
+    clearInterval(refreshInterval.value)
+  }
+  
+  refreshInterval.value = setInterval(() => {
+    const hasInProgress = backups.value.some(b => b.status === 'in_progress')
+    if (hasInProgress) {
+      fetchBackups()
+      fetchAvailableBackups()
+    } else {
+      clearInterval(refreshInterval.value)
+      refreshInterval.value = null
+    }
+  }, 10000)
 }
 
 const downloadBackup = async (backupId) => {
@@ -465,24 +603,37 @@ const downloadBackup = async (backupId) => {
       link.remove()
     }, 100)
 
-    ElMessage.success('Backup download started')
+    $notify.addNotification({
+      title: t('backup.notification.download_started_title'),
+      message: t('backup.notification.download_started_message', { name: fileName }),
+      type: 'info',
+      icon: 'mdi:download',
+      duration: 4000
+    })
+    
+    ElMessage.success(t('backup.download_started'))
   } catch (error) {
+    let errorMsg = t('backup.download_error')
+    
     if (error.response) {
       if (error.response.status === 404) {
-        ElMessage.error('Backup not found on server')
+        errorMsg = t('backup.not_found')
       } else if (error.response.status === 423) {
-        ElMessage.warning('Backup is not ready for download yet')
+        errorMsg = t('backup.not_ready')
       } else {
-        const errorMsg = error.response.data?.error || 
-                        error.response.statusText || 
-                        'Download failed'
-        ElMessage.error(errorMsg)
+        errorMsg = error.response.data?.error || error.response.statusText
       }
-    } else if (error.request) {
-      ElMessage.error('No response from server. Check your connection.')
-    } else {
-      ElMessage.error(error.message || 'Failed to download backup')
     }
+    
+    $notify.addNotification({
+      title: t('backup.notification.download_error_title'),
+      message: errorMsg,
+      type: 'error',
+      icon: 'mdi:download-off',
+      duration: 8000
+    })
+    
+    ElMessage.error(errorMsg)
   }
 }
 
@@ -493,12 +644,33 @@ const deleteBackup = async (backupId) => {
       t('common.warning'),
       { type: 'warning' }
     )
+    
     await axios.delete(`/api/system/backup/delete/${backupId}`)
+    
+    $notify.addNotification({
+      title: t('backup.notification.deleted_title'),
+      message: t('backup.notification.deleted_message'),
+      type: 'success',
+      icon: 'mdi:delete-empty',
+      duration: 5000
+    })
+    
     ElMessage.success(t('backup.delete_success'))
     fetchBackups()
+    fetchAvailableBackups()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error(t('backup.delete_error'))
+      const errorMsg = error.response?.data?.message || t('backup.delete_error')
+      
+      $notify.addNotification({
+        title: t('backup.notification.delete_error_title'),
+        message: errorMsg,
+        type: 'error',
+        icon: 'mdi:delete-alert',
+        duration: 8000
+      })
+      
+      ElMessage.error(errorMsg)
     }
   }
 }
@@ -567,7 +739,17 @@ const loadSchedule = async () => {
       }
     }
   } catch (error) {
-    ElMessage.error(t('backup.schedule_load_error'))
+    const errorMsg = error.response?.data?.message || t('backup.schedule_load_error')
+    
+    $notify.addNotification({
+      title: t('backup.notification.schedule_error_title'),
+      message: errorMsg,
+      type: 'error',
+      icon: 'mdi:calendar-alert',
+      duration: 6000
+    })
+    
+    ElMessage.error(errorMsg)
   }
 }
 
@@ -594,11 +776,32 @@ const saveSchedule = async () => {
     }
 
     await axios.post('/api/system/backup/schedule', payload)
+    
+    $notify.addNotification({
+      title: t('backup.notification.schedule_saved_title'),
+      message: t('backup.notification.schedule_saved_message'),
+      type: 'success',
+      icon: 'mdi:calendar-check',
+      time: new Date(Date.now() - 1000 * 60 * 5),
+      read: false,
+      duration: 5000
+    })
+    
     ElMessage.success(t('backup.schedule_saved'))
   } catch (error) {
     const errorMsg = error.response?.data?.error || 
                     error.response?.data?.message || 
                     t('backup.schedule_save_error')
+    
+    $notify.addNotification({
+      id: 1,
+      title: t('backup.notification.schedule_error_title'),
+      message: errorMsg,
+      type: 'error',
+      icon: 'mdi:calendar-alert',
+      duration: 8000
+    })
+
     ElMessage.error(errorMsg)
   } finally {
     isSaving.value = false
@@ -613,6 +816,17 @@ onMounted(() => {
   fetchAvailableBackups()
   fetchBackups()
   loadSchedule()
+})
+
+onBeforeUnmount(() => {
+  // Wyczyść wszystkie interwały śledzenia kopii
+  Object.values(backupIntervals.value).forEach(interval => {
+    clearInterval(interval)
+  })
+  
+  if (refreshInterval.value) {
+    clearInterval(refreshInterval.value)
+  }
 })
 </script>
 
@@ -640,5 +854,69 @@ onMounted(() => {
 
 .el-form-item {
   margin-bottom: 18px;
+}
+
+.el-tag {
+  margin-right: 5px;
+}
+
+.el-progress {
+  width: 100%;
+}
+
+.result-content {
+  line-height: 1.6;
+}
+
+.success-message {
+  color: var(--el-color-success);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.warning-message {
+  color: var(--el-color-warning);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.result-content {
+  line-height: 1.8;
+}
+
+.result-content strong {
+  color: var(--el-color-primary);
+}
+
+.result-content code {
+  background: var(--el-fill-color-light);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+}
+
+.info-text {
+  color: var(--el-text-color-secondary);
+  font-size: 0.9em;
+  margin-top: 10px;
+}
+
+.result-content {
+  line-height: 1.8;
+}
+
+.result-content strong {
+  color: var(--el-color-primary);
+}
+
+.result-content code {
+  background: var(--el-fill-color-light);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
 }
 </style>

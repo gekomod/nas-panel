@@ -15,6 +15,11 @@ case "$1" in
             systemctl unmask nas-webdav.service
         fi
 
+        if [ -L /etc/systemd/system/nas-docker-autostart.service ] && \
+           [ "$(readlink -f /etc/systemd/system/nas-docker-autostart.service)" = "/dev/null" ]; then
+            systemctl unmask nas-docker-autostart.service
+        fi
+
         # Create nas user if it doesn't exist
         if ! getent passwd nas >/dev/null; then
             adduser --system --group --no-create-home --home /opt/nas-panel nas
@@ -37,8 +42,10 @@ case "$1" in
         systemctl daemon-reload
         systemctl enable nas-webdav.service
         systemctl enable nas-api.service
+        systemctl enable nas-docker-autostart.service
         systemctl start nas-webdav.service
         systemctl start nas-api.service
+        systemctl start nas-docker-autostart.service
     ;;
     
     abort-upgrade|abort-remove|abort-deconfigure)

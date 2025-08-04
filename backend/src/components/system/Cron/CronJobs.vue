@@ -147,6 +147,10 @@ import { Icon } from '@iconify/vue'
 import { Plus } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 
+import { useNotifications } from '@/services/NotificationService'
+
+const { addNotification } = useNotifications()
+
 // Import tłumaczeń
 import enLocales from './locales/en'
 import plLocales from './locales/pl'
@@ -185,6 +189,13 @@ const fetchJobs = async () => {
       lastRun: job.lastRun ? new Date(job.lastRun) : null,
       isActive: job.isActive !== undefined ? job.isActive : true // Domyślnie aktywny
     }));
+
+  addNotification({
+    title: 'Testowe powiadomienie',
+    message: 'To działa!',
+    type: 'success'
+  })
+  
   } catch (error) {
     ElMessage.error(t('cronJobs.fetchError'));
     console.error(error);
@@ -256,6 +267,7 @@ const runJob = async (id) => {
 onMounted(() => {
   fetchJobs()
 })
+
 </script>
 
 <style scoped>

@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '@/views/HomeView.vue'
 import TerminalView from '@/views/TerminalView.vue'
 import FileManager from '@/components/FileManager/FileBrowser.vue'
+import NotificationsView from '@/views/NotificationsView.vue'
 import { useAuth } from './services/AuthService'
 
 const routes = [
@@ -344,7 +345,13 @@ const routes = [
           requiresAuth: true,
           icon: 'mdi:cog-outline' 
         }
-      }
+      },
+        {
+    path: '/notifications',
+    name: 'Notifications',
+    component: NotificationsView,
+    meta: { title: 'Powiadomienia', icon: 'mdi:bell', requiresAuth: true }
+  }
     ]
   },
   {

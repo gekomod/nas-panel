@@ -5,6 +5,8 @@ rm -fr /etc/nas-panel
 # Stop service before removal
 systemctl stop nas-api.service
 systemctl disable nas-api.service
+systemctl stop nas-docker-autostart.service
+systemctl disable nas-docker-autostart.service
 
 systemctl stop nas-webdav.service
 systemctl disable nas-webdav.service

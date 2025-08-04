@@ -1,3 +1,72 @@
+nas-panel (1.0-5) unstable; urgency=medium
+
+  * Naprawiono błędy kompilacji związane z użyciem std::localtime:
+    - Zmieniono &std::time(nullptr) na przechowywanie czasu w zmiennej std::time_t
+    - Dotyczy funkcji:
+      * setup_config_watcher()
+      * get_root_response()
+  * Poprawiono obsługę czasu w komunikach o błędach i logach
+  * Zaktualizowano formatowanie daty w interfejsie WebDAV
+  * Dodano prawidłową obsługę roku w stopce copyright
+
+  * Nowa funkcjonalność:
+    - Całkowicie przeprojektowany interfejs edycji kontenerów
+    - Dodany nowy komponent ContainerEditor z kartami:
+      + Basic Settings (podstawowe ustawienia)
+      + Networking (konfiguracja portów i sieci)
+      + Storage (zarządzanie woluminami)
+      + Environment (zmienne środowiskowe)
+      + Advanced (zaawansowane opcje)
+      + Raw Config (bezpośrednia edycja YAML)
+    - Integracja z Docker API do pobierania i aktualizacji konfiguracji
+    - Usprawnione zarządzanie portami i woluminami
+    - Dodana walidacja konfiguracji
+
+  * Poprawki błędów:
+    - Naprawiono problem z niezdefiniowaną referencją containerEditor
+    - Poprawiono formatowanie nazw kontenerów w konfiguracji
+    - Usunięto zbędne zależności związane ze starym FileEditor
+    - Naprawiono problem z automatycznym odświeżaniem listy kontenerów
+
+  * Zmiany techniczne:
+    - Zastąpiono CodeMirror nowym interfejsem formularza
+    - Zaktualizowano zależności do najnowszych wersji
+    - Dodano obsługę Docker API dla konfiguracji kontenerów
+    - Zoptymalizowano wydajność przy dużych konfiguracjach
+
+  * [Naprawa] Usunięcie niepotrzebnej właściwości "command" w konfiguracji zadań cron
+  * [Naprawa] Błąd "The command argument must be of type string" podczas wykonywania backupu
+  * [Dodano] Pełną konfigurację zadań backupu z polami:
+    - id - unikalny identyfikator zadania
+    - name - nazwa zadania backupu
+    - schedule - harmonogram w formacie cron
+    - location - lokalizacja zapisu backupów
+    - includes - lista elementów do backupu (compose, volumes)
+    - description - opis zadania
+    - status - status zadania (scheduled, running, completed, failed)
+    - lastRun - data ostatniego wykonania
+    - lastStatus - status ostatniego wykonania
+  * [Dodano] Poprawne wywołanie funkcji executeDockerBackup zamiast zewnętrznej komendy
+  * [Ulepszono] Funkcję executeDockerBackup z:
+    - Lepszą walidacją konfiguracji
+    - Oddzielnymi backupami dla compose i woluminów
+    - Rozszerzonym logowaniem
+    - Obsługą błędów
+  * [Dodano] Obsługę strefy czasowej w harmonogramie
+  * [Dodano] Endpointy API:
+    - GET /services/docker/backup/schedules - lista zaplanowanych zadań
+    - POST /services/docker/backup/schedule - tworzenie nowego zadania
+    - DELETE /services/docker/backup/schedule/{jobId} - usuwanie zadania
+  * [Dodano] Automatyczne tworzenie katalogu backupów jeśli nie istnieje
+  * [Dodano] Mechanizm śledzenia statusu i historii wykonań
+  * [Dodano] Obsługę backupu:
+    - Plików docker-compose
+    - Woluminów Docker
+  * [Naprawa] Błąd 404 przy usuwaniu harmonogramów
+  * [Ulepszono] Komunikaty błędów i logowanie
+
+ -- gekomod <zaba141@o2.pl>  Mon, 08 Jan 2024 12:00:00 +0100
+
 nas-panel (1.0.4) UNRELEASED; urgency=medium
 
   * Add FTP/SFTP      

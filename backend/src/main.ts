@@ -9,6 +9,7 @@ import './assets/main.scss'
 import { initDatabase } from './database/sqlite-service'
 import { i18n } from './locales'
 import lodash from 'lodash'
+import { NotificationPlugin } from './services/NotificationService'
 
 const env = {
   NODE_ENV: import.meta.env.MODE || 'development',
@@ -121,6 +122,11 @@ async function initializeApp() {
     
     await profilePerformance('Lodash setup', () => {
       app.use(lodash)
+      return Promise.resolve()
+    })
+
+    await profilePerformance('Notification setup', () => {
+      app.use(NotificationPlugin)
       return Promise.resolve()
     })
 

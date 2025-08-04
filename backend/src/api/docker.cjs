@@ -1164,72 +1164,92 @@ app.post('/services/docker/backup', requireAuth, async (req, res) => {
   try {
     const { location, includes } = req.body;
     
-    // Validate inputs
+    // Walidacja wejścia
     if (!location || typeof location !== 'string') {
       return res.status(400).json({ error: 'Invalid backup location' });
     }
     
-    if (!Array.isArray(includes)) {
-      return res.status(400).json({ error: 'Invalid includes parameter' });
-    }
-    
-    // Create backup directory if it doesn't exist
+    // Utwórz katalog backupu jeśli nie istnieje
     await fs.mkdir(location, { recursive: true });
     
-    // Generate timestamp for backup filename
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const backupName = `docker-backup-${timestamp}.tar.gz`;
-    const backupPath = path.join(location, backupName);
+    const backupFiles = [];
     
-    // Build backup command based on what to include
-    let commands = [];
-    
-    if (includes.includes('compose')) {
-      commands.push(`tar -czf ${backupPath} ${DOCKER_COMPOSE_DIR}`);
-    }
-    
+    // 1. Backup woluminów
     if (includes.includes('volumes')) {
-      // Get list of volumes
-      const { stdout: volumes } = await execAsync('docker volume ls -q');
-      if (volumes.trim()) {
-        const volumeBackup = path.join(location, `volumes-${backupName}`);
-        commands.push(`docker run --rm -v ${volumeBackup}:/backup -v ${volumes.trim().split('\n').map(v => `${v}:/volume/${v}`).join(' -v ')} alpine tar -czf /backup /volume`);
+      const volumesBackupFile = `volumes-${timestamp}.tar.gz`;
+      const volumesBackupPath = path.join(location, volumesBackupFile);
+      
+      const volumes = await docker.listVolumes();
+      if (volumes.Volumes.length > 0) {
+        const volumeMounts = volumes.Volumes.map(v => `-v ${v.Name}:/volumes/${v.Name}`).join(' ');
+        
+        await execAsync(
+          `docker run --rm ${volumeMounts} ` +
+          `-v ${location}:/backup ` +
+          `alpine sh -c "tar -czf /backup/${volumesBackupFile} -C /volumes ."`
+        );
+        
+        backupFiles.push(volumesBackupFile);
       }
     }
     
-    if (includes.includes('config')) {
-      const dockerConfigPath = '/etc/docker';
-      commands.push(`tar -czf ${path.join(location, `config-${backupName}`)} ${dockerConfigPath}`);
+    // 2. Backup compose files
+    if (includes.includes('compose')) {
+      const composeBackupFile = `compose-${timestamp}.tar.gz`;
+      const composeBackupPath = path.join(location, composeBackupFile);
+      
+      await require('tar').create({
+        file: composeBackupPath,
+        cwd: DOCKER_COMPOSE_DIR,
+        gzip: true
+      }, await fs.readdir(DOCKER_COMPOSE_DIR));
+      
+      backupFiles.push(composeBackupFile);
     }
     
-    // Execute backup commands
-    const results = [];
-    for (const cmd of commands) {
-      try {
-        const { stdout } = await execAsync(cmd);
-        results.push({ command: cmd, success: true, output: stdout });
-      } catch (error) {
-        results.push({ command: cmd, success: false, error: error.message });
-      }
-    }
+    // 3. Backup konfiguracji kontenerów
+    const containersBackupFile = `containers-${timestamp}.json`;
+    const containers = await docker.listContainers({ all: true });
     
-    // Check if any backups were created
-    const backupFiles = (await fs.readdir(location)).filter(f => f.includes(backupName));
+    const containersConfig = await Promise.all(
+      containers.map(async c => {
+        const container = docker.getContainer(c.Id);
+        const inspectData = await container.inspect();
+        return {
+          id: c.Id,
+          name: c.Names[0].replace(/^\//, ''),
+          config: {
+            Image: inspectData.Config.Image,
+            Env: inspectData.Config.Env,
+            Cmd: inspectData.Config.Cmd,
+            Labels: inspectData.Config.Labels,
+            HostConfig: {
+              Binds: inspectData.HostConfig.Binds,
+              PortBindings: inspectData.HostConfig.PortBindings
+            }
+          }
+        };
+      })
+    );
     
-    if (backupFiles.length === 0) {
-      return res.status(500).json({ error: 'No backup files were created' });
-    }
+    await fs.writeFile(
+      path.join(location, containersBackupFile),
+      JSON.stringify(containersConfig, null, 2)
+    );
+    backupFiles.push(containersBackupFile);
     
     res.json({
       success: true,
       message: 'Backup completed successfully',
       files: backupFiles,
-      location,
-      details: results
+      location
     });
     
   } catch (error) {
+    console.error('Backup failed:', error);
     res.status(500).json({
+      success: false,
       error: 'Backup failed',
       details: error.message
     });
@@ -1287,44 +1307,70 @@ function formatFileSize(bytes) {
 app.post('/services/docker/backup/restore', requireAuth, async (req, res) => {
   try {
     const { file } = req.body;
+    const backupDir = '/var/backups/docker'; // Domyślna lokalizacja
     
-    if (!file) {
-      return res.status(400).json({ error: 'Backup file is required' });
+    // 1. Wczytaj metadane backupu
+    const metaFile = path.join(backupDir, file.replace(/\.tar$/, '.json'));
+    const metaData = JSON.parse(await fs.readFile(metaFile, 'utf8'));
+    
+    // 2. Przywróć woluminy (jeśli istnieją w backupie)
+    const volumesBackupFile = path.join(backupDir, file.replace(/meta-/, 'volumes-').replace(/\.json$/, '.tar'));
+    if (await fs.access(volumesBackupFile).then(() => true).catch(() => false)) {
+      await require('tar').extract({
+        file: volumesBackupFile,
+        cwd: '/var/lib/docker/volumes',
+        preservePaths: true
+      });
     }
     
-    // Validate file exists
-    const filePath = path.join('/var/backups/docker', file);
-    try {
-      await fs.access(filePath);
-    } catch {
-      return res.status(404).json({ error: 'Backup file not found' });
+    // 3. Przywróć compose files (jeśli istnieją w backupie)
+    const composeBackupFile = path.join(backupDir, file.replace(/meta-/, 'compose-').replace(/\.json$/, '.tar'));
+    if (await fs.access(composeBackupFile).then(() => true).catch(() => false)) {
+      await require('tar').extract({
+        file: composeBackupFile,
+        cwd: DOCKER_COMPOSE_DIR,
+        preservePaths: true
+      });
     }
     
-    // Determine backup type by filename
-    let restoreCommand = '';
-    if (file.includes('docker-backup-')) {
-      // Main backup
-      restoreCommand = `tar -xzf ${filePath} -C /`;
-    } else if (file.includes('volumes-')) {
-      // Volumes backup
-      restoreCommand = `docker run --rm -v ${filePath}:/backup -v /var/lib/docker/volumes:/target alpine sh -c "tar -xzf /backup -C /target"`;
-    } else if (file.includes('config-')) {
-      // Config backup
-      restoreCommand = `tar -xzf ${filePath} -C /`;
-    } else {
-      return res.status(400).json({ error: 'Unknown backup type' });
+    // 4. Przywróć kontenery
+    for (const containerBackup of metaData.containers) {
+      try {
+        // Usuń istniejący kontener jeśli istnieje
+        try {
+          const existingContainer = docker.getContainer(containerBackup.id);
+          await existingContainer.stop();
+          await existingContainer.remove();
+        } catch (e) {
+          console.log(`Container ${containerBackup.name} not found, creating new`);
+        }
+        
+        // Utwórz nowy kontener z backupu
+        await docker.createContainer({
+          name: containerBackup.name,
+          ...containerBackup.config
+        });
+      } catch (error) {
+        console.error(`Failed to restore container ${containerBackup.name}:`, error);
+      }
     }
     
-    // Execute restore
-    const { stdout } = await execAsync(restoreCommand);
+    // 5. Uruchom wszystkie kontenery
+    const containers = await docker.listContainers({ all: true });
+    for (const containerInfo of containers) {
+      const container = docker.getContainer(containerInfo.Id);
+      if (containerInfo.State !== 'running') {
+        await container.start();
+      }
+    }
     
     res.json({
       success: true,
-      message: 'Restore completed successfully',
-      output: stdout
+      message: 'Restore completed successfully'
     });
     
   } catch (error) {
+    console.error('Restore failed:', error);
     res.status(500).json({
       success: false,
       error: 'Restore failed',

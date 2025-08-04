@@ -594,7 +594,7 @@ backup: {
     history: 'History',
     type: 'Backup Type',
     name: 'Backup Name',
-    items: 'Items to Backup',
+    itemss: 'Items to Backup',
     compression: 'Compression',
     include_system_config: 'Include System Configuration',
     create_button: 'Create',

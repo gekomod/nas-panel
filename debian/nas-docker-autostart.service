@@ -1,0 +1,11 @@
+[Unit]
+Description=NAS Docker Container Autostart
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/docker-autostart.sh
+
+[Install]
+WantedBy=multi-user.target

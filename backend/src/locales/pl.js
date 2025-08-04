@@ -633,7 +633,7 @@ backup: {
     history: 'Historia',
     type: 'Typ kopii',
     name: 'Nazwa kopii',
-    items: 'Elementy do backupu',
+    itemss: 'Elementy do backupu',
     compression: 'Kompresja',
     include_system_config: 'Uwzględnij konfigurację systemu',
     create_button: 'Utwórz',
@@ -666,6 +666,26 @@ backup: {
     download: 'Pobierz',
     download_error: 'Błąd pobierania kopii',
     download_success: 'Pobieranie rozpoczęte',
+    background_warning: "Proces może potrwać kilka minut. Możesz śledzić postęp w zakładce 'Historia'.",
+    creation_started: "Tworzenie kopii zapasowej rozpoczęte. Proces działa w tle.",
+
+    "notification": {
+      "created_title": "Rozpoczęto tworzenie kopii",
+      "created_message": "Rozpoczęto tworzenie kopii {name} (ID: {id})",
+      "completed_title": "Kopia zakończona",
+      "completed_message": "Kopia {name} została utworzona. Rozmiar: {size}",
+      "failed_title": "Błąd tworzenia kopii",
+      "failed_message": "Tworzenie kopii {name} nie powiodło się",
+      schedule_saved_title: "Harmonogram zapisany",
+      schedule_saved_message: "Harmonogram kopii zapasowych został zapisany",
+      schedule_error_title: "Błąd harmonogramu",
+      schedule_error_message: "Błąd podczas zapisywania harmonogramu kopii zapasowych",
+      restore_started_title: "Rozpoczęto przywracanie"
+    },
+    "success_title": "Tworzenie kopii",
+    "success_message": "Rozpoczęto tworzenie kopii <strong>{name}</strong><br>ID: <code>{id}</code><br>Status: <el-tag type=\"info\">W trakcie</el-tag>",
+    "completed_message": "Kopia <strong>{name}</strong> została utworzona pomyślnie<br>Rozmiar: <strong>{size}</strong><br>ID: <code>{id}</code><br>Status: <el-tag type=\"success\">Zakończono</el-tag>",
+
     types: {
       full: 'Pełna',
       incremental: 'Przyrostowa',
@@ -822,6 +842,7 @@ backup: {
     edit: "Edytuj",
     delete: "Usuń",
     cancel: "Anuluj",
+    close: "Zamknij",
     confirmation: "Potwierdzenie",
     saveChanges: "Zapisz zmiany"
   }
