@@ -13,16 +13,20 @@ jobs:
       with:
         fetch-depth: 0
 
-    # Instalacja wymaganych pakietów systemowych
+    # Pobierz wszystkie tagi
+    - name: Fetch all tags
+      run: git fetch --depth=1 origin +refs/tags/*:refs/tags/*
+
+    # Instalacja wymaganych pakietów
     - name: Install system dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y \
           debhelper devscripts build-essential \
           debconf nodejs npm sqlite3 \
-          libpam0g-dev git
+          musl-tools libpam0g-dev git
 
-    # Instalacja zależności Node.js
+    # Setup Node.js
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
@@ -30,54 +34,78 @@ jobs:
         cache: 'npm'
         cache-dependency-path: 'backend/package-lock.json'
 
+    # Pobierz aktualną wersję z changelog
+    - name: Get changelog version
+      id: changelog-version
+      run: |
+        CURRENT_VERSION=$(head -1 debian/changelog | awk -F'[()]' '{print $2}')
+        echo "changelog_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+    # Pobierz najnowszą wersję z tagów GitHub
+    - name: Get latest release version
+      id: latest-release
+      run: |
+        LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+        LATEST_VERSION=${LATEST_TAG#v}
+        echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+
+    # Porównaj wersje i zdecyduj czy budować nowy release
+    - name: Determine release version
+      id: release-version
+      run: |
+        CHANGELOG_VERSION=${{ steps.changelog-version.outputs.changelog_version }}
+        LATEST_VERSION=${{ steps.latest-release.outputs.latest_version }}
+        
+        # Porównaj wersje semver
+        if [ "$(printf '%s\n' "$CHANGELOG_VERSION" "$LATEST_VERSION" | sort -V | tail -n1)" == "$LATEST_VERSION" ]; then
+          # Wersja w changelog jest starsza lub równa - nie robimy nowego release
+          echo "skip_release=true" >> $GITHUB_OUTPUT
+          echo "release_version=$CHANGELOG_VERSION" >> $GITHUB_OUTPUT
+        else
+          # Wersja w changelog jest nowsza - robimy release
+          echo "skip_release=false" >> $GITHUB_OUTPUT
+          echo "release_version=$CHANGELOG_VERSION" >> $GITHUB_OUTPUT
+        fi
+
+    # Kontynuuj tylko jeśli potrzebny jest nowy release
+    - name: Check if release needed
+      if: steps.release-version.outputs.skip_release == 'false'
+      run: echo "Building release for version ${{ steps.release-version.outputs.release_version }}"
+
+    # Build steps (tylko jeśli potrzebny nowy release)
     - name: Install npm dependencies
+      if: steps.release-version.outputs.skip_release == 'false'
       working-directory: ./backend
       run: npm ci
 
-    # Budowanie projektu
     - name: Build project
+      if: steps.release-version.outputs.skip_release == 'false'
       working-directory: ./backend
       run: npm run build
 
-    # Pobierz aktualną wersję z changelog
-    - name: Get current version
-      id: version
+    - name: Fix musl lib symlink
+      if: steps.release-version.outputs.skip_release == 'false'
       run: |
-        CURRENT_VERSION=$(head -1 debian/changelog | awk -F'[()]' '{print $2}')
-        echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+        sudo mkdir -p /lib
+        sudo ln -sf /usr/lib/x86_64-linux-musl/libc.so /lib/libc.musl-x86_64.so.1 || true
 
-    # Zwiększ numer wersji (patch)
-    - name: Bump version
-      id: bump-version
-      run: |
-        CURRENT_VERSION=${{ steps.version.outputs.current_version }}
-        IFS=. read -r major minor patch <<<"${CURRENT_VERSION}"
-        NEW_VERSION="${major}.${minor}.$((patch + 1))"
-        echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-
-    # Aktualizacja changelog
-    - name: Update changelog
-      run: |
-        NEW_VERSION=${{ steps.bump-version.outputs.new_version }}
-        dch -v "$NEW_VERSION" --distribution unstable "Automatic version bump"
-        dch -r ""
-
-    # Budowanie pakietu deb
     - name: Build Debian package
+      if: steps.release-version.outputs.skip_release == 'false'
       run: |
+        mkdir -p debian/nas-panel/usr/lib
         dpkg-buildpackage -us -uc -b
         mkdir artifacts
         mv ../nas-panel_*.deb artifacts/
 
-    # Tworzenie release
+    # Create Release (tylko jeśli potrzebny nowy release)
     - name: Create Release
+      if: github.ref == 'refs/heads/main' && steps.release-version.outputs.skip_release == 'false'
       uses: softprops/action-gh-release@v1
-      if: github.ref == 'refs/heads/main'
       with:
-        name: Version ${{ steps.bump-version.outputs.new_version }}
-        tag_name: v${{ steps.bump-version.outputs.new_version }}
+        name: Version ${{ steps.release-version.outputs.release_version }}
+        tag_name: v${{ steps.release-version.outputs.release_version }}
         body: |
-          Automated release for version ${{ steps.bump-version.outputs.new_version }}
+          Automated release for version ${{ steps.release-version.outputs.release_version }}
           Changes:
           $(awk '/\*/{flag=1;next}/--/{flag=0}flag' debian/changelog | head -n -1)
         files: |
