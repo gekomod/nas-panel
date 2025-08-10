@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
@@ -13,11 +16,7 @@ jobs:
       with:
         fetch-depth: 0
 
-    # Pobierz wszystkie tagi
-    - name: Fetch all tags
-      run: git fetch --depth=1 origin +refs/tags/*:refs/tags/*
-
-    # Instalacja wymaganych pakietów
+    # Install system dependencies
     - name: Install system dependencies
       run: |
         sudo apt-get update
@@ -27,7 +26,7 @@ jobs:
           musl-tools libpam0g-dev git \
           nlohmann-json3-dev g++
 
-    # Instalacja biblioteki JSON jeśli potrzebna
+    # Install JSON library
     - name: Install nlohmann/json library
       run: |
         sudo mkdir -p /usr/include/nlohmann
@@ -41,20 +40,19 @@ jobs:
         cache: 'npm'
         cache-dependency-path: 'backend/package-lock.json'
 
-    # Kompilacja nas-webdav
+    # Compile nas-webdav
     - name: Compile nas-webdav
       run: |
         mkdir -p debian/nas-panel/usr/local/bin
         g++ -std=c++17 -O2 debian/nas-webdav.cpp -o debian/nas-panel/usr/local/bin/nas-webdav -I/usr/include/nlohmann
 
-    # Pobierz wersję z changelog
+    # Get versions
     - name: Get changelog version
       id: changelog-version
       run: |
         CURRENT_VERSION=$(head -1 debian/changelog | awk -F'[()]' '{print $2}')
         echo "changelog_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
 
-    # Pobierz ostatnią wersję z tagów
     - name: Get latest release version
       id: latest-release
       run: |
@@ -62,7 +60,7 @@ jobs:
         LATEST_VERSION=${LATEST_TAG#v}
         echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
 
-    # Porównaj wersje
+    # Determine if release needed
     - name: Determine release version
       id: release-version
       run: |
@@ -77,7 +75,7 @@ jobs:
           echo "release_version=$CHANGELOG_VERSION" >> $GITHUB_OUTPUT
         fi
 
-    # Build Node.js projektu
+    # Build steps
     - name: Install npm dependencies
       if: steps.release-version.outputs.skip_release == 'false'
       working-directory: ./backend
@@ -88,14 +86,12 @@ jobs:
       working-directory: ./backend
       run: npm run build
 
-    # Fix dla musl lib
     - name: Fix musl lib symlink
       if: steps.release-version.outputs.skip_release == 'false'
       run: |
         sudo mkdir -p /lib
         sudo ln -sf /usr/lib/x86_64-linux-musl/libc.so /lib/libc.musl-x86_64.so.1 || true
 
-    # Budowanie pakietu deb
     - name: Build Debian package
       if: steps.release-version.outputs.skip_release == 'false'
       run: |
@@ -104,10 +100,12 @@ jobs:
         mkdir artifacts
         mv ../nas-panel_*.deb artifacts/
 
-    # Tworzenie release
+    # Create Release with PAT
     - name: Create Release
       if: github.ref == 'refs/heads/main' && steps.release-version.outputs.skip_release == 'false'
       uses: softprops/action-gh-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         name: Version ${{ steps.release-version.outputs.release_version }}
         tag_name: v${{ steps.release-version.outputs.release_version }}
