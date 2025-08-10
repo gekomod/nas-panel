@@ -17,6 +17,36 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
+    - name: Install required system packages
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          debconf \
+          nodejs \
+          npm \
+          sqlite3 \
+          ethtool \
+          ufw \
+          network-manager \
+          smartmontools \
+          net-tools \
+          libc6 \
+          iperf3 \
+          iproute2 \
+          jq \
+          python3 \
+          make \
+          g++ \
+          musl-dev \
+          samba \
+          mdadm \
+          lsof \
+          rsync \
+          curl \
+          wget \
+          cron \
+          libpam0g-dev
+
     - name: Use Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v4
       with:
