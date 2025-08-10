@@ -35,6 +35,18 @@
               <Icon icon="mdi:refresh" width="16" height="16" :class="{ 'spin': loading }" />
             </el-button>
           </el-tooltip>
+
+          <el-tooltip :content="$t('storageFilesystems.createRaid')">
+            <el-button 
+              size="small" 
+              @click="showRaidDialog" 
+              :disabled="loading"
+              text
+            >
+              <Icon icon="mdi:disk" width="16" height="16" />
+            </el-button>
+          </el-tooltip>
+
           <el-tooltip :content="$t('storageFilesystems.partition')">
 	    <el-button 
 	      size="small" 
@@ -153,6 +165,50 @@
   </div>
 </el-dialog>
 
+<!-- Dodaj przed format dialog -->
+<el-dialog v-model="raidDialogVisible" :title="$t('storageFilesystems.raidDialog.title')" width="600px">
+  <el-form :model="raidForm" label-position="top">
+    <el-form-item :label="$t('storageFilesystems.raidDialog.raidLevel')">
+      <el-select v-model="raidForm.level" style="width: 100%">
+        <el-option label="RAID 0 (Stripping)" value="0" />
+        <el-option label="RAID 1 (Mirroring)" value="1" />
+        <el-option label="RAID 5 (Parity)" value="5" />
+        <el-option label="RAID 6 (Double Parity)" value="6" />
+        <el-option label="RAID 10 (Striped Mirror)" value="10" />
+      </el-select>
+    </el-form-item>
+
+    <el-form-item :label="$t('storageFilesystems.raidDialog.devices')">
+      <el-select 
+        v-model="raidForm.devices" 
+        multiple
+        style="width: 100%"
+      >
+        <el-option
+          v-for="device in availableRaidDevices"
+          :key="device.path"
+          :label="device.path"
+          :value="device.path"
+          :disabled="device.mountpoint"
+        />
+      </el-select>
+    </el-form-item>
+
+    <el-form-item :label="$t('storageFilesystems.raidDialog.name')">
+      <el-input v-model="raidForm.name" placeholder="md0" />
+    </el-form-item>
+  </el-form>
+  
+  <template #footer>
+    <el-button @click="raidDialogVisible = false">
+      {{ $t('common.cancel') }}
+    </el-button>
+    <el-button type="primary" @click="createRaid">
+      {{ $t('storageFilesystems.raidDialog.create') }}
+    </el-button>
+  </template>
+</el-dialog>
+
     <!-- Format Dialog -->
     <el-dialog v-model="formatDialogVisible" :title="$t('storageFilesystems.formatDialog.title')" width="500px">
       <el-form :model="formatForm" label-position="top">
@@ -230,7 +286,12 @@
         <template #default="{ row }">
           <div class="device-cell">
             <Icon :icon="getDeviceIcon(row.device)" width="18" height="18" />
-            <span>{{ row.device }}</span>
+            <span>
+              {{ row.device }}
+              <el-tag v-if="row.device.includes('/dev/md')" size="mini" type="warning">
+                {{ $t('storageFilesystems.raidArray') }}
+              </el-tag>
+            </span>
           </div>
         </template>
       </el-table-column>
@@ -506,6 +567,30 @@ const totalDiskSize = ref(0);
 const usedDiskSpace = ref(0);
 const diskUsagePercentage = ref(0);
 
+const raidDialogVisible = ref(false);
+const raidForm = ref({
+  level: '1',
+  devices: [],
+  name: ''
+});
+
+const availableRaidDevices = computed(() => {
+  return allDevices.value.filter(dev => 
+    !dev.path.includes('md') && 
+    !dev.path.includes('loop') &&
+    !dev.mountpoint
+  );
+});
+
+const showRaidDialog = () => {
+  raidDialogVisible.value = true;
+  raidForm.value = {
+    level: '1',
+    devices: [],
+    name: ''
+  };
+};
+
 const loadFstabEntries = async () => {
   try {
     const response = await api.get('/api/storage/fstab-check');
@@ -646,6 +731,36 @@ const openFstabEditor = async () => {
     }
   }
 }
+
+const createRaid = async () => {
+  try {
+    if (raidForm.value.devices.length < 2) {
+      throw new Error(t('storageFilesystems.raidDialog.minDevicesError'));
+    }
+
+    const response = await axios.post('/api/storage/create-raid', {
+      devices: raidForm.value.devices,
+      raidLevel: raidForm.value.level,
+      name: raidForm.value.name
+    });
+
+    if (response.data.success) {
+      ElNotification({
+        title: t('common.success'),
+        message: t('storageFilesystems.raidDialog.createSuccess'),
+        type: 'success'
+      });
+      raidDialogVisible.value = false;
+      await fetchDevices();
+    }
+  } catch (error) {
+    ElNotification({
+      title: t('common.error'),
+      message: error.response?.data?.details || error.message,
+      type: 'error'
+    });
+  }
+};
 
 // Methods
 const showMountDialog = async () => {
@@ -1048,6 +1163,22 @@ const getFsIcon = (type) => {
   return icons[type.toLowerCase()] || 'mdi:file-question'
 }
 
+const renderDeviceLabel = (device) => {
+  let label = device.path;
+  if (device.isRaid) {
+    label += ' [RAID]';
+  } else if (device.model && device.model !== 'Unknown') {
+    label += ` (${device.model})`;
+  }
+  if (device.fstype) {
+    label += ` [${device.fstype}]`;
+  }
+  if (device.label) {
+    label += ` - ${device.label}`;
+  }
+  return label;
+};
+
 const getStatusIcon = (status) => {
   const icons = {
     active: 'mdi:check-circle',
@@ -1444,5 +1575,11 @@ onUnmounted(() => {
   font-family: monospace;
   white-space: pre;
   overflow-x: auto;
+}
+
+.raid-device-badge {
+  margin-left: 8px;
+  background-color: #f0ad4e;
+  color: white;
 }
 </style>

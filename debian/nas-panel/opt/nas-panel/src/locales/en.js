@@ -78,7 +78,10 @@ export default {
       "selectFsType": "Wybierz typ systemu plików",
       "mount": "Mount",
       partition: "Partition",
-      zfsPoolName: "ZFS Pool Name"
+      zfsPoolName: "ZFS Pool Name",
+      "selectDevice": "Wybierz urządzenie",
+      "selectFsType": "Wybierz typ systemu plików",
+      "mount": "Montuj"
     },
     "formatDialog": {
       "title": "Formatowanie urządzenia",
@@ -104,6 +107,23 @@ export default {
       "used": "Used",
       "free": "Free",
       "device": "Device"
+    },
+        "raidDialog": {
+      "title": "Create RAID Array",
+      "raidLevel": "RAID Level",
+      "devices": "Devices",
+      "name": "RAID Device Name",
+      "create": "Create RAID",
+      "minDevicesError": "At least 2 devices are required",
+      "createSuccess": "RAID array created successfully"
+    },
+    "createRaid": "Create RAID",
+    "raidLevels": {
+      "0": "RAID 0 (Stripping)",
+      "1": "RAID 1 (Mirroring)",
+      "5": "RAID 5 (Parity)",
+      "6": "RAID 6 (Double Parity)",
+      "10": "RAID 10 (Striped Mirror)"
     }
   },
   storageSmart: {
@@ -591,7 +611,7 @@ backup: {
     history: 'History',
     type: 'Backup Type',
     name: 'Backup Name',
-    items: 'Items to Backup',
+    itemss: 'Items to Backup',
     compression: 'Compression',
     include_system_config: 'Include System Configuration',
     create_button: 'Create',

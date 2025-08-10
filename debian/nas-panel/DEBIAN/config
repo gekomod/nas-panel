@@ -1,0 +1,11 @@
+#!/bin/sh
+# Script for configuration handling
+
+set -e
+
+. /usr/share/debconf/confmodule
+
+# No specific configuration needed
+db_stop
+
+exit 0

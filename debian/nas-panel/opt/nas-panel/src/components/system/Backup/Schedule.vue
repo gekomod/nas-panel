@@ -189,6 +189,17 @@ const saveSchedule = async () => {
     }
 
     const response = await axios.post('/api/system/backup/schedule', payload);
+    //schedule, command, name, description
+    await axios.post('/system/cron-jobs', {
+      name: 'Backup Schedule',
+      description: t('backup.schedule_description'),
+      job: 'backup_schedule',
+      command: `/usr/bin/nas-backup --type ${scheduleForm.value.type}`,
+      schedule: scheduleForm.value.type === 'daily' ? `0 ${scheduleForm.value.dailyTime.split(':')[1]} ${scheduleForm.value.dailyTime.split(':')[0]} * * *` :
+                scheduleForm.value.type === 'weekly' ? `0 ${scheduleForm.value.weeklyTime.split(':')[1]} ${scheduleForm.value.weeklyTime.split(':')[0]} * * ${scheduleForm.value.weeklyDay}` :
+                scheduleForm.value.type === 'monthly' ? `0 ${scheduleForm.value.monthlyTime.split(':')[1]} ${scheduleForm.value.monthlyTime.split(':')[0]} ${scheduleForm.value.monthlyDay} * *` :
+                '0 0 * * *'
+    });
     
     ElMessage.success(t('backup.schedule_saved'));
     return response.data;

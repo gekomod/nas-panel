@@ -1,0 +1,12 @@
+[Unit]
+Description=Save running Docker containers on shutdown
+DefaultDependencies=no
+Before=shutdown.target reboot.target halt.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/docker-autostart.sh save
+TimeoutStartSec=0
+
+[Install]
+WantedBy=halt.target reboot.target shutdown.target

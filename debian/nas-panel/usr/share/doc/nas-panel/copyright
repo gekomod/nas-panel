@@ -1,6 +1,6 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: nas-panel
-Source: https://example.com/nas-panel
+Source: https://naspanel.site
 
 Files: *
 Copyright: 2025 Gekomod <zaba141@o2.pl>

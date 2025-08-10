@@ -8,7 +8,7 @@ Homepage: https://naspanel.site
 
 Package: nas-panel
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, nodejs (>= 22), npm, sqlite3, ethtool, ufw, network-manager, smartmontools, net-tools, libc6, iperf3, iproute2, jq, python3, make, g++, musl-dev, samba
+Depends: ${shlibs:Depends}, ${misc:Depends}, debconf (>= 0.5.00), nodejs (>= 22), npm, sqlite3, ethtool, ufw, network-manager, smartmontools, net-tools, libc6, iperf3, iproute2, jq, python3, make, g++, musl-dev, samba, mdadm, lsof, rsync, curl, wget, cron
 Description: Web-based NAS administration panel
  A modern web interface for managing your NAS device with features
  like file management, system monitoring, and configuration tools.

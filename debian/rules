@@ -23,20 +23,32 @@ override_dh_auto_install:
 	cp -r backend/dist/* debian/nas-panel/opt/nas-panel/
 	
 	# Install backend files (assuming they're in a backend/ directory)
-	cp -r backend/* debian/nas-panel/opt/nas-panel/
+	rsync -av --progress --exclude='node_modules' backend/ debian/nas-panel/opt/nas-panel/
 	
 	# Install systemd services
 	mkdir -p debian/nas-panel/lib/systemd/system
 	cp debian/nas-api.service debian/nas-panel/lib/systemd/system/
 	cp debian/nas-webdav.service debian/nas-panel/lib/systemd/system/
 
+	# Install docker-autostart
+	install -D -m 755 debian/scripts/docker-autostart.sh debian/nas-panel/usr/local/bin/docker-autostart.sh
+	install -m 644 debian/nas-docker-autostart.service debian/nas-panel/lib/systemd/system/
+	install -m 644 debian/nas-docker-autosave.service debian/nas-panel/lib/systemd/system/
+
 	# Add Docker container autostart service
 	cp debian/nas-docker-autostart.service debian/nas-panel/lib/systemd/system/
 
 	# Create directory in /etc/
 	install -d debian/nas-panel/etc/nas-panel
-	install -m 644 debian/config/settings.json debian/nas-panel/etc/nas-panel/
-	install -m 644 debian/config/webdav.conf debian/nas-panel/etc/nas-panel/
+	install -m 644 debian/configs/settings.json debian/nas-panel/etc/nas-panel/
+	install -m 644 debian/configs/webdav.conf debian/nas-panel/etc/nas-panel/
+	install -m 644 debian/configs/cron-jobs.json debian/nas-panel/etc/nas-panel/
+
+	# Install default configs
+	install -d debian/nas-panel/usr/share/nas-panel/default-config
+	install -m 644 debian/configs/settings.json debian/nas-panel/usr/share/nas-panel/default-config/
+	install -m 644 debian/configs/webdav.conf debian/nas-panel/usr/share/nas-panel/default-config/
+	install -m 644 debian/configs/cron-jobs.json debian/nas-panel/usr/share/nas-panel/default-config/
 
 	install -d debian/nas-panel/usr/bin/
 	install -d debian/nas-panel/usr/local/bin/
@@ -48,6 +60,10 @@ override_dh_auto_install:
 	rm -fr debian/nas-panel/usr/local/bin/nas-webdav
 	g++ -std=c++17 -O2 debian/nas-webdav.cpp -o debian/nas-panel/usr/local/bin/nas-webdav
 	chmod +x debian/nas-panel/usr/local/bin/nas-webdav
+
+	rm -fr debian/nas-panel/usr/local/bin/docker-backup
+	chmod +x debian/scripts/docker-backup
+	install -m 755 debian/scripts/docker-backup debian/nas-panel/usr/local/bin/docker-backup
 
 override_dh_shlibdeps:
 	dh_shlibdeps --dpkg-shlibdeps-params=--ignore-missing-info

@@ -32,7 +32,7 @@ module.exports = function(app, requireAuth) {
         installed: true,
         running: isActive,
         active: isActive,
-        version: '1.0' // Można pobrać z pliku lub komendy
+        version: '1.1' // Można pobrać z pliku lub komendy
       });
     } catch (error) {
       res.status(500).json({ 
@@ -107,6 +107,19 @@ module.exports = function(app, requireAuth) {
   app.post('/services/webdav/config', requireAuth, async (req, res) => {
     try {
       const { config } = req.body;
+      
+      // Wymuś podanie aliasu dla każdego udostępnienia
+      if (config.shares) {
+        for (const share of config.shares) {
+          if (!share.alias || share.alias.trim() === '') {
+            return res.status(400).json({ 
+              success: false,
+              error: 'Alias is required for each share'
+            });
+          }
+        }
+      }
+      
       await fs.writeFile(WEBDAV_CONFIG_PATH, JSON.stringify(config, null, 2));
       
       // Przeładuj usługę jeśli jest uruchomiona

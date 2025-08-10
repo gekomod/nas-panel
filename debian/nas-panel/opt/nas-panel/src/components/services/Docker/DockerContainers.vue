@@ -38,7 +38,15 @@
           </el-tooltip>
         </template>
       </el-table-column>
-      
+
+      <el-table-column prop="Names" label="Name">
+        <template #default="{row}">
+          <el-tooltip :content="row.Names" placement="top">
+            <span>{{ safeSubstring(row.Names, 0, 20) }}</span>
+          </el-tooltip>
+        </template>
+      </el-table-column>
+
       <el-table-column prop="image" label="Image">
         <template #default="{row}">
           {{ row.image || '-' }}
@@ -50,6 +58,36 @@
           <el-tooltip v-if="row.command" :content="row.command" placement="top">
             <span>{{ safeSubstring(row.command, 0, 20) }}</span>
           </el-tooltip>
+          <span v-else>-</span>
+        </template>
+      </el-table-column>
+
+      <el-table-column label="CPU" width="120">
+        <template #default="{row}">
+          <div v-if="rowStats[row.ID]">
+            {{ rowStats[row.ID].cpu }}%
+            <el-progress 
+              :percentage="rowStats[row.ID].cpu" 
+              :color="getProgressColor(rowStats[row.ID].cpu)"
+              :show-text="false"
+              :stroke-width="12"
+            />
+          </div>
+          <span v-else>-</span>
+        </template>
+      </el-table-column>
+      
+      <el-table-column label="Memory" width="120">
+        <template #default="{row}">
+          <div v-if="rowStats[row.ID]">
+            {{ rowStats[row.ID].memory }}%
+            <el-progress 
+              :percentage="rowStats[row.ID].memory" 
+              :color="getProgressColor(rowStats[row.ID].memory)"
+              :show-text="false"
+              :stroke-width="12"
+            />
+          </div>
           <span v-else>-</span>
         </template>
       </el-table-column>
@@ -81,6 +119,24 @@
       <el-table-column label="Actions" width="240">
         <template #default="{row}">
           <el-button-group>
+
+            <el-tooltip
+              class="box-item"
+              effect="dark"
+              content="Edit Configuration File"
+              placement="top-start"
+            >
+                <el-button 
+                  type="primary" 
+                  size="small"
+                  v-if="isContainerRunning(row.status)"
+                  @click="openEditor(row.ID, row.Config?.Labels?.['com.docker.compose.project.config_files'] || `${row.Names}.yml`)"
+                >
+                  <Icon icon="mdi:file-edit" />
+                </el-button>
+            </el-tooltip>
+
+
 
       <el-tooltip
         class="box-item"
@@ -120,22 +176,7 @@
         content="Restart"
         placement="top-start"
       >
-            <el-button size="small" type="warning" @click="handleRestart(row.ID)"><el-icon><Icon icon="mdi:restart" /></el-icon></el-button>
-      </el-tooltip>
-            
-      <el-tooltip
-        class="box-item"
-        effect="dark"
-        content="Show Container Stats"
-        placement="top-start"
-      >
-            <el-button
-              size="small"
-              type="info"
-              @click.stop="showContainerStats(row.ID)"
-            >
-              <el-icon><Icon icon="mdi:chart-box" /></el-icon>
-            </el-button>
+            <el-button size="small" v-if="isContainerRunning(row.status)" type="warning" @click="handleRestart(row.ID)"><el-icon><Icon icon="mdi:restart" /></el-icon></el-button>
       </el-tooltip>
        
       <el-tooltip
@@ -170,6 +211,7 @@
       </el-tooltip>
       
       
+      
       <el-tooltip
         class="box-item"
         effect="dark"
@@ -179,6 +221,7 @@
       <el-button
         size="small"
         type="success"
+        v-if="isContainerRunning(row.status)"
         @click.stop="openSshDialog(row.ID)"
       >
         <el-icon><Icon icon="mdi:console" /></el-icon>
@@ -202,7 +245,11 @@
         <el-button @click="logsDialogVisible = false">Close</el-button>
       </template>
     </el-dialog>
-
+<file-editor 
+  ref="fileEditor" 
+  :container-id="selectedContainerId" 
+  @container-updated="fetchContainers" 
+/>
 <el-dialog
   v-model="statsDialogVisible"
   title="Container Stats"
@@ -230,7 +277,7 @@
   </el-dialog>
 
   </div>
-  
+
     <el-dialog v-model="showCreateDialog" title="Create New Container" width="60%">
     <el-form :model="createForm" label-width="120px">
       <el-form-item label="Container Name">
@@ -306,14 +353,16 @@
       <el-button type="primary" @click="createContainer">Create</el-button>
     </template>
   </el-dialog>
+
 </template>
 
 <script setup>
-import { ref, computed, onMounted, inject, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, inject, watch, nextTick } from 'vue';
 import axios from 'axios';
 import { Icon } from '@iconify/vue';
 import { ElMessage, ElMessageBox, ElTooltip } from 'element-plus';
 import ContainerStats from './ContainerStats.vue';
+import FileEditor from './FileEditor.vue';
 
 const containers = ref([]);
 const loading = ref(false);
@@ -329,6 +378,7 @@ const reloadKey = inject('reloadKey');
 const sshDialogVisible = ref(false);
 const currentSshContainer = ref('');
 const showCreateDialog = ref(false);
+const rowStats = ref({});
 const createForm = ref({
   name: '',
   image: '',
@@ -339,6 +389,10 @@ const createForm = ref({
 const newPort = ref('');
 const newVolume = ref('');
 const availableImages = ref([]);
+const refreshInterval = ref(5000);
+let statsInterval = null;
+
+const fileEditor = ref(null);
 
 const emit = defineEmits(['restart-container', 'show-stats']);
 
@@ -373,9 +427,31 @@ const fetchContainerStats = async (containerId) => {
   try {
     const response = await axios.get(`/services/docker/stats/container/${containerId}`);
     containerStats.value[containerId] = response.data.stats;
+    const stats = response.data.stats || {};
+    
+    rowStats.value[containerId] = {
+      cpu: parseFloat(stats.CPUPerc?.replace('%', '')) || 0,
+      memory: parseFloat(stats.MemPerc?.replace('%', '')) || 0
+    };
   } catch (error) {
     ElMessage.error('Failed to fetch container stats');
     console.error(error);
+  }
+};
+
+const startStatsRefresh = () => {
+  stopStatsRefresh();
+  statsInterval = setInterval(() => {
+    containers.value.forEach(container => {
+      fetchContainerStats(container.ID);
+    });
+  }, refreshInterval.value);
+};
+
+const stopStatsRefresh = () => {
+  if (statsInterval) {
+    clearInterval(statsInterval);
+    statsInterval = null;
   }
 };
 
@@ -425,6 +501,7 @@ const processedContainers = computed(() => {
 
   return filtered.map(container => ({
     ID: container.ID || container.id || '',
+    Names: container.Names || container.names || '',
     image: container.Image || container.image || '',
     command: container.Command || container.command || '',
     status: container.Status || container.status || '',
@@ -439,7 +516,17 @@ const fetchContainers = async () => {
       params: { all: true }
     });
     containers.value = Array.isArray(response.data?.containers) ? 
-      response.data.containers : [];
+      response.data.containers.map(container => ({
+        ...container,
+        Config: {
+          ...container.Config,
+          Labels: container.Config?.Labels || {}
+        }
+      })) : [];
+
+    containers.value.forEach(container => {
+      fetchContainerStats(container.ID);
+    });
   } catch (error) {
     ElMessage.error('Failed to fetch containers');
     console.error(error);
@@ -607,12 +694,22 @@ const createContainer = async () => {
   }
 };
 
+const openEditor = (id, name) => {
+  selectedContainerId.value = id; // Upewnij się, że to jest ustawione
+  fileEditor.value.openEditor(id, name); // Przekazuj obie wartości
+};
+
 watch(reloadKey, () => {
   fetchContainers();
 });
 
 onMounted(() => {
   fetchContainers();
+  startStatsRefresh();
+});
+
+onBeforeUnmount(() => {
+  stopStatsRefresh();
 });
 </script>
 
@@ -625,6 +722,11 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   margin-bottom: 20px;
+  gap: 10px;
+}
+
+.el-progress {
+  margin-top: 5px;
 }
 
 .icon {

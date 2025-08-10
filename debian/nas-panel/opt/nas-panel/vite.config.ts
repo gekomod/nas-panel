@@ -20,7 +20,7 @@ export default defineConfig({
       usePolling: true, // Wymagane dla niektórych środowisk
     },
     fs: {
-      strict: false // Pozwala na dostęp do node_modules
+      strict: true // Pozwala na dostęp do node_modules
     },
     headers: {
       // Tylko dla HTTPS/localhost:

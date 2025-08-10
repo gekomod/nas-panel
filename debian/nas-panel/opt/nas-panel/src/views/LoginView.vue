@@ -41,7 +41,6 @@
             </template>
           </el-dropdown>
         </el-tooltip>
-        
           <el-tooltip effect="dark" :content="darkMode ? $t('theme.light') : $t('theme.dark')" placement="left">
     <el-button circle class="theme-btn" @click="toggleDarkMode">
       <Icon :icon="darkMode ? 'mdi:weather-sunny' : 'mdi:weather-night'" width="20" />
@@ -454,8 +453,10 @@ const updateDarkMode = () => {
   top: 20px;
   right: 20px;
   z-index: 10;
+
   display: flex;
   gap: 8px;
+
 }
 
 .lang-btn {
@@ -498,6 +499,7 @@ const updateDarkMode = () => {
     transform: translateY(0);
   }
 }
+
 
 :root.dark {
   --el-color-primary: #409EFF;
@@ -570,6 +572,7 @@ const updateDarkMode = () => {
   background: rgba(255, 255, 255, 0.3);
   transform: scale(1.1);
 }
+
 </style>
 
 

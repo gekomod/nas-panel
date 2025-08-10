@@ -147,6 +147,10 @@ import { Icon } from '@iconify/vue'
 import { Plus } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 
+import { useNotifications } from '@/services/NotificationService'
+
+const { addNotification } = useNotifications()
+
 // Import tłumaczeń
 import enLocales from './locales/en'
 import plLocales from './locales/pl'
@@ -207,6 +211,13 @@ const addJob = async () => {
   addingJob.value = true
   try {
     await axios.post('/system/cron-jobs', newJob.value)
+
+  addNotification({
+    title: 'Cron Job Added',
+    message: 'A new cron job has been successfully added.',
+    type: 'success'
+  })
+  
     ElMessage.success('Job added successfully')
     addDialogVisible.value = false
     await fetchJobs()
@@ -256,6 +267,7 @@ const runJob = async (id) => {
 onMounted(() => {
   fetchJobs()
 })
+
 </script>
 
 <style scoped>

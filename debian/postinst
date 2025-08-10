@@ -1,54 +1,139 @@
-#!/bin/sh
+#!/bin/bash
 
 set -e
 
+# Load debconf
+if [ -f /usr/share/debconf/confmodule ]; then
+    . /usr/share/debconf/confmodule
+fi
+
 case "$1" in
     configure)
-        # Odblokuj usługę jeśli była maskowana
-        if [ -L /etc/systemd/system/nas-api.service ] && \
-           [ "$(readlink -f /etc/systemd/system/nas-api.service)" = "/dev/null" ]; then
-            systemctl unmask nas-api.service
+        echo "Starting NAS-Panel configuration..." >&2
+
+        # Initialize debconf
+        if command -v db_get >/dev/null 2>&1; then
+            db_version 2.0
         fi
 
-        if [ -L /etc/systemd/system/nas-webdav.service ] && \
-           [ "$(readlink -f /etc/systemd/system/nas-webdav.service)" = "/dev/null" ]; then
-            systemctl unmask nas-webdav.service
+        # --------------------------------------------------
+        # Original script functionality
+        # --------------------------------------------------
+        
+        # Create musl symlink if needed
+        if [ ! -e /lib/libc.musl-x86_64.so.1 ] && [ -e /usr/lib/x86_64-linux-musl/libc.so ]; then
+            ln -s /usr/lib/x86_64-linux-musl/libc.so /lib/libc.musl-x86_64.so.1
         fi
-
-        if [ -L /etc/systemd/system/nas-docker-autostart.service ] && \
-           [ "$(readlink -f /etc/systemd/system/nas-docker-autostart.service)" = "/dev/null" ]; then
-            systemctl unmask nas-docker-autostart.service
-        fi
+        
+        # Unmask services if needed
+        for service in nas-api nas-webdav nas-docker-autostart; do
+            if [ -L "/etc/systemd/system/${service}.service" ] && \
+               [ "$(readlink -f "/etc/systemd/system/${service}.service")" = "/dev/null" ]; then
+                systemctl unmask "${service}.service"
+            fi
+        done
 
         # Create nas user if it doesn't exist
         if ! getent passwd nas >/dev/null; then
             adduser --system --group --no-create-home --home /opt/nas-panel nas
         fi
         
+        # --------------------------------------------------
+        # Improved config file handling
+        # --------------------------------------------------
+        
+        # Create config directory (preserve existing files)
+        mkdir -p /etc/nas-panel
+        
+        # Config file definitions
+        CONFIG_FILES=(
+            "settings.json"
+            "webdav.conf"
+            "cron-jobs.json"
+        )
+        DEFAULT_CONFIG_DIR="/usr/share/nas-panel/default-config"
+
+        # Check if this is a first-time install
+        FIRST_INSTALL=true
+        for config_file in "${CONFIG_FILES[@]}"; do
+            if [ -f "/etc/nas-panel/$config_file" ]; then
+                FIRST_INSTALL=false
+                break
+            fi
+        done
+
+        # For first install, just copy defaults without asking
+        if [ "$FIRST_INSTALL" = true ]; then
+            echo "First installation - copying default configs" >&2
+            for config_file in "${CONFIG_FILES[@]}"; do
+                if [ -f "$DEFAULT_CONFIG_DIR/$config_file" ]; then
+                    echo "Installing $config_file" >&2
+                    cp "$DEFAULT_CONFIG_DIR/$config_file" "/etc/nas-panel/$config_file"
+                    chown nas:nas "/etc/nas-panel/$config_file"
+                    chmod 644 "/etc/nas-panel/$config_file"
+                else
+                    echo "Creating empty /etc/nas-panel/$config_file" >&2
+                    touch "/etc/nas-panel/$config_file"
+                    chown nas:nas "/etc/nas-panel/$config_file"
+                    chmod 644 "/etc/nas-panel/$config_file"
+                fi
+            done
+        else
+            # For upgrades, ask about overwriting
+            if command -v db_get >/dev/null 2>&1; then
+                db_reset nas-panel/overwrite-config
+                db_input critical nas-panel/overwrite-config || true
+                db_go || true
+                db_get nas-panel/overwrite-config
+                OVERWRITE_CONFIG="$RET"
+                
+                if [ "$OVERWRITE_CONFIG" = "true" ]; then
+                    echo "User chose to overwrite config files" >&2
+                    for config_file in "${CONFIG_FILES[@]}"; do
+                        if [ -f "$DEFAULT_CONFIG_DIR/$config_file" ]; then
+                            echo "Overwriting $config_file" >&2
+                            cp "$DEFAULT_CONFIG_DIR/$config_file" "/etc/nas-panel/$config_file"
+                            chown nas:nas "/etc/nas-panel/$config_file"
+                            chmod 644 "/etc/nas-panel/$config_file"
+                        fi
+                    done
+                else
+                    echo "User chose to keep existing config files" >&2
+                fi
+            fi
+        fi
+
+        # --------------------------------------------------
+        # Rest of original script
+        # --------------------------------------------------
+        
         # Set permissions
         chown -R nas:nas /opt/nas-panel
         chmod -R 755 /opt/nas-panel
 
-	chown -R www-data:www-data /opt/nas-panel
-	chmod -R 755 /opt/nas-panel/dist
-	find /opt/nas-panel/dist -type f -exec chmod 644 {} \;
+        chown -R www-data:www-data /opt/nas-panel
+        chmod -R 755 /opt/nas-panel/dist
+        find /opt/nas-panel/dist -type f -exec chmod 644 {} \;
 
-	# Rebuild Package System PAM
-	cd /opt/nas-panel/
-	npm rebuild
-	echo "Installation Finished"
+        # Rebuild
+        cd /opt/nas-panel/
+        npm install
+        echo "Installation Finished"
 
         # Enable and start services
-        systemctl daemon-reload
-        systemctl enable nas-webdav.service
-        systemctl enable nas-api.service
-        systemctl enable nas-docker-autostart.service
-        systemctl start nas-webdav.service
-        systemctl start nas-api.service
-        systemctl start nas-docker-autostart.service
+        for service in nas-api nas-webdav nas-docker-autostart nas-docker-autosave; do
+            systemctl enable "${service}.service" || echo "Failed to enable ${service}.service" >&2
+            systemctl start "${service}.service" || echo "Failed to start ${service}.service" >&2
+        done
+        
+        # Clean up debconf
+        if command -v db_stop >/dev/null 2>&1; then
+            db_stop
+        fi
     ;;
     
     abort-upgrade|abort-remove|abort-deconfigure)
+        echo "Aborting configuration..." >&2
     ;;
     
     *)
@@ -56,9 +141,6 @@ case "$1" in
         exit 1
     ;;
 esac
-
-# dh_installdeb will replace this with shell code automatically
-# generated by other debhelper scripts.
 
 #DEBHELPER#
 

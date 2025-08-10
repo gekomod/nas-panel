@@ -1,6 +1,3 @@
+/etc/nas-panel/cron-jobs.json
 /etc/nas-panel/settings.json
 /etc/nas-panel/webdav.conf
-/etc/nas-panel/settings.json
-/etc/nas-panel/webdav.conf
-/etc/nas-web/settings.json
-/etc/nas-web/webdav.conf

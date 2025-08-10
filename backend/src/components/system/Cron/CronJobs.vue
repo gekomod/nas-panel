@@ -189,13 +189,6 @@ const fetchJobs = async () => {
       lastRun: job.lastRun ? new Date(job.lastRun) : null,
       isActive: job.isActive !== undefined ? job.isActive : true // Domyślnie aktywny
     }));
-
-  addNotification({
-    title: 'Testowe powiadomienie',
-    message: 'To działa!',
-    type: 'success'
-  })
-  
   } catch (error) {
     ElMessage.error(t('cronJobs.fetchError'));
     console.error(error);
@@ -218,6 +211,13 @@ const addJob = async () => {
   addingJob.value = true
   try {
     await axios.post('/system/cron-jobs', newJob.value)
+
+  addNotification({
+    title: 'Cron Job Added',
+    message: 'A new cron job has been successfully added.',
+    type: 'success'
+  })
+  
     ElMessage.success('Job added successfully')
     addDialogVisible.value = false
     await fetchJobs()

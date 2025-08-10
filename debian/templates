@@ -1,0 +1,5 @@
+Template: nas-panel/overwrite-config
+Type: boolean
+Default: false
+Description: Overwrite existing NAS-Panel configuration files?
+ Some configuration files (/etc/nas-panel/*) already exist. Should they be overwritten with default versions?

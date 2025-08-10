@@ -1,12 +1,46 @@
 #!/bin/bash
 
-rm -fr /etc/nas-panel
+set -e
 
-# Stop service before removal
-systemctl stop nas-api.service
-systemctl disable nas-api.service
+case "$1" in
+    remove|purge)
+        echo "Stopping and disabling NAS-Panel services..." >&2
+        
+        # Stop and disable services
+        for service in nas-api nas-webdav nas-docker-autostart nas-docker-autosave; do
+            if systemctl list-unit-files | grep -q "^${service}\.service"; then
+                echo "Stopping ${service}.service" >&2
+                systemctl stop "${service}.service" || echo "Warning: Failed to stop ${service}.service" >&2
+                echo "Disabling ${service}.service" >&2
+                systemctl disable "${service}.service" || echo "Warning: Failed to disable ${service}.service" >&2
+            fi
+        done
 
-systemctl stop nas-webdav.service
-systemctl disable nas-webdav.service
+        # Only remove config files on purge
+        if [ "$1" = "purge" ]; then
+            echo "Removing configuration files..." >&2
+            # Backup config files before removal
+            if [ -d "/etc/nas-panel" ]; then
+                BACKUP_DIR="/var/backups/nas-panel-$(date +%Y%m%d-%H%M%S)"
+                mkdir -p "$BACKUP_DIR"
+                cp -a "/etc/nas-panel" "$BACKUP_DIR/" && \
+                echo "Configuration backed up to $BACKUP_DIR" >&2 || \
+                echo "Warning: Failed to backup configuration" >&2
+                
+                rm -fr "/etc/nas-panel"
+            fi
+        fi
+    ;;
+    
+    upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+        # Don't remove anything during upgrade
+        :
+    ;;
+    
+    *)
+        echo "prerm called with unknown argument \`$1'" >&2
+        exit 1
+    ;;
+esac
 
 exit 0

@@ -16,7 +16,13 @@ module.exports = function(app, requireAuth) {
     messages: '/var/log/messages',
     nasweb_error: '/var/log/nas-web/error.log',
     nasweb_output: '/var/log/nas-web/output.log',
-    samba: '/var/log/samba/log.smbd'
+    "nas_panel_access": '/var/log/nas-panel/access.log',
+    "nas_panel_debug": '/var/log/nas-panel/debug.log',
+    "nas_panel_info": '/var/log/nas-panel/info.log',
+    "samba_smbd": '/var/log/samba/log.smbd',
+    "samba_nmbd": '/var/log/samba/log.nmbd',
+    "samba_winbind": '/var/log/samba/log.winbindd',
+    "samba_netlogon": '/var/log/samba/log.netlogon'
   };
   
 const handleAbortedRequests = (handler) => async (req, res) => {

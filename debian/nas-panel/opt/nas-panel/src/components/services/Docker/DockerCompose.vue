@@ -34,6 +34,7 @@
           </el-tag>
         </template>
       </el-table-column>
+
       <el-table-column label="Actions" width="200">
         <template #default="{ row }">
           <el-button-group>
@@ -65,16 +66,27 @@
 
     <el-dialog v-model="showCreateDialog" title="Create Compose File" width="80%">
       <el-form :model="composeForm" ref="composeFormRef">
-        <el-form-item 
-          label="File Name"
-          prop="filename"
-          :rules="[
-            { required: true, message: 'Please input file name', trigger: 'blur' },
-            { pattern: /\.(yml|yaml)$/, message: 'File must end with .yml or .yaml' }
-          ]"
-        >
-          <el-input v-model="composeForm.filename" placeholder="docker-compose.yml" />
-        </el-form-item>
+      <el-form-item 
+        label="Container Name"
+        prop="containerName"
+        :rules="[
+          { required: true, message: 'Please input container name', trigger: 'blur' },
+          { pattern: /^[a-zA-Z0-9\s]+$/, message: 'Only letters, numbers and spaces allowed' }
+        ]"
+      >
+        <el-input 
+          v-model="composeForm.containerName" 
+          placeholder="My Awesome Container"
+          @input="updateFilename"
+        />
+      </el-form-item>
+      <el-form-item label="Filename (auto-generated)">
+        <el-input 
+          v-model="composeForm.filename" 
+          disabled 
+          placeholder="my-awesome-container.yml" 
+        />
+      </el-form-item>
         <el-form-item 
           label="Content"
           prop="content"
@@ -139,7 +151,7 @@ services:
         <el-button @click="closeDeploy">Close</el-button>
       </template>
     </el-dialog>
-    
+
     <el-dialog v-model="showTemplatesDialog" title="Add from Templates" width="60%">
       <el-table
         :data="templates"
@@ -169,6 +181,7 @@ services:
         </el-table-column>
       </el-table>
     </el-dialog>
+
 
     <el-dialog v-model="showTemplatePreview" title="Template Preview" width="80%">
       <pre class="template-preview">{{ previewTemplateContent }}</pre>
@@ -292,7 +305,8 @@ volumes:
 ];
 
 const composeForm = ref({
-  filename: 'docker-compose.yml',
+  containerName: '',
+  filename: '',
   content: '',
   autoStart: true
 });
@@ -301,6 +315,23 @@ const editForm = ref({
   filename: '',
   content: ''
 });
+
+const formatContainerName = (name) => {
+  return name
+    .toLowerCase()
+    .replace(/\s+/g, '-')  // Zamień spacje na myślniki
+    .replace(/[^a-z0-9-]/g, '') // Usuń znaki specjalne
+    .replace(/-+/g, '-')  // Usuń podwójne myślniki
+    .replace(/^-|-$/g, ''); // Usuń myślniki z początku/końca
+};
+
+const updateFilename = () => {
+  if (composeForm.value.containerName) {
+    composeForm.value.filename = `${formatContainerName(composeForm.value.containerName)}.yml`;
+  } else {
+    composeForm.value.filename = '';
+  }
+};
 
 const fetchComposeFiles = async () => {
   try {
@@ -393,8 +424,13 @@ const submitComposeForm = async () => {
 
 const createComposeFile = async () => {
   try {
+    if (!composeForm.value.containerName) {
+      ElMessage.warning('Please specify a container name');
+      return;
+    }
+    
     if (!composeForm.value.filename) {
-      ElMessage.warning('Please specify a file name');
+      ElMessage.warning('Please provide a valid container name');
       return;
     }
     
@@ -403,10 +439,9 @@ const createComposeFile = async () => {
       return;
     }
 
-    const filename = composeForm.value.filename.endsWith('.yml') || 
-                     composeForm.value.filename.endsWith('.yaml') 
-                     ? composeForm.value.filename 
-                     : `${composeForm.value.filename}.yml`;
+    const filename = composeForm.value.filename.endsWith('.yml') 
+      ? composeForm.value.filename 
+      : `${composeForm.value.filename}.yml`;
 
     const response = await axios.post('/services/docker/compose_add', {
       filename: filename,
@@ -649,6 +684,7 @@ const deployCompose = async (filename) => {
 
 const loadTemplates = async () => {
   try {
+    // Najpierw spróbuj pobrać z GitHub
     const response = await axios.get(
       'https://raw.githubusercontent.com/gekomod/docker-templates/main/contents/templates.json',
       {
@@ -699,7 +735,7 @@ const loadTemplatesDialog = async () => {
 
 onMounted(() => {
   fetchComposeFiles();
-  
+
   // Aktualizuj status co 10 sekund
   const interval = setInterval(async () => {
     if (!composeFiles.value.length) return;

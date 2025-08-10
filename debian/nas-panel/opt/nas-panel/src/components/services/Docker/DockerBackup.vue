@@ -124,6 +124,14 @@ export default {
           includes: this.backupIncludes
         });
         
+        const cron = await axios.post('/system/cron-jobs', {
+          name: 'Docker Backup Schedule',
+          description: 'Scheduled backup for Docker services',
+          job: 'docker_backup_schedule',
+          command: `/usr/local/bin/docker-backup --location ${this.backupLocation} --includes ${this.backupIncludes.join(',')}`,
+          schedule: this.cronExpression
+        });
+
         this.$message.success(response.data.message);
         this.fetchScheduledJobs();
       } catch (error) {

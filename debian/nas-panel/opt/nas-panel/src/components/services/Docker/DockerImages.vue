@@ -39,7 +39,7 @@
       stripe
     >
       <el-table-column prop="Repository" label="Repository" />
-      <el-table-column prop="Tag" label="Tag" width="120" />
+      <el-table-column prop="Tag" label="Tag" width="120" />0
       <el-table-column prop="ImageID" label="Image ID" width="200">
         <template #default="{row}">
           <el-tooltip :content="row.ImageID" placement="top">
@@ -94,7 +94,6 @@
       </el-table-column>
     </el-table>
 
-    <!-- Pull Image Dialog -->
     <el-dialog v-model="showPullDialog" title="Pull Image">
       <el-form :model="pullForm" label-width="120px">
         <el-form-item label="Image Name">
@@ -256,7 +255,6 @@ const getUpdateStatus = (image) => {
   };
 };
 
-
 const fetchImages = async () => {
   try {
     loading.value = true;
@@ -291,7 +289,7 @@ const pullImage = async () => {
 
     loading.value = true;
     showPullDialog.value = false;
-    
+
     let imageToPull = pullForm.value.image;
     if (pullForm.value.registry) {
       imageToPull = `${pullForm.value.registry}/${imageToPull}`;
@@ -465,8 +463,6 @@ watch(reloadKey, () => {
 
 onMounted(() => {
   fetchImages();
-  
-  // Check for updates every hour
   setInterval(checkForUpdates, 3600000);
   checkForUpdates();
 });

@@ -327,7 +327,6 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-/* Reszta styli pozostaje bez zmian jak w poprzedniej wersji */
 .navbar {
   height: 64px;
   background: var(--el-bg-color);

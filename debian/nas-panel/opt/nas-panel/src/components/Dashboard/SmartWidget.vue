@@ -10,8 +10,6 @@
       </div>
     </template>
     
-    <el-skeleton v-if="loading" :rows="3" animated />
-    <div v-else>
     <div v-if="monitoredDisks.length > 0" class="disk-list">
       <div 
         v-for="(disk, index) in monitoredDisks" 
@@ -63,7 +61,6 @@
         <el-divider v-if="index < monitoredDisks.length - 1" />
       </div>
     </div>
-    </div>
     
     <div v-else class="empty-state">
       <Icon icon="ph:info" width="16" />
@@ -83,13 +80,20 @@ export default {
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { Icon } from '@iconify/vue'
 import axios from 'axios'
-import PromisePool from 'es6-promise-pool/es6-promise-pool.js'
+import PromisePool from 'es6-promise-pool';
 
 const monitoredDisks = ref([])
 const loading = ref(false)
 const TEMP_LIMIT_SSD = 50
 const TEMP_LIMIT_HDD = 55
 let intervalId = null
+const activeControllers = ref(new Set())
+
+const STATUS_TEXTS = {
+  OK: 'OK',
+  ERROR: 'ERR',
+  BAD_SECTORS: 'BAD SEKTORY'
+}
 
 const overallStatus = computed(() => {
   const hasErrors = monitoredDisks.value.some(d => !d.status || 
@@ -135,27 +139,25 @@ const getStatusClass = (disk) => {
 }
 
 const getStatusText = (disk) => {
-  if (disk.badSectors > 0) return 'BAD SEKTORY'
-  return disk.status ? 'OK' : 'ERR'
+  if (disk.badSectors > 0) return STATUS_TEXTS.BAD_SECTORS
+  return disk.status ? STATUS_TEXTS.OK : STATUS_TEXTS.ERROR
 }
 
-const activeControllers = ref(new Set());
 
 const fetchDeviceDetails = async (device) => {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout
   activeControllers.value.add(controller);
 
   try {
     const detailsRes = await axios.get(
       `/api/storage/smart/details/${encodeURIComponent(device)}`, 
       {
-        timeout: 5000,
+        timeout: 8000, // Zwiększony timeout do 8s
         signal: controller.signal
       }
     );
 
-    const smartData = detailsRes.data.data;
+    const smartData = detailsRes.data?.data || {};
     const isSSD = smartData.rotation_rate === 0;
     
     // Check for bad sectors
@@ -208,12 +210,13 @@ const fetchDeviceDetails = async (device) => {
       rawData: null
     };
   } finally {
-        clearTimeout(timeout);
-        activeControllers.value.delete(controller);
+    activeControllers.value.delete(controller);
   }
 };
 
 const extractTemperature = (smartData) => {
+  if (!smartData) return null;
+
   if (smartData.nvme_smart_health_information_log?.temperature) {
     return smartData.nvme_smart_health_information_log.temperature - 273;
   }
@@ -239,28 +242,47 @@ const abortAllRequests = () => {
 
 const fetchData = async () => {
   abortAllRequests();
+
   loading.value = true;
+  monitoredDisks.value = [];
 
   try {
     const monitoringRes = await axios.get('/api/storage/smart/monitoring', {
-      timeout: 10000 // 10s timeout
+      timeout: 5000
     });
-    
-    const monitoredDevices = Object.keys(monitoringRes.data.devices)
-      .filter(device => monitoringRes.data.devices[device].monitored);
-    
-    // Ogranicz do 2 równoległych zapytań
-    const pool = new PromisePool(
-      () => monitoredDevices.length ? fetchDeviceDetails(monitoredDevices.shift()) : null,
-      2
+
+    const devices = monitoringRes.data.devices || {};
+    const monitoredDevices = Object.keys(devices).filter(
+      device => devices[device]?.monitored === true
     );
-    
-    monitoredDisks.value = [];
-    for await (const result of pool) {
-      if (result) monitoredDisks.value.push(result);
+
+    if (monitoredDevices.length === 0 && process.env.NODE_ENV === 'development') {
+      console.warn('Brak monitorowanych dysków - tryb developerski');
+      monitoredDisks.value = [
+        {
+          device: '/dev/sda',
+          status: true,
+          temperature: 42,
+          isSSD: false,
+          badSectors: 0,
+          outOfSpecParams: []
+        }
+      ];
+      return;
     }
+
+    for (let i = 0; i < monitoredDevices.length; i += 2) {
+      const batch = monitoredDevices.slice(i, i + 2);
+      const batchResults = await Promise.all(
+        batch.map(device => fetchDeviceDetails(device))
+      );
+      monitoredDisks.value.push(...batchResults);
+    }
+    
   } catch (error) {
-    console.error('Fetch error:', error);
+    if (!axios.isCancel(error)) {
+      console.error('Error:', error);
+    }
     monitoredDisks.value = [];
   } finally {
     loading.value = false;
@@ -268,7 +290,7 @@ const fetchData = async () => {
 };
 
 const refreshData = async () => {
-  await fetchData()
+  await fetchData();
 }
 
 defineExpose({
@@ -278,20 +300,14 @@ defineExpose({
 onMounted(() => {
   if (intervalId) clearInterval(intervalId);
   
-  const fetchWithErrorHandling = async () => {
-    try {
-      await fetchData();
-    } catch (error) {
-      console.error('Interval fetch error:', error);
-      // Możesz dodać opóźnienie przed ponowną próbą
-      await new Promise(resolve => setTimeout(resolve, 5000));
-    }
-  };
-  
-  fetchWithErrorHandling();
-  intervalId = setInterval(fetchWithErrorHandling, 15000);
+  fetchData().finally(() => {
+    intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        refreshData();
+      }
+    }, 30000); // 30s interwał tylko gdy strona jest widoczna
+  });
 });
-
 
 onBeforeUnmount(() => {
   abortAllRequests();
@@ -301,9 +317,19 @@ onBeforeUnmount(() => {
 
 <style scoped lang="scss">
 .widget-card {
+  min-width: 250px;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
   border-radius: 8px;
   height: 100%;
-  
+
+  @media (max-width: 360px) {
+    min-width: unset;
+    width: calc(100vw - 32px);
+    margin: 0 auto;
+  }
+ 
   :deep(.el-card__header) {
     padding: 12px 16px;
     border-bottom: 1px solid var(--el-border-color-light);
@@ -438,5 +464,60 @@ onBeforeUnmount(() => {
 
 :deep(.el-divider) {
   margin: 0;
+}
+
+@media (max-width: 480px) {
+  .widget-card {
+    :deep(.el-card__body) {
+      padding: 8px !important;
+    }
+  }
+
+  .disk-item {
+    padding: 8px 4px !important;
+  }
+
+  .disk-info {
+    gap: 6px;
+    
+    .disk-name {
+      font-size: 12px !important;
+    }
+    
+    .disk-path {
+      display: none !important; // Ukryj ścieżkę na bardzo małych ekranach
+    }
+  }
+
+  .disk-stats {
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-end;
+    
+    .temperature, .status {
+      font-size: 10px !important;
+    }
+  }
+}
+
+@media (max-width: 360px) {
+  .widget-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    
+    .widget-title {
+      font-size: 12px !important;
+    }
+    
+    .el-tag {
+      align-self: flex-start;
+    }
+  }
+  
+  .disk-content {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 </style>
