@@ -24,7 +24,14 @@ jobs:
         sudo apt-get install -y \
           debhelper devscripts build-essential \
           debconf nodejs npm sqlite3 \
-          musl-tools libpam0g-dev git
+          musl-tools libpam0g-dev git \
+          nlohmann-json3-dev g++
+
+    # Instalacja biblioteki JSON jeśli potrzebna
+    - name: Install nlohmann/json library
+      run: |
+        sudo mkdir -p /usr/include/nlohmann
+        sudo wget https://github.com/nlohmann/json/releases/download/v3.11.2/json.hpp -O /usr/include/nlohmann/json.hpp
 
     # Setup Node.js
     - name: Setup Node.js
@@ -34,14 +41,20 @@ jobs:
         cache: 'npm'
         cache-dependency-path: 'backend/package-lock.json'
 
-    # Pobierz aktualną wersję z changelog
+    # Kompilacja nas-webdav
+    - name: Compile nas-webdav
+      run: |
+        mkdir -p debian/nas-panel/usr/local/bin
+        g++ -std=c++17 -O2 debian/nas-webdav.cpp -o debian/nas-panel/usr/local/bin/nas-webdav -I/usr/include/nlohmann
+
+    # Pobierz wersję z changelog
     - name: Get changelog version
       id: changelog-version
       run: |
         CURRENT_VERSION=$(head -1 debian/changelog | awk -F'[()]' '{print $2}')
         echo "changelog_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
 
-    # Pobierz najnowszą wersję z tagów GitHub
+    # Pobierz ostatnią wersję z tagów
     - name: Get latest release version
       id: latest-release
       run: |
@@ -49,30 +62,22 @@ jobs:
         LATEST_VERSION=${LATEST_TAG#v}
         echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
 
-    # Porównaj wersje i zdecyduj czy budować nowy release
+    # Porównaj wersje
     - name: Determine release version
       id: release-version
       run: |
         CHANGELOG_VERSION=${{ steps.changelog-version.outputs.changelog_version }}
         LATEST_VERSION=${{ steps.latest-release.outputs.latest_version }}
         
-        # Porównaj wersje semver
         if [ "$(printf '%s\n' "$CHANGELOG_VERSION" "$LATEST_VERSION" | sort -V | tail -n1)" == "$LATEST_VERSION" ]; then
-          # Wersja w changelog jest starsza lub równa - nie robimy nowego release
           echo "skip_release=true" >> $GITHUB_OUTPUT
           echo "release_version=$CHANGELOG_VERSION" >> $GITHUB_OUTPUT
         else
-          # Wersja w changelog jest nowsza - robimy release
           echo "skip_release=false" >> $GITHUB_OUTPUT
           echo "release_version=$CHANGELOG_VERSION" >> $GITHUB_OUTPUT
         fi
 
-    # Kontynuuj tylko jeśli potrzebny jest nowy release
-    - name: Check if release needed
-      if: steps.release-version.outputs.skip_release == 'false'
-      run: echo "Building release for version ${{ steps.release-version.outputs.release_version }}"
-
-    # Build steps (tylko jeśli potrzebny nowy release)
+    # Build Node.js projektu
     - name: Install npm dependencies
       if: steps.release-version.outputs.skip_release == 'false'
       working-directory: ./backend
@@ -83,12 +88,14 @@ jobs:
       working-directory: ./backend
       run: npm run build
 
+    # Fix dla musl lib
     - name: Fix musl lib symlink
       if: steps.release-version.outputs.skip_release == 'false'
       run: |
         sudo mkdir -p /lib
         sudo ln -sf /usr/lib/x86_64-linux-musl/libc.so /lib/libc.musl-x86_64.so.1 || true
 
+    # Budowanie pakietu deb
     - name: Build Debian package
       if: steps.release-version.outputs.skip_release == 'false'
       run: |
@@ -97,7 +104,7 @@ jobs:
         mkdir artifacts
         mv ../nas-panel_*.deb artifacts/
 
-    # Create Release (tylko jeśli potrzebny nowy release)
+    # Tworzenie release
     - name: Create Release
       if: github.ref == 'refs/heads/main' && steps.release-version.outputs.skip_release == 'false'
       uses: softprops/action-gh-release@v1
