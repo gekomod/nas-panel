@@ -1,0 +1,86 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    # Instalacja wymaganych pakietów systemowych
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          debhelper devscripts build-essential \
+          debconf nodejs npm sqlite3 \
+          libpam0g-dev git
+
+    # Instalacja zależności Node.js
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: 'backend/package-lock.json'
+
+    - name: Install npm dependencies
+      working-directory: ./backend
+      run: npm ci
+
+    # Budowanie projektu
+    - name: Build project
+      working-directory: ./backend
+      run: npm run build
+
+    # Pobierz aktualną wersję z changelog
+    - name: Get current version
+      id: version
+      run: |
+        CURRENT_VERSION=$(head -1 debian/changelog | awk -F'[()]' '{print $2}')
+        echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+    # Zwiększ numer wersji (patch)
+    - name: Bump version
+      id: bump-version
+      run: |
+        CURRENT_VERSION=${{ steps.version.outputs.current_version }}
+        IFS=. read -r major minor patch <<<"${CURRENT_VERSION}"
+        NEW_VERSION="${major}.${minor}.$((patch + 1))"
+        echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+    # Aktualizacja changelog
+    - name: Update changelog
+      run: |
+        NEW_VERSION=${{ steps.bump-version.outputs.new_version }}
+        dch -v "$NEW_VERSION" --distribution unstable "Automatic version bump"
+        dch -r ""
+
+    # Budowanie pakietu deb
+    - name: Build Debian package
+      run: |
+        dpkg-buildpackage -us -uc -b
+        mkdir artifacts
+        mv ../nas-panel_*.deb artifacts/
+
+    # Tworzenie release
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      if: github.ref == 'refs/heads/main'
+      with:
+        name: Version ${{ steps.bump-version.outputs.new_version }}
+        tag_name: v${{ steps.bump-version.outputs.new_version }}
+        body: |
+          Automated release for version ${{ steps.bump-version.outputs.new_version }}
+          Changes:
+          $(awk '/\*/{flag=1;next}/--/{flag=0}flag' debian/changelog | head -n -1)
+        files: |
+          artifacts/*.deb
+        draft: false
+        prerelease: false
