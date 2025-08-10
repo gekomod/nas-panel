@@ -1,3 +1,13 @@
+nas-panel (1.0.6) unstable; urgency=medium
+
+  * Naprawa błędu z duplikowaniem się widgetów w dialogu zarządzania
+  * Poprawa zapisywania pozycji widgetów po przeciągnięciu
+  * Dodanie prawidłowej obsługi vuedraggable dla widgetów
+  * Optymalizacja zapytań do bazy danych SQLite
+  * Dodanie lepszej obsługi błędów przy ładowaniu widgetów
+
+ -- gekomod <zaba141@o2.pl>  Sun, 10 Aug 2025 10:51:24 +0200
+
 nas-panel (1.0-5) unstable; urgency=medium
 
   * Naprawiono błędy kompilacji związane z użyciem std::localtime:
