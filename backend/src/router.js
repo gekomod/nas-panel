@@ -423,6 +423,18 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   const { isAuthenticated, checkAuth } = useAuth()
   
+  if (router.i18n) {
+    const t = router.i18n.t
+    document.title = to.meta.title 
+      ? `${t(to.meta.title)} | Nas-Panel` 
+      : 'Nas-Panel'
+  } else {
+    // Fallback na wypadek braku i18n
+    document.title = to.meta.title 
+      ? `${to.meta.title} | NAS Panel` 
+      : 'NAS Panel'
+  }
+
   if (to.meta.requiresAuth) {
     const authenticated = await checkAuth()
     if (!authenticated) {
