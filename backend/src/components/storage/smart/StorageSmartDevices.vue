@@ -214,7 +214,7 @@ const rawDataDialog = ref(false);
 const currentRawData = ref('');
 const router = useRouter()
 
-axios.defaults.baseURL = `${window.location.protocol}//${window.location.hostname}:3000`;
+axios.defaults.baseURL = `${window.location.protocol}//${window.location.hostname}:${import.meta.env.VITE_API_PORT}`;
 
 const getDeviceIcon = (device) => {
   if (device.startsWith('nvme')) return 'mdi:memory'

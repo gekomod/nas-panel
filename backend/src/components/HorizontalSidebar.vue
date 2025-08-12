@@ -22,7 +22,7 @@
             <el-icon v-if="item.meta.icon">
               <icon :icon="item.meta.icon" />
             </el-icon>
-            <span>{{ item.meta.title }}</span>
+            <span>{{ $t(item.meta.title) }}</span>
           </template>
           
           <!-- Poziom 2 - podmenu -->
@@ -38,7 +38,7 @@
                 <el-icon v-if="child.meta.icon">
                   <icon :icon="child.meta.icon" />
                 </el-icon>
-                <span>{{ child.meta.title }}</span>
+                <span>{{ $t(child.meta.title) }}</span>
               </template>
               
               <!-- Poziom 3 - elementy podpodmenu -->
@@ -50,7 +50,7 @@
                 <el-icon v-if="subChild.meta.icon">
                   <icon :icon="subChild.meta.icon" />
                 </el-icon>
-                <span>{{ subChild.meta.title }}</span>
+                <span>{{ $t(subChild.meta.title) }}</span>
               </el-menu-item>
             </el-sub-menu>
             
@@ -58,7 +58,7 @@
               <el-icon v-if="child.meta.icon">
                 <icon :icon="child.meta.icon" />
               </el-icon>
-              <span>{{ child.meta.title }}</span>
+              <span>{{ $t(child.meta.title) }}</span>
             </el-menu-item>
           </template>
         </el-sub-menu>
@@ -67,7 +67,7 @@
           <el-icon v-if="item.meta.icon">
             <icon :icon="item.meta.icon" />
           </el-icon>
-          <span>{{ item.meta.title }}</span>
+          <span>{{ $t(item.meta.title) }}</span>
         </el-menu-item>
       </template>
     </el-menu>

@@ -1,203 +1,346 @@
 <template>
   <div class="docker-compose">
     <div class="header">
-      <el-button type="primary" @click="fetchComposeFiles">
+      <el-button type="primary" plain @click="fetchComposeFiles" class="action-btn">
         <Icon icon="mdi:refresh" class="icon" />
         Refresh
       </el-button>
-      <el-button type="success" @click="showCreateDialog = true">
+      <el-button type="success" plain @click="showCreateDialog = true" class="action-btn">
         <Icon icon="mdi:plus" class="icon" />
         New Compose
       </el-button>
-      <el-button type="info" @click="loadTemplatesDialog">
+      <el-button type="info" plain @click="loadTemplatesDialog" class="action-btn">
         <Icon icon="mdi:file-download" class="icon" />
         Add from Templates
       </el-button>
     </div>
 
-    <el-table
-      v-loading="loading"
-      :data="composeFiles"
-      style="width: 100%"
-      stripe
-    >
-      <el-table-column prop="name" label="File Name" />
-      <el-table-column prop="size" label="Size" width="120" />
-      <el-table-column prop="modified" label="Modified" width="180" />
-      <el-table-column label="Status" width="150">
-        <template #default="{row}">
-          <el-tag :type="getContainerStatus(row).type">
-            <el-icon v-if="getContainerStatus(row).loading" class="is-loading">
-              <Icon icon="mdi:loading" />
-            </el-icon>
-            {{ getContainerStatus(row).text }}
-          </el-tag>
-        </template>
-      </el-table-column>
-
-      <el-table-column label="Actions" width="200">
-        <template #default="{ row }">
-          <el-button-group>
-            <el-button
-              size="small"
-              type="primary"
-              @click="deployCompose(row.name)"
-            >
-              <Icon icon="mdi:rocket-launch" />
-            </el-button>
-            <el-button
-              size="small"
-              type="info"
-              @click="editCompose(row.name)"
-            >
-              <Icon icon="mdi:pencil" />
-            </el-button>
-            <el-button
-              size="small"
-              type="danger"
-              @click="deleteCompose(row.name)"
-            >
-              <Icon icon="mdi:delete" />
-            </el-button>
-          </el-button-group>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <el-dialog v-model="showCreateDialog" title="Create Compose File" width="80%">
-      <el-form :model="composeForm" ref="composeFormRef">
-      <el-form-item 
-        label="Container Name"
-        prop="containerName"
-        :rules="[
-          { required: true, message: 'Please input container name', trigger: 'blur' },
-          { pattern: /^[a-zA-Z0-9\s]+$/, message: 'Only letters, numbers and spaces allowed' }
-        ]"
+    <el-card class="table-card">
+      <el-table
+        v-loading="loading"
+        :data="composeFiles"
+        style="width: 100%"
+        class="full-width-table"
+        :header-cell-style="{ background: '#f8fafc', color: '#64748b' }"
       >
-        <el-input 
-          v-model="composeForm.containerName" 
-          placeholder="My Awesome Container"
-          @input="updateFilename"
-        />
-      </el-form-item>
-      <el-form-item label="Filename (auto-generated)">
-        <el-input 
-          v-model="composeForm.filename" 
-          disabled 
-          placeholder="my-awesome-container.yml" 
-        />
-      </el-form-item>
-        <el-form-item 
-          label="Content"
-          prop="content"
-          :rules="[
-            { required: true, message: 'Please input compose content', trigger: 'blur' }
-          ]"
-        >
-          <el-input
-            v-model="composeForm.content"
-            type="textarea"
-            :rows="15"
-            placeholder="version: '3'
+        <el-table-column prop="name" label="FILE NAME" width="300">
+          <template #default="{row}">
+            <div class="file-name-cell">
+              <Icon icon="mdi:file-document-outline" class="file-icon" />
+              <span class="file-name">{{ row.name }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        
+        <el-table-column label="STATUS" width="180">
+          <template #default="{row}">
+            <el-tag 
+              :type="getContainerStatus(row).type" 
+              class="status-tag"
+              :class="getContainerStatus(row).text.toLowerCase().replace(' ', '-')"
+            >
+              <el-icon v-if="getContainerStatus(row).loading" class="is-loading">
+                <Icon icon="mdi:loading" />
+              </el-icon>
+              {{ getContainerStatus(row).text }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        
+        <el-table-column prop="modified" label="LAST MODIFIED" width="200" />
+        
+        <el-table-column label="ACTIONS" width="220" align="right">
+          <template #default="{ row }">
+            <div class="action-buttons">
+              <el-tooltip content="Deploy" placement="top">
+                <el-button
+                  size="small"
+                  circle
+                  type="primary"
+                  @click="deployCompose(row.name)"
+                  class="action-icon"
+                >
+                  <Icon icon="mdi:rocket-launch" />
+                </el-button>
+              </el-tooltip>
+              
+              <el-tooltip content="Edit" placement="top">
+                <el-button
+                  size="small"
+                  circle
+                  type="info"
+                  @click="editCompose(row.name)"
+                  class="action-icon"
+                >
+                  <Icon icon="mdi:pencil" />
+                </el-button>
+              </el-tooltip>
+              
+              <el-tooltip content="Delete" placement="top">
+                <el-button
+                  size="small"
+                  circle
+                  type="danger"
+                  @click="deleteCompose(row.name)"
+                  class="action-icon"
+                >
+                  <Icon icon="mdi:delete" />
+                </el-button>
+              </el-tooltip>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <!-- Create Compose Dialog -->
+    <el-dialog 
+      v-model="showCreateDialog" 
+      title="Create New Docker Compose" 
+      width="900px"
+      class="modern-dialog"
+    >
+      <el-form :model="composeForm" ref="composeFormRef" label-position="top">
+        <div class="dialog-grid">
+          <div class="form-section">
+            <el-form-item 
+              label="Container Name"
+              prop="containerName"
+              :rules="[
+                { required: true, message: 'Please input container name', trigger: 'blur' },
+                { pattern: /^[a-zA-Z0-9\s]+$/, message: 'Only letters, numbers and spaces allowed' }
+              ]"
+            >
+              <el-input 
+                v-model="composeForm.containerName" 
+                placeholder="My Awesome Container"
+                @input="updateFilename"
+                size="large"
+              />
+            </el-form-item>
+            
+            <el-form-item label="Filename (auto-generated)">
+              <el-input 
+                v-model="composeForm.filename" 
+                disabled 
+                placeholder="my-awesome-container.yml" 
+                size="large"
+              />
+            </el-form-item>
+            
+            <el-form-item>
+              <el-checkbox v-model="composeForm.autoStart" label="Start containers immediately after creation" />
+            </el-form-item>
+          </div>
+          
+          <div class="editor-section">
+            <el-form-item 
+              label="Compose Configuration"
+              prop="content"
+              :rules="[
+                { required: true, message: 'Please input compose content', trigger: 'blur' }
+              ]"
+            >
+              <div class="editor-header">
+                <span>docker-compose.yml</span>
+                <el-button type="" @click="fillSampleConfig">
+                  <Icon icon="mdi:lightbulb-on-outline" /> Sample Config
+                </el-button>
+              </div>
+              <el-input
+                v-model="composeForm.content"
+                type="textarea"
+                :rows="18"
+                placeholder="version: '3'
 services:
   web:
     image: nginx
     ports:
       - '80:80'"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-checkbox v-model="composeForm.autoStart" label="Start containers immediately after creation" />
-        </el-form-item>
+                class="code-editor"
+              />
+            </el-form-item>
+          </div>
+        </div>
       </el-form>
+      
       <template #footer>
-        <el-button @click="showCreateDialog = false">Cancel</el-button>
-        <el-button 
-          type="primary" 
-          @click="submitComposeForm"
-          :loading="creatingCompose"
-        >
-          Save
-        </el-button>
+        <div class="dialog-footer">
+          <el-button @click="showCreateDialog = false" size="large">Cancel</el-button>
+          <el-button 
+            type="primary" 
+            @click="submitComposeForm"
+            :loading="creatingCompose"
+            size="large"
+          >
+            <Icon icon="mdi:content-save" /> Save Configuration
+          </el-button>
+        </div>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="showEditDialog" title="Edit Compose File" width="80%">
-      <el-form :model="editForm">
-        <el-form-item>
-          <el-input
-            v-model="editForm.content"
-            type="textarea"
-            :rows="15"
-          />
-        </el-form-item>
-      </el-form>
+    <!-- Edit Dialog -->
+    <el-dialog 
+      v-model="showEditDialog" 
+      :title="`Editing ${editForm.filename}`" 
+      width="900px"
+      class="modern-dialog"
+    >
+      <div class="editor-container">
+        <div class="editor-header">
+          <span>{{ editForm.filename }}</span>
+          <el-button type="text" @click="formatYaml">
+            <Icon icon="mdi:code-braces" /> Format
+          </el-button>
+        </div>
+        <el-input
+          v-model="editForm.content"
+          type="textarea"
+          :rows="20"
+          class="code-editor"
+        />
+      </div>
+      
       <template #footer>
-        <el-button @click="showEditDialog = false">Cancel</el-button>
-        <el-button type="primary" @click="saveComposeFile">Save</el-button>
+        <div class="dialog-footer">
+          <el-button @click="showEditDialog = false" size="large">Discard Changes</el-button>
+          <el-button type="primary" @click="saveComposeFile" size="large">
+            <Icon icon="mdi:content-save-check" /> Save Changes
+          </el-button>
+        </div>
       </template>
     </el-dialog>
 
+    <!-- Deploy Status Dialog -->
     <el-dialog 
       v-model="deployDialogVisible" 
-      title="Deploy Status" 
-      width="80%"
+      :title="`Deploying ${currentDeployment}`" 
+      width="900px"
+      class="modern-dialog terminal-dialog"
       @closed="handleDeployDialogClosed"
     >
       <div class="terminal-container">
         <div ref="deployTerminalRef" class="terminal"></div>
       </div>
       <template #footer>
-        <el-button @click="closeDeploy">Close</el-button>
+        <div class="dialog-footer">
+          <el-button @click="closeDeploy" size="large">
+            <Icon icon="mdi:close" /> Close
+          </el-button>
+        </div>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="showTemplatesDialog" title="Add from Templates" width="60%">
-      <el-table
-        :data="templates"
-        style="width: 100%"
-        @row-click="handleTemplateSelect"
+    <!-- Templates Dialog -->
+    <el-dialog 
+      v-model="showTemplatesDialog" 
+      title="Docker Compose Templates" 
+      width="900px"
+      class="modern-dialog"
+    >
+      <el-input
+        v-model="templateSearch"
+        placeholder="Search templates..."
+        size="large"
+        class="search-input"
+        clearable
       >
-        <el-table-column prop="name" label="Template Name" />
-        <el-table-column prop="description" label="Description" />
-        <el-table-column label="Actions" width="120">
+        <template #prefix>
+          <Icon icon="mdi:magnify" />
+        </template>
+      </el-input>
+      
+      <el-table
+        :data="filteredTemplates"
+        style="width: 100%"
+        class="templates-table"
+        @row-click="handleTemplateSelect"
+        empty-text="No templates found"
+      >
+        <el-table-column width="80">
           <template #default="{ row }">
-            <el-button
-              size="small"
-              type="primary"
-              @click.stop="previewTemplate(row)"
-            >
-              Preview
-            </el-button>
-            <el-button
-              size="small"
-              type="success"
-              @click.stop="deployTemplateDirectly(row)"
-              v-if="row.metadata?.autoStart !== false"
-            >
-              Deploy Now
-            </el-button>
+            <div class="template-icon">
+              <Icon :icon="row.metadata?.icon || 'mdi:docker'" />
+            </div>
+          </template>
+        </el-table-column>
+        
+        <el-table-column prop="name" label="TEMPLATE">
+          <template #default="{ row }">
+            <div class="template-info">
+              <div class="template-name">{{ row.name }}</div>
+              <div class="template-description">{{ row.description }}</div>
+            </div>
+          </template>
+        </el-table-column>
+        
+        <el-table-column width="180" align="right">
+          <template #default="{ row }">
+            <div class="template-actions">
+              <el-button
+                size="small"
+                type="info"
+                @click.stop="previewTemplate(row)"
+                class="preview-btn"
+              >
+                <Icon icon="mdi:eye-outline" /> Preview
+              </el-button>
+              <el-button
+                size="small"
+                type="success"
+                @click.stop="deployTemplateDirectly(row)"
+                v-if="row.metadata?.autoStart !== false"
+                class="deploy-btn"
+              >
+                <Icon icon="mdi:rocket-launch" /> Deploy
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
     </el-dialog>
 
-
-    <el-dialog v-model="showTemplatePreview" title="Template Preview" width="80%">
-      <pre class="template-preview">{{ previewTemplateContent }}</pre>
+    <!-- Template Preview Dialog -->
+    <el-dialog 
+      v-model="showTemplatePreview" 
+      :title="`Preview: ${selectedTemplate?.name}`" 
+      width="900px"
+      class="modern-dialog"
+    >
+      <div class="template-meta" v-if="selectedTemplate?.metadata">
+        <div class="meta-item" v-if="selectedTemplate.metadata.description">
+          <Icon icon="mdi:information-outline" class="meta-icon" />
+          <span>{{ selectedTemplate.metadata.description }}</span>
+        </div>
+        <div class="meta-item" v-if="selectedTemplate.metadata.ports">
+          <Icon icon="mdi:network-outline" class="meta-icon" />
+          <span>Ports: {{ selectedTemplate.metadata.ports.join(', ') }}</span>
+        </div>
+        <div class="meta-item" v-if="selectedTemplate.metadata.volumes">
+          <Icon icon="mdi:harddisk" class="meta-icon" />
+          <span>Volumes: {{ selectedTemplate.metadata.volumes.join(', ') }}</span>
+        </div>
+      </div>
+      
+      <div class="template-preview-container">
+        <pre class="template-preview">{{ previewTemplateContent }}</pre>
+      </div>
+      
       <template #footer>
-        <el-checkbox v-model="autoStartContainer" label="Start containers immediately" />
-        <el-button @click="showTemplatePreview = false">Cancel</el-button>
-        <el-button type="primary" @click="useTemplate">
-          Use This Template
-        </el-button>
+        <div class="dialog-footer">
+          <el-checkbox v-model="autoStartContainer" label="Start containers immediately" />
+          <el-button @click="showTemplatePreview = false" size="large">Cancel</el-button>
+          <el-button type="primary" @click="useTemplate" size="large">
+            <Icon icon="mdi:file-import" /> Use This Template
+          </el-button>
+        </div>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { ref, onMounted, onBeforeUnmount, nextTick, computed } from 'vue';
 import axios from 'axios';
 import { Icon } from '@iconify/vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -211,10 +354,10 @@ const loading = ref(false);
 const showCreateDialog = ref(false);
 const showEditDialog = ref(false);
 const deployDialogVisible = ref(false);
-const deployLog = ref('');
 const creatingCompose = ref(false);
 const autoStartContainer = ref(true);
 const containerStatuses = ref({});
+const currentDeployment = ref('');
 
 const deployTerminalRef = ref(null);
 const deployTerminal = ref(null);
@@ -226,6 +369,19 @@ const showTemplatePreview = ref(false);
 const templates = ref([]);
 const previewTemplateContent = ref('');
 const selectedTemplate = ref(null);
+const templateSearch = ref('');
+
+const composeForm = ref({
+  containerName: '',
+  filename: '',
+  content: '',
+  autoStart: true
+});
+
+const editForm = ref({
+  filename: '',
+  content: ''
+});
 
 const defaultTemplates = [
   {
@@ -242,7 +398,8 @@ services:
     restart: unless-stopped`,
     metadata: {
       autoStart: true,
-      waitForPorts: [80]
+      ports: [80],
+      icon: 'mdi:nginx'
     }
   },
   {
@@ -277,7 +434,8 @@ volumes:
   db_data: {}`,
     metadata: {
       autoStart: true,
-      waitForPorts: [8000]
+      ports: [8000],
+      icon: 'mdi:wordpress'
     }
   },
   {
@@ -299,30 +457,28 @@ volumes:
   postgres_data: {}`,
     metadata: {
       autoStart: true,
-      waitForPorts: [5432]
+      ports: [5432],
+      icon: 'mdi:database'
     }
   }
 ];
 
-const composeForm = ref({
-  containerName: '',
-  filename: '',
-  content: '',
-  autoStart: true
-});
-
-const editForm = ref({
-  filename: '',
-  content: ''
+const filteredTemplates = computed(() => {
+  if (!templateSearch.value) return templates.value;
+  const search = templateSearch.value.toLowerCase();
+  return templates.value.filter(t => 
+    t.name.toLowerCase().includes(search) || 
+    t.description.toLowerCase().includes(search)
+  );
 });
 
 const formatContainerName = (name) => {
   return name
     .toLowerCase()
-    .replace(/\s+/g, '-')  // Zamień spacje na myślniki
-    .replace(/[^a-z0-9-]/g, '') // Usuń znaki specjalne
-    .replace(/-+/g, '-')  // Usuń podwójne myślniki
-    .replace(/^-|-$/g, ''); // Usuń myślniki z początku/końca
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
 };
 
 const updateFilename = () => {
@@ -343,11 +499,10 @@ const fetchComposeFiles = async () => {
       modified: 'N/A'
     }));
     
-    // Check status for all compose files
-await Promise.all(composeFiles.value.map(async file => {
-  const normalizedName = normalizeContainerName(file.name);
-  containerStatuses.value[file.name] = await checkContainerStatus(normalizedName);
-}));
+    await Promise.all(composeFiles.value.map(async file => {
+      const normalizedName = normalizeContainerName(file.name);
+      containerStatuses.value[file.name] = await checkContainerStatus(normalizedName);
+    }));
   } catch (error) {
     ElMessage.error('Failed to fetch compose files');
     console.error(error);
@@ -358,7 +513,6 @@ await Promise.all(composeFiles.value.map(async file => {
 
 const checkContainerStatus = async (composeFileName) => {
   try {
-    // Usuń rozszerzenie .yml/.yaml i dodatkowe prefixy
     const cleanName = composeFileName
       .replace('.yml', '')
       .replace('.yaml', '')
@@ -367,12 +521,10 @@ const checkContainerStatus = async (composeFileName) => {
 
     const response = await axios.get(`/services/docker/container/status/${cleanName}`);
     
-    // Logika dopasowania nazw dla Docker Compose
     if (response.data.status === 'running') {
       return 'running';
     }
     
-    // Dodatkowe sprawdzenie dla nazw z compose (np. "docker-compose-overseerr-1")
     if (response.data.containerName?.includes(cleanName)) {
       return response.data.status === 'running' ? 'running' : 'stopped';
     }
@@ -409,7 +561,7 @@ const normalizeContainerName = (composeFileName) => {
     .replace('.yml', '')
     .replace('.yaml', '')
     .replace('docker-compose-', '')
-    .split('-')[0]; // Usuń numery (np. "-1" z "docker-compose-overseerr-1")
+    .split('-')[0];
 };
 
 const submitComposeForm = async () => {
@@ -443,6 +595,7 @@ const createComposeFile = async () => {
       ? composeForm.value.filename 
       : `${composeForm.value.filename}.yml`;
 
+    creatingCompose.value = true;
     const response = await axios.post('/services/docker/compose_add', {
       filename: filename,
       content: composeForm.value.content,
@@ -468,6 +621,8 @@ const createComposeFile = async () => {
                     'Failed to create compose file';
     ElMessage.error(errorMsg);
     console.error('Error details:', error);
+  } finally {
+    creatingCompose.value = false;
   }
 };
 
@@ -635,6 +790,7 @@ const closeDeploy = () => {
 
 const deployCompose = async (filename) => {
   try {
+    currentDeployment.value = filename;
     deployDialogVisible.value = true;
     
     await nextTick();
@@ -644,7 +800,7 @@ const deployCompose = async (filename) => {
     deployTerminal.value.writeln('========================\r\n');
 
     const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
-    const wsUrl = `${protocol}//${window.location.hostname}:3000`;
+    const wsUrl = `${protocol}//${window.location.hostname}:${import.meta.env.VITE_API_PORT}`;
     deployEventSource.value = new EventSource(`${wsUrl}/services/docker/composer/deploy-stream?file=${filename}`);
     
     deployEventSource.value.onmessage = (event) => {
@@ -668,7 +824,6 @@ const deployCompose = async (filename) => {
       closeDeployStream();
     };
 
-    // Update container status after deployment
     const containerName = filename.replace('.yml', '').replace('.yaml', '');
     setTimeout(async () => {
       const status = await checkContainerStatus(containerName);
@@ -684,7 +839,6 @@ const deployCompose = async (filename) => {
 
 const loadTemplates = async () => {
   try {
-    // Najpierw spróbuj pobrać z GitHub
     const response = await axios.get(
       'https://raw.githubusercontent.com/gekomod/docker-templates/main/contents/templates.json',
       {
@@ -731,12 +885,56 @@ const handleTemplateSelect = (row) => {
 const loadTemplatesDialog = async () => {
   showTemplatesDialog.value = true;
   loadTemplates();
-}
+};
+
+const fillSampleConfig = () => {
+  composeForm.value.content = `version: '3.8'
+
+services:
+  app:
+    image: nginx:alpine
+    container_name: my-app
+    ports:
+      - "8080:80"
+    volumes:
+      - ./app:/usr/share/nginx/html
+    restart: unless-stopped
+    environment:
+      - NGINX_ENV=production
+
+  db:
+    image: postgres:13
+    container_name: my-db
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD: example
+      POSTGRES_USER: example
+      POSTGRES_DB: example
+
+volumes:
+  db_data:
+`;
+};
+
+const formatYaml = () => {
+  try {
+    const formatted = editForm.value.content
+      .split('\n')
+      .map(line => line.trim() === '' ? line : '  ' + line)
+      .join('\n');
+    editForm.value.content = formatted;
+    ElMessage.success('YAML formatted');
+  } catch (e) {
+    ElMessage.error('Formatting failed');
+  }
+};
 
 onMounted(() => {
   fetchComposeFiles();
 
-  // Aktualizuj status co 10 sekund
   const interval = setInterval(async () => {
     if (!composeFiles.value.length) return;
     
@@ -759,66 +957,365 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .docker-compose {
-  padding: 20px;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .header {
   display: flex;
   justify-content: flex-end;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.action-btn {
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.table-card {
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  background: var(--el-bg-color);
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  border: 1px solid #e9ecef;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+/* TOTALNA KONTROLA NAD TABELĄ */
+:deep(.el-table) {
+  width: 100% !important;
+  margin: 0;
+  border: none;
+  background: transparent;
+  flex: 1;
+}
+
+:deep(.el-table__header),
+:deep(.el-table__body) {
+  width: 100% !important;
+}
+
+:deep(.el-table__header-wrapper),
+:deep(.el-table__body-wrapper) {
+  width: 100% !important;
+  flex: 1;
+}
+
+/* TRYB NOCNY - JAWNE STYLE */
+.dark :deep(.el-table) {
+  color: var(--el-text-color-primary);
+}
+
+.dark :deep(.el-table th) {
+  background-color: var(--el-bg-color) !important;
+}
+
+.dark :deep(.el-table tr) {
+  background-color: var(--el-bg-color) !important;
+}
+
+.dark :deep(.el-table tr:hover > td) {
+  background-color: var(--el-fill-color-dark) !important;
+}
+
+.modern-table {
+  --el-table-border-color: transparent;
+  --el-table-header-bg-color: #f8fafc;
+  max-width: 100%;
+}
+
+.modern-table :deep(.el-table__row) {
+  transition: background 0.2s;
+}
+
+.modern-table :deep(.el-table__row:hover) {
+  background: #f8fafc;
+}
+
+.file-name-cell {
+  display: flex;
+  align-items: center;
   gap: 10px;
-  margin-bottom: 20px;
 }
 
-.icon {
-  margin-right: 5px;
+.file-icon {
+  font-size: 20px;
+  color: #64748b;
 }
 
-.deploy-log {
-  max-height: 60vh;
-  overflow: auto;
-  background: #f5f5f5;
-  padding: 10px;
-  border-radius: 4px;
-  font-family: monospace;
-  white-space: pre-wrap;
+.file-name {
+  font-weight: 500;
+  color: #334155;
 }
 
-.template-preview {
-  max-height: 60vh;
-  overflow: auto;
-  background: #f8f8f8;
-  padding: 10px;
-  border-radius: 4px;
-  font-family: monospace;
-  white-space: pre-wrap;
-  border: 1px solid #eaeaea;
+.status-tag {
+  font-weight: 500;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+.status-tag.running {
+  background: #f0fdf4;
+  color: #16a34a;
+  border-color: #86efac;
+}
+
+.status-tag.stopped {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fca5a5;
+}
+
+.status-tag.not-running {
+  background: #eff6ff;
+  color: #2563eb;
+  border-color: #93c5fd;
+}
+
+.status-tag.error {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fca5a5;
+}
+
+.action-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.action-icon {
+  padding: 8px;
+}
+
+.modern-dialog {
+  border-radius: 12px;
+}
+
+.modern-dialog :deep(.el-dialog__header) {
+  padding: 20px 24px;
+  border-bottom: 1px solid #e2e8f0;
+  margin: 0;
+}
+
+.modern-dialog :deep(.el-dialog__body) {
+  padding: 24px;
+}
+
+.modern-dialog :deep(.el-dialog__footer) {
+  padding: 16px 24px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.dialog-grid {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 24px;
+}
+
+.form-section {
+  padding-right: 24px;
+  border-right: 1px solid #e2e8f0;
+}
+
+.editor-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.code-editor {
+  font-family: 'Fira Code', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.code-editor :deep(.el-textarea__inner) {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: none;
+  color: #334155;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.terminal-dialog :deep(.el-dialog__body) {
+  padding: 0;
 }
 
 .terminal-container {
   width: 100%;
-  height: 70vh;
+  height: 60vh;
   background: #1e1e1e;
-  padding: 10px;
-  border-radius: 4px;
+  border-radius: 0 0 12px 12px;
+  overflow: hidden;
 }
 
 .terminal {
   width: 100%;
   height: 100%;
+  padding: 16px;
+  box-sizing: border-box;
 }
 
-.el-tag .el-icon.is-loading {
-  margin-right: 5px;
-  animation: rotating 2s linear infinite;
+.templates-table :deep(.el-table__row) {
+  cursor: pointer;
+  transition: background 0.2s;
 }
+
+.templates-table :deep(.el-table__row:hover) {
+  background: #f8fafc;
+}
+
+.template-icon {
+  font-size: 24px;
+  color: #3b82f6;
+  display: flex;
+  justify-content: center;
+}
+
+.template-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.template-name {
+  font-weight: 500;
+  color: #334155;
+  margin-bottom: 4px;
+}
+
+.template-description {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.template-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.preview-btn {
+  background: #e0e7ff;
+  color: #4f46e5;
+  border: none;
+}
+
+.deploy-btn {
+  border: none;
+}
+
+.search-input {
+  margin-bottom: 16px;
+}
+
+.search-input :deep(.el-input__prefix) {
+  display: flex;
+  align-items: center;
+  padding-left: 12px;
+}
+
+.template-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #64748b;
+}
+
+.meta-icon {
+  font-size: 16px;
+}
+
+.template-preview-container {
+  max-height: 60vh;
+  overflow: auto;
+}
+
+.template-preview {
+  margin: 0;
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 8px;
+  font-family: 'Fira Code', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #334155;
+}
+
+.full-width-table {
+  width: 100%;
+  table-layout: fixed;
+    --el-table-border-color: #e9ecef;
+  --el-table-header-bg-color: #f8f9fa;
+  --el-table-row-hover-bg-color: #f1f3f5;
+}
+
+:deep(.el-table__header-wrapper),
+:deep(.el-table__body-wrapper) {
+  width: 100% !important;
+}
+
+:deep(.el-table__header) th {
+  padding: 12px 0;
+  background-color: #f8f9fa;
+}
+
+:deep(.el-table__body) td {
+  padding: 12px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:deep(.el-table__inner-wrapper) {
+  width: 100% !important;
+}
+
+.terminal-dialog {
+  height: 70vh;
+}
+
+:deep(.el-dialog__body) {
+  padding: 0;
+  height: calc(100% - 60px);
+}
+
 
 @keyframes rotating {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
-}
-
-.el-dialog .el-checkbox {
-  margin-right: auto;
-  margin-left: 10px;
 }
 </style>

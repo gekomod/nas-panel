@@ -928,6 +928,38 @@ app.post('/system/cron-jobs/:id/run', requireAuth, async (req, res) => {
   }
 });
 
+// Endpoint do wykonania aktualizacji
+app.post('/api/system/update', requireAuth, async (req, res) => {
+  try {
+    exec('sudo /usr/bin/update-script.sh', (error, stdout, stderr) => {
+      if (error) {
+        console.error(`Błąd aktualizacji: ${error}`)
+        return res.status(500).json({ error: 'Błąd podczas aktualizacji' })
+      }
+      res.json({ message: 'Aktualizacja rozpoczęta' })
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// Endpoint do zaplanowania aktualizacji
+app.post('/api/system/schedule-update', requireAuth, async (req, res) => {
+  const { time } = req.body
+  
+  try {
+    // Tutaj dodaj logikę planowania (np. cron job)
+    exec(`echo "sudo /usr/bin/update-script.sh" | at ${time}`, (error) => {
+      if (error) {
+        return res.status(500).json({ error: 'Błąd podczas planowania' })
+      }
+      res.json({ message: `Aktualizacja zaplanowana na ${time}` })
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
 
 // Funkcja do pobierania następnej daty wykonania
 function getNextRun(schedule) {

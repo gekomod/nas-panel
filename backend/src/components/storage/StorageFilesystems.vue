@@ -517,7 +517,7 @@ const abortController = ref(new AbortController())
 const { t } = useI18n()
 
 const api = axios.create({
-  baseURL: `${window.location.protocol}//${window.location.hostname}:3000`,
+  baseURL: `${window.location.protocol}//${window.location.hostname}:${import.meta.env.VITE_API_PORT}`,
   signal: abortController.value.signal
 })
 

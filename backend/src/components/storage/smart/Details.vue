@@ -55,7 +55,7 @@ import DeviceBasicInfo from './DeviceBasicInfo.vue'
 import SmartAttributes from './SmartAttributes.vue'
 import TestHistory from './TestHistory.vue'
 
-axios.defaults.baseURL = `${window.location.protocol}//${window.location.hostname}:3000`;
+axios.defaults.baseURL = `${window.location.protocol}//${window.location.hostname}:${import.meta.env.VITE_API_PORT}`;
 
 const route = useRoute()
 const router = useRouter()

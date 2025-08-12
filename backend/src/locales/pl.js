@@ -17,6 +17,51 @@ export default {
   language: {
     change: "Zmień język"
   },
+  "routes": {
+    "login": "Logowanie",
+    "dashboard": "Pulpit",
+    "files": "Pliki",
+    "files_explorer": "Eksplorator plików",
+    "files_shares": "Udostępnianie plików",
+    "network": "Sieć",
+    "network_interfaces": "Interfejsy sieciowe",
+    "interface_details": "Szczegóły interfejsu: {interface}",
+    "firewall": "Zapora sieciowa",
+    "vpn": "VPN",
+    "dynamic_dns": "Dynamic DNS",
+    "services": "Usługi",
+    "samba": "Samba",
+    "samba_shares": "Udziały Samby",
+    "samba_settings": "Ustawienia Samby",
+    "samba_status": "Status Samby",
+    "docker": "Docker",
+    "ssh": "SSH",
+    "webdav": "WebDAV",
+    "ftp_sftp": "FTP/SFTP",
+    "storage": "Pamięć masowa",
+    "storage_disks": "Dyski",
+    "storage_filesystems": "Systemy plików",
+    "smart": "S.M.A.R.T",
+    "smart_devices": "Urządzenia S.M.A.R.T",
+    "smart_details": "Szczegóły S.M.A.R.T: {device}",
+    "system": "System",
+    "users": "Użytkownicy",
+    "terminal": "Terminal",
+    "system_updates": "Aktualizacje systemu",
+    "cron_jobs": "Zadania Cron",
+    "antivirus": "Antywirus",
+    "backup": "Kopia zapasowa",
+    "system_settings": "Ustawienia systemu",
+    "notifications": "Powiadomienia",
+    "diagnostics": "Diagnostyka",
+    "process_monitor": "Monitor procesów",
+    "system_logs": "Logi systemowe",
+    "local_logs": "Logi lokalne",
+    "remote_logs": "Logi zdalne",
+    "app": {
+      "name": "Panel NAS"
+    }
+  },
   home: {
     title: "Pulpit systemowy",
     manageWidgets: "Zarządzaj widgetami",
@@ -862,5 +907,69 @@ backup: {
     close: "Zamknij",
     confirmation: "Potwierdzenie",
     saveChanges: "Zapisz zmiany"
-  }
+  },
+  "notifications": {
+    "title": "Powiadomienia",
+    "markAllAsRead": "Oznacz wszystkie jako przeczytane",
+    "empty": "Brak nowych powiadomień",
+    "viewAll": "Zobacz wszystkie"
+  },
+  "theme": {
+    "light": "Dzień",
+    "dark": "Noc",
+    "system": "System"
+  },
+  "userMenu": {
+    "profile": "Profil",
+    "settings": "Ustawienia",
+    "logout": "Wyloguj",
+    "guest": "Gość"
+  },
+  "logout": {
+    "confirmMessage": "Czy na pewno chcesz się wylogować?",
+    "confirmTitle": "Potwierdzenie wylogowania",
+    "confirmButton": "Wyloguj",
+    "cancelButton": "Anuluj",
+    "successMessage": "Wylogowano pomyślnie",
+    "errorMessage": "Błąd podczas wylogowywania"
+  },
+  "time": {
+    "justNow": "Przed chwilą",
+    "minutesAgo": "{minutes} min temu",
+    "hoursAgo": "{hours} godz. temu"
+  },
+  "update": {
+    "availableTitle": "Dostępna aktualizacja",
+    "currentTitle": "Wersja panelu",
+    "availableHeader": "Nowa wersja panelu jest dostępna!",
+    "currentHeader": "Masz najnowszą wersję panelu!",
+    "yourVersion": "Twoja wersja",
+    "newVersion": "Nowa wersja",
+    "whatsNew": "Co nowego",
+    "updateNow": "Zaktualizuj teraz",
+    "schedule": "Zaplanuj aktualizację",
+    "scheduleTitle": "Zaplanuj aktualizację",
+    "selectTime": "Wybierz czas",
+    "confirm": "Potwierdź",
+    "remindLater": "Przypomnij później",
+    "congratulations": "Gratulacje! Twoja wersja panelu jest aktualna.",
+    "checkAgain": "Sprawdź ponownie",
+    "checkingTooltip": "Sprawdzanie aktualizacji...",
+    "availableTooltip": "Dostępna nowa wersja: v{version}",
+    "currentTooltip": "Aktualna wersja: v{version}",
+    "noChangelog": "Brak informacji o zmianach",
+    "changelogError": "Nie udało się pobrać informacji o zmianach",
+    "updateStartedTitle": "Aktualizacja rozpoczęta",
+    "updateStartedMessage": "Panel zostanie zaktualizowany i zrestartowany automatycznie",
+    "updateErrorTitle": "Błąd aktualizacji",
+    "updateErrorMessage": "Nie udało się wykonać aktualizacji",
+    "scheduledTitle": "Aktualizacja zaplanowana",
+    "scheduledMessage": "Aktualizacja zostanie wykonana o {time}",
+    "scheduleErrorTitle": "Błąd",
+    "scheduleErrorMessage": "Nie udało się zaplanować aktualizacji",
+    "remindLaterMessage": "Przypomnimy o aktualizacji za 24 godziny",
+    "checkError": "Nie udało się sprawdzić aktualizacji"
+  },
+  Services: "Usługi",
+  Docker: "Docker",
 }

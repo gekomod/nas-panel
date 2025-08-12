@@ -11,6 +11,7 @@ const util = require('util');
 const execPromise = util.promisify(exec);
 const YAML = require('yaml');
 const Docker = require('dockerode');
+const WebSocket = require('ws');
 
 var docker = new Docker();
 
@@ -1805,6 +1806,54 @@ app.get('/services/docker/images/search', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+const wss = new WebSocket.Server({ port: 1111 });
+
+wss.on('connection', (ws) => {
+  let container = null;
+  let exec = null;
+  let stream = null;
+
+  ws.on('message', async (message) => {
+    const msg = JSON.parse(message);
+    
+    if (msg.type === 'init') {
+      try {
+        container = docker.getContainer(msg.containerId);
+        
+        exec = await container.exec({
+          Cmd: ['/bin/sh'],
+          AttachStdin: true,
+          AttachStdout: true,
+          AttachStderr: true,
+          Tty: true
+        });
+
+        stream = await exec.start({ hijack: true, stdin: true });
+        
+        stream.on('data', (data) => {
+          ws.send(JSON.stringify({ type: 'stdout', data: data.toString() }));
+        });
+
+        stream.on('end', () => {
+          ws.close();
+        });
+
+      } catch (err) {
+        ws.send(JSON.stringify({ type: 'stderr', data: err.message }));
+        ws.close();
+      }
+    }
+    
+    if (msg.type === 'stdin' && stream) {
+      stream.write(msg.data);
+    }
+  });
+
+  ws.on('close', () => {
+    if (stream) stream.end();
+  });
 });
 
 // Inicjalizacja przy starcie

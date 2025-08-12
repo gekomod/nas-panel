@@ -9,6 +9,7 @@ const path = require('path');
 const multer = require('multer');
 const diskusage = require('diskusage');
 const { exec } = require('child_process');
+require('dotenv').config({ path: './.env' });
 
 const StorageRoutes = require('./src/api/storage.cjs');
 const NetworkRoutes = require('./src/api/network.cjs');
@@ -101,7 +102,8 @@ const upload = multer({
 
 const app = express()
 const HOST = '0.0.0.0'; // Nasłuchuje na wszystkich interfejsach
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.VITE_API_PORT || 3000;
+console.log(`API port: ${PORT}`);
 
 const BASE_DIR = '/';
 

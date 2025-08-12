@@ -2,139 +2,244 @@
   <el-dialog 
     v-model="visible" 
     :title="`Edit Container: ${containerName}`" 
-    width="80%"
-    top="5vh"
+    width="1000px"
+    class="modern-editor-dialog"
     @close="resetForm"
   >
-    <el-form :model="form" label-width="120px" label-position="top">
-      <el-tabs type="border-card">
-        <el-tab-pane label="Basic Settings">
-          <el-form-item label="Container Name" prop="name">
-            <el-input v-model="form.name" />
-          </el-form-item>
-          
-          <el-form-item label="Image" prop="image">
-            <el-select
-              v-model="form.image"
-              filterable
-              remote
-              :remote-method="searchImages"
-              placeholder="Select or search for image"
-            >
-              <el-option
-                v-for="img in availableImages"
-                :key="img"
-                :label="img"
-                :value="img"
+    <el-tabs type="card" class="editor-tabs">
+      <el-tab-pane label="Basic Settings">
+        <div class="tab-content">
+          <el-form :model="form" label-position="top" class="compact-form">
+            <el-form-item label="Container Name" prop="name">
+              <el-input 
+                v-model="form.name" 
+                size="large"
+                placeholder="e.g. my-container"
               />
-            </el-select>
-          </el-form-item>
-          
-          <el-form-item label="Command" prop="command">
-            <el-input v-model="form.command" placeholder="Optional command to run" />
-          </el-form-item>
-        </el-tab-pane>
-        
-        <el-tab-pane label="Network & Ports">
-          <el-form-item label="Port Bindings">
-            <div v-for="(port, index) in form.ports" :key="index" class="port-item">
-              <el-input v-model="port.host" placeholder="Host port" style="width: 120px" />
-              <span class="port-separator">:</span>
-              <el-input v-model="port.container" placeholder="Container port" style="width: 120px" />
-              <el-select v-model="port.protocol" style="width: 100px; margin-left: 10px">
-                <el-option label="TCP" value="tcp" />
-                <el-option label="UDP" value="udp" />
+            </el-form-item>
+            
+            <el-form-item label="Image" prop="image">
+              <el-select
+                v-model="form.image"
+                filterable
+                remote
+                size="large"
+                :remote-method="searchImages"
+                placeholder="Select or search for image"
+              >
+                <el-option
+                  v-for="img in availableImages"
+                  :key="img"
+                  :label="img"
+                  :value="img"
+                />
               </el-select>
-              <el-button
-                type="danger"
-                circle
-                size="small"
-                @click="removePort(index)"
-                style="margin-left: 10px"
-              >
-                <el-icon><Icon icon="mdi:delete" /></el-icon>
-              </el-button>
-            </div>
-            <el-button @click="addPort" type="primary" plain>
-              <el-icon><Icon icon="mdi:plus" /></el-icon>
-              Add Port
-            </el-button>
-          </el-form-item>
-        </el-tab-pane>
-        
-        <el-tab-pane label="Volumes">
-          <el-form-item label="Volume Bindings">
-            <div v-for="(volume, index) in form.volumes" :key="index" class="volume-item">
-              <el-input v-model="volume.host" placeholder="Host path" style="flex: 1" />
-              <span class="volume-separator">:</span>
-              <el-input v-model="volume.container" placeholder="Container path" style="flex: 1" />
-              <el-select v-model="volume.mode" style="width: 120px; margin-left: 10px">
-                <el-option label="RW (Read-Write)" value="rw" />
-                <el-option label="RO (Read-Only)" value="ro" />
-              </el-select>
-              <el-button
-                type="danger"
-                circle
-                size="small"
-                @click="removeVolume(index)"
-                style="margin-left: 10px"
-              >
-                <el-icon><Icon icon="mdi:delete" /></el-icon>
-              </el-button>
-            </div>
-            <el-button @click="addVolume" type="primary" plain>
-              <el-icon><Icon icon="mdi:plus" /></el-icon>
-              Add Volume
-            </el-button>
-          </el-form-item>
-        </el-tab-pane>
-        
-        <el-tab-pane label="Environment">
-          <el-form-item label="Environment Variables">
-            <div v-for="(env, index) in form.env" :key="index" class="env-item">
-              <el-input v-model="env.key" placeholder="Variable name" style="width: 200px" />
-              <el-input v-model="env.value" placeholder="Value" style="flex: 1; margin-left: 10px" />
-              <el-button
-                type="danger"
-                circle
-                size="small"
-                @click="removeEnv(index)"
-                style="margin-left: 10px"
-              >
-                <el-icon><Icon icon="mdi:delete" /></el-icon>
-              </el-button>
-            </div>
-            <el-button @click="addEnv" type="primary" plain>
-              <el-icon><Icon icon="mdi:plus" /></el-icon>
-              Add Variable
-            </el-button>
-          </el-form-item>
-        </el-tab-pane>
-      </el-tabs>
-    </el-form>
+            </el-form-item>
+            
+            <el-form-item label="Command" prop="command">
+              <el-input 
+                v-model="form.command" 
+                size="large"
+                placeholder="Optional command to run" 
+              />
+            </el-form-item>
+          </el-form>
+        </div>
+      </el-tab-pane>
+      
+      <el-tab-pane label="Network & Ports">
+        <div class="tab-content">
+          <el-form label-position="top">
+            <el-form-item label="Port Bindings">
+              <div class="port-list">
+                <div v-for="(port, index) in form.ports" :key="index" class="port-item">
+                  <el-input 
+                    v-model="port.host" 
+                    placeholder="Host port" 
+                    size="small"
+                    class="port-input"
+                  />
+                  <span class="port-separator">:</span>
+                  <el-input 
+                    v-model="port.container" 
+                    placeholder="Container port" 
+                    size="small"
+                    class="port-input"
+                  />
+                  <el-select 
+                    v-model="port.protocol" 
+                    size="small"
+                    class="protocol-select"
+                  >
+                    <el-option label="TCP" value="tcp" />
+                    <el-option label="UDP" value="udp" />
+                  </el-select>
+                  <el-button
+                    type="danger"
+                    circle
+                    size="small"
+                    @click="removePort(index)"
+                    class="remove-btn"
+                  >
+                    <el-icon><Icon icon="mdi:delete" /></el-icon>
+                  </el-button>
+                </div>
+                <el-button 
+                  @click="addPort" 
+                  type="primary" 
+                  plain
+                  size="small"
+                  class="add-btn"
+                >
+                  <el-icon><Icon icon="mdi:plus" /></el-icon>
+                  Add Port
+                </el-button>
+              </div>
+            </el-form-item>
+          </el-form>
+        </div>
+      </el-tab-pane>
+      
+      <el-tab-pane label="Volumes">
+        <div class="tab-content">
+          <el-form label-position="top">
+            <el-form-item label="Volume Bindings">
+              <div class="volume-list">
+                <div v-for="(volume, index) in form.volumes" :key="index" class="volume-item">
+                  <el-input 
+                    v-model="volume.host" 
+                    placeholder="Host path" 
+                    size="small"
+                    class="volume-input"
+                  />
+                  <span class="volume-separator">:</span>
+                  <el-input 
+                    v-model="volume.container" 
+                    placeholder="Container path" 
+                    size="small"
+                    class="volume-input"
+                  />
+                  <el-select 
+                    v-model="volume.mode" 
+                    size="small"
+                    class="mode-select"
+                  >
+                    <el-option label="RW (Read-Write)" value="rw" />
+                    <el-option label="RO (Read-Only)" value="ro" />
+                  </el-select>
+                  <el-button
+                    type="danger"
+                    circle
+                    size="small"
+                    @click="removeVolume(index)"
+                    class="remove-btn"
+                  >
+                    <el-icon><Icon icon="mdi:delete" /></el-icon>
+                  </el-button>
+                </div>
+                <el-button 
+                  @click="addVolume" 
+                  type="primary" 
+                  plain
+                  size="small"
+                  class="add-btn"
+                >
+                  <el-icon><Icon icon="mdi:plus" /></el-icon>
+                  Add Volume
+                </el-button>
+              </div>
+            </el-form-item>
+          </el-form>
+        </div>
+      </el-tab-pane>
+      
+      <el-tab-pane label="Environment">
+        <div class="tab-content">
+          <el-form label-position="top">
+            <el-form-item label="Environment Variables">
+              <div class="env-list">
+                <div v-for="(env, index) in form.env" :key="index" class="env-item">
+                  <el-input 
+                    v-model="env.key" 
+                    placeholder="Variable name" 
+                    size="small"
+                    class="env-key"
+                  />
+                  <el-input 
+                    v-model="env.value" 
+                    placeholder="Value" 
+                    size="small"
+                    class="env-value"
+                  />
+                  <el-button
+                    type="danger"
+                    circle
+                    size="small"
+                    @click="removeEnv(index)"
+                    class="remove-btn"
+                  >
+                    <el-icon><Icon icon="mdi:delete" /></el-icon>
+                  </el-button>
+                </div>
+                <el-button 
+                  @click="addEnv" 
+                  type="primary" 
+                  plain
+                  size="small"
+                  class="add-btn"
+                >
+                  <el-icon><Icon icon="mdi:plus" /></el-icon>
+                  Add Variable
+                </el-button>
+              </div>
+            </el-form-item>
+          </el-form>
+        </div>
+      </el-tab-pane>
+    </el-tabs>
 
     <template #footer>
-      <el-button-group>
-        <el-button @click="validateForm" :loading="validating">
-          <el-icon><Icon icon="mdi:check-circle" /></el-icon> Validate
-        </el-button>
+      <div class="dialog-footer">
+        <el-button-group>
+          <el-button 
+            @click="validateForm" 
+            :loading="validating"
+            size="large"
+            class="action-btn"
+          >
+            <el-icon><Icon icon="mdi:check-circle" /></el-icon>
+            Validate
+          </el-button>
+          
+          <el-button 
+            @click="resetToOriginal"
+            size="large"
+            class="action-btn"
+          >
+            <el-icon><Icon icon="mdi:restore" /></el-icon>
+            Reset
+          </el-button>
+        </el-button-group>
         
-        <el-button @click="resetToOriginal">
-          <el-icon><Icon icon="mdi:restore" /></el-icon> Reset
-        </el-button>
-        
-        <el-divider direction="vertical" />
-        
-        <el-button @click="visible = false">Cancel</el-button>
-        <el-button 
-          type="primary" 
-          @click="saveChanges" 
-          :disabled="errors.length > 0"
-          :loading="saving"
-        >
-          Save & Restart
-        </el-button>
-      </el-button-group>
+        <div class="footer-right">
+          <el-button 
+            @click="visible = false"
+            size="large"
+          >
+            Cancel
+          </el-button>
+          <el-button 
+            type="primary" 
+            @click="saveChanges" 
+            :disabled="errors.length > 0"
+            :loading="saving"
+            size="large"
+          >
+            <el-icon><Icon icon="mdi:content-save" /></el-icon>
+            Save & Restart
+          </el-button>
+        </div>
+      </div>
     </template>
   </el-dialog>
 </template>
@@ -219,7 +324,6 @@ const validateForm = () => {
   validating.value = true;
   errors.value = [];
   
-  // Basic validation
   if (!form.value.name) {
     errors.value.push('Container name is required');
   }
@@ -228,14 +332,12 @@ const validateForm = () => {
     errors.value.push('Image is required');
   }
   
-  // Port validation
   form.value.ports.forEach((port, index) => {
     if (!port.host || !port.container) {
       errors.value.push(`Port mapping ${index + 1} is incomplete`);
     }
   });
   
-  // Volume validation
   form.value.volumes.forEach((volume, index) => {
     if (!volume.host || !volume.container) {
       errors.value.push(`Volume mapping ${index + 1} is incomplete`);
@@ -267,7 +369,6 @@ const openEditor = async (containerId, name) => {
     form.value = JSON.parse(JSON.stringify(originalConfig.value));
     visible.value = true;
     
-    // Load available images
     searchImages(form.value.image.split(':')[0]);
   } catch (error) {
     ElMessage.error('Failed to load container configuration');
@@ -296,25 +397,112 @@ defineExpose({ openEditor });
 </script>
 
 <style scoped>
+.modern-editor-dialog {
+  border-radius: 12px;
+}
+
+.modern-editor-dialog :deep(.el-dialog__header) {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--el-border-color-light);
+  margin: 0;
+}
+
+.modern-editor-dialog :deep(.el-dialog__body) {
+  padding: 0;
+}
+
+.modern-editor-dialog :deep(.el-dialog__footer) {
+  padding: 16px 24px;
+  border-top: 1px solid var(--el-border-color-light);
+}
+
+.editor-tabs {
+  padding: 0 20px;
+}
+
+.tab-content {
+  padding: 16px 0;
+}
+
+.compact-form :deep(.el-form-item) {
+  margin-bottom: 18px;
+}
+
+.port-list,
+.volume-list,
+.env-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .port-item,
 .volume-item,
 .env-item {
   display: flex;
   align-items: center;
-  margin-bottom: 10px;
+  gap: 8px;
+}
+
+.port-input,
+.volume-input {
+  width: 120px;
+}
+
+.protocol-select,
+.mode-select {
+  width: 120px;
+}
+
+.env-key {
+  width: 200px;
+}
+
+.env-value {
+  flex: 1;
 }
 
 .port-separator,
 .volume-separator {
-  margin: 0 8px;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
+  font-weight: bold;
 }
 
-.el-tabs {
+.add-btn {
   margin-top: 10px;
 }
 
-.el-form-item {
-  margin-bottom: 22px;
+.remove-btn {
+  margin-left: auto;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.footer-right {
+  display: flex;
+  gap: 12px;
+}
+
+.action-btn {
+  padding-left: 15px;
+  padding-right: 15px;
+}
+
+:deep(.el-tabs__header) {
+  margin: 0;
+}
+
+:deep(.el-tabs__item) {
+  padding: 0 20px;
+  height: 40px;
+  line-height: 40px;
+}
+
+:deep(.el-tabs__nav-wrap::after) {
+  height: 1px;
 }
 </style>

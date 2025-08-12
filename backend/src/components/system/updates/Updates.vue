@@ -224,7 +224,7 @@ const scheduleOptions = [
 ]
 
 const api = axios.create({
-  baseURL: `${window.location.protocol}//${window.location.hostname}:3000`,
+  baseURL: `${window.location.protocol}//${window.location.hostname}:${import.meta.env.VITE_API_PORT}`,
   timeout: 30000
 })
 

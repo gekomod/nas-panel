@@ -14,7 +14,7 @@ export const useAuth = () => {
    */
   const login = async (username, password) => {
     try {
-      const response = await fetch(`${window.location.protocol}//${window.location.hostname}:3000/api/login`, {
+      const response = await fetch(`${window.location.protocol}//${window.location.hostname}:${import.meta.env.VITE_API_PORT}/api/login`, {
         method: 'POST',
         credentials: 'include', // Wymagane dla cookies
         headers: {
@@ -50,7 +50,7 @@ export const useAuth = () => {
    */
   const logout = async () => {
     try {
-      const response = await fetch(`${window.location.protocol}//${window.location.hostname}:3000/api/logout`, {
+      const response = await fetch(`${window.location.protocol}//${window.location.hostname}:${import.meta.env.VITE_API_PORT}/api/logout`, {
         method: 'POST',
         credentials: 'include',
       })
@@ -74,7 +74,7 @@ export const useAuth = () => {
    */
   const checkAuth = async () => {
     try {
-      const response = await fetch(`${window.location.protocol}//${window.location.hostname}:3000/api/check-auth`, {
+      const response = await fetch(`${window.location.protocol}//${window.location.hostname}:${import.meta.env.VITE_API_PORT}/api/check-auth`, {
         credentials: 'include',
       })
 

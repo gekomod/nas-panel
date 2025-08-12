@@ -147,7 +147,7 @@ const formatUptime = (seconds) => {
 const fetchData = async () => {
   try {
     loading.value = true
-    const response = await fetch(`${window.location.protocol}//${window.location.hostname}:3000/api/system-info`)
+    const response = await fetch(`${window.location.protocol}//${window.location.hostname}:${import.meta.env.VITE_API_PORT}/api/system-info`)
     
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
@@ -175,7 +175,7 @@ const initiateRestart = async () => {
   isRestarting.value = true
   
   try {
-    const response = await fetch(`${window.location.protocol}//${window.location.hostname}:3000/api/system-restart`, {
+    const response = await fetch(`${window.location.protocol}//${window.location.hostname}:${import.meta.env.VITE_API_PORT}/api/system-restart`, {
       method: 'POST'
     })
     
@@ -191,7 +191,7 @@ const initiateRestart = async () => {
     // Sprawdzamy co sekundę czy serwer już odpowiada
     const checkServer = async () => {
       try {
-        await fetch(`${window.location.protocol}//${window.location.hostname}:3000/api/system-health`)
+        await fetch(`${window.location.protocol}//${window.location.hostname}:${import.meta.env.VITE_API_PORT}/api/system-health`)
         window.location.reload()
       } catch {
         setTimeout(checkServer, 1000)

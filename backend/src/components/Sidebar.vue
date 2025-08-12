@@ -30,7 +30,7 @@
         <el-sub-menu v-if="item.children" :index="item.path">
           <template #title>
             <Icon :icon="item.meta.icon" width="18" height="18" class="menu-icon" />
-            <span class="menu-title">{{ item.meta.title }}</span>
+            <span class="menu-title">{{ $t(item.meta.title) }}</span>
             <span class="menu-badge" v-if="item.meta.badge">{{ item.meta.badge }}</span>
           </template>
           
@@ -38,7 +38,7 @@
             <el-sub-menu v-if="child.children" :index="child.path">
               <template #title>
                 <Icon :icon="child.meta.icon" width="18" height="18" class="menu-icon" />
-                <span class="menu-title">{{ child.meta.title }}</span>
+                <span class="menu-title">{{ $t(child.meta.title) }}</span>
                 <span class="menu-badge" v-if="child.meta.badge">{{ child.meta.badge }}</span>
               </template>
               
@@ -48,14 +48,14 @@
                 :index="subChild.path"
               >
                 <Icon :icon="subChild.meta.icon" width="18" height="18" class="menu-icon" />
-                <span class="menu-title">{{ subChild.meta.title }}</span>
+                <span class="menu-title">{{ $t(subChild.meta.title) }}</span>
                 <span class="menu-badge" v-if="subChild.meta.badge">{{ subChild.meta.badge }}</span>
               </el-menu-item>
             </el-sub-menu>
             
             <el-menu-item v-else :index="child.path">
               <Icon :icon="child.meta.icon" width="18" height="18" class="menu-icon" />
-              <span class="menu-title">{{ child.meta.title }}</span>
+              <span class="menu-title">{{ $t(child.meta.title) }}</span>
               <span class="menu-badge" v-if="child.meta.badge">{{ child.meta.badge }}</span>
             </el-menu-item>
           </template>
@@ -63,7 +63,7 @@
         
         <el-menu-item v-else :index="item.path">
           <Icon :icon="item.meta.icon" width="18" height="18" class="menu-icon" />
-          <span class="menu-title">{{ item.meta.title }}</span>
+          <span class="menu-title">{{ $t(item.meta.title) }}</span>
           <span class="menu-badge" v-if="item.meta.badge">{{ item.meta.badge }}</span>
         </el-menu-item>
       </template>

@@ -82,7 +82,7 @@ const autoRefresh = ref(true)
 const refreshInterval = ref(null)
 const sortBy = ref('usage') // 'usage', 'name', 'size'
 
-axios.defaults.baseURL = `${window.location.protocol}//${window.location.hostname}:3000`;
+axios.defaults.baseURL = `${window.location.protocol}//${window.location.hostname}:${import.meta.env.VITE_API_PORT}`;
 
 // Computed
 const sortedDisks = computed(() => {

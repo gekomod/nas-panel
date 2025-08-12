@@ -17,6 +17,51 @@ export default {
   language: {
     change: "Change language"
   },
+  "routes": {
+    "login": "Login",
+    "dashboard": "Dashboard",
+    "files": "Files",
+    "files_explorer": "File Explorer",
+    "files_shares": "File Sharing",
+    "network": "Network",
+    "network_interfaces": "Network Interfaces",
+    "interface_details": "Interface Details: {interface}",
+    "firewall": "Firewall",
+    "vpn": "VPN",
+    "dynamic_dns": "Dynamic DNS",
+    "services": "Services",
+    "samba": "Samba",
+    "samba_shares": "Samba Shares",
+    "samba_settings": "Samba Settings",
+    "samba_status": "Samba Status",
+    "docker": "Docker",
+    "ssh": "SSH",
+    "webdav": "WebDAV",
+    "ftp_sftp": "FTP/SFTP",
+    "storage": "Storage",
+    "storage_disks": "Disks",
+    "storage_filesystems": "File Systems",
+    "smart": "S.M.A.R.T",
+    "smart_devices": "S.M.A.R.T Devices",
+    "smart_details": "S.M.A.R.T Details: {device}",
+    "system": "System",
+    "users": "Users",
+    "terminal": "Terminal",
+    "system_updates": "System Updates",
+    "cron_jobs": "Cron Jobs",
+    "antivirus": "Antivirus",
+    "backup": "Backup",
+    "system_settings": "System Settings",
+    "notifications": "Notifications",
+    "diagnostics": "Diagnostics",
+    "process_monitor": "Process Monitor",
+    "system_logs": "System Logs",
+    "local_logs": "Local Logs",
+    "remote_logs": "Remote Logs",
+    "app": {
+      "name": "NAS Panel"
+    }
+  },
   home: {
     title: "System Dashboard",
     manageWidgets: "Manage Widgets",
@@ -797,5 +842,67 @@ backup: {
     cancel: "Cancel",
     confirmation: "Confirmation",
     saveChanges: "Save changes"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAllAsRead": "Mark all as read",
+    "empty": "No new notifications",
+    "viewAll": "View all"
+  },
+  "theme": {
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "userMenu": {
+    "profile": "Profile",
+    "settings": "Settings",
+    "logout": "Logout",
+    "guest": "Guest"
+  },
+  "logout": {
+    "confirmMessage": "Are you sure you want to logout?",
+    "confirmTitle": "Confirm logout",
+    "confirmButton": "Logout",
+    "cancelButton": "Cancel",
+    "successMessage": "Logged out successfully",
+    "errorMessage": "Error during logout"
+  },
+  "time": {
+    "justNow": "Just now",
+    "minutesAgo": "{minutes} minutes ago",
+    "hoursAgo": "{hours} hours ago"
+  },
+  "update": {
+    "availableTitle": "Update available",
+    "currentTitle": "Panel version",
+    "availableHeader": "New panel version is available!",
+    "currentHeader": "You have the latest panel version!",
+    "yourVersion": "Your version",
+    "newVersion": "New version",
+    "whatsNew": "What's new",
+    "updateNow": "Update now",
+    "schedule": "Schedule update",
+    "scheduleTitle": "Schedule update",
+    "selectTime": "Select time",
+    "confirm": "Confirm",
+    "remindLater": "Remind me later",
+    "congratulations": "Congratulations! Your panel version is up to date.",
+    "checkAgain": "Check again",
+    "checkingTooltip": "Checking for updates...",
+    "availableTooltip": "New version available: v{version}",
+    "currentTooltip": "Current version: v{version}",
+    "noChangelog": "No changelog available",
+    "changelogError": "Failed to load changelog",
+    "updateStartedTitle": "Update started",
+    "updateStartedMessage": "Panel will be updated and restarted automatically",
+    "updateErrorTitle": "Update error",
+    "updateErrorMessage": "Failed to perform update",
+    "scheduledTitle": "Update scheduled",
+    "scheduledMessage": "Update will be performed at {time}",
+    "scheduleErrorTitle": "Error",
+    "scheduleErrorMessage": "Failed to schedule update",
+    "remindLaterMessage": "We'll remind you in 24 hours",
+    "checkError": "Failed to check for updates"
   }
 }
