@@ -232,73 +232,94 @@ services:
     </el-dialog>
 
     <!-- Templates Dialog -->
-    <el-dialog 
-      v-model="showTemplatesDialog" 
-      title="Docker Compose Templates" 
-      width="900px"
-      class="modern-dialog"
+<el-dialog 
+  v-model="showTemplatesDialog" 
+  title="Docker Compose Templates" 
+  width="900px"
+  class="modern-dialog"
+>
+  <div class="filters-container">
+    <el-input
+      v-model="templateSearch"
+      placeholder="Search templates..."
+      size="large"
+      class="search-input"
+      clearable
     >
-      <el-input
-        v-model="templateSearch"
-        placeholder="Search templates..."
-        size="large"
-        class="search-input"
-        clearable
-      >
-        <template #prefix>
-          <Icon icon="mdi:magnify" />
-        </template>
-      </el-input>
+      <template #prefix>
+        <Icon icon="mdi:magnify" />
+      </template>
+    </el-input>
+    
+    <el-select
+      v-model="selectedCategory"
+      placeholder="Filter by category"
+      size="large"
+      class="category-select"
+    >
+      <el-option
+        v-for="category in getCategories"
+        :key="category"
+        :label="category"
+        :value="category"
+      />
+    </el-select>
+  </div>
       
-      <el-table
-        :data="filteredTemplates"
-        style="width: 100%"
-        class="templates-table"
-        @row-click="handleTemplateSelect"
-        empty-text="No templates found"
-      >
-        <el-table-column width="80">
-          <template #default="{ row }">
-            <div class="template-icon">
-              <Icon :icon="row.metadata?.icon || 'mdi:docker'" />
-            </div>
-          </template>
-        </el-table-column>
-        
-        <el-table-column prop="name" label="TEMPLATE">
-          <template #default="{ row }">
-            <div class="template-info">
-              <div class="template-name">{{ row.name }}</div>
-              <div class="template-description">{{ row.description }}</div>
-            </div>
-          </template>
-        </el-table-column>
-        
-        <el-table-column width="180" align="right">
-          <template #default="{ row }">
-            <div class="template-actions">
-              <el-button
-                size="small"
-                type="info"
-                @click.stop="previewTemplate(row)"
-                class="preview-btn"
-              >
-                <Icon icon="mdi:eye-outline" /> Preview
-              </el-button>
-              <el-button
-                size="small"
-                type="success"
-                @click.stop="deployTemplateDirectly(row)"
-                v-if="row.metadata?.autoStart !== false"
-                class="deploy-btn"
-              >
-                <Icon icon="mdi:rocket-launch" /> Deploy
-              </el-button>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-dialog>
+  <el-table
+    :data="filteredTemplates"
+    style="width: 100%"
+    class="templates-table"
+    @row-click="handleTemplateSelect"
+    empty-text="No templates found"
+  >
+    <el-table-column width="80">
+      <template #default="{ row }">
+        <div class="template-icon">
+          <Icon :icon="row.metadata?.icon || 'mdi:docker'" />
+        </div>
+      </template>
+    </el-table-column>
+    
+    <el-table-column prop="name" label="TEMPLATE">
+      <template #default="{ row }">
+        <div class="template-info">
+          <div class="template-name">{{ row.name }}</div>
+          <div class="template-description">{{ row.description }}</div>
+          <div class="template-category" v-if="row.category">
+            <el-tag size="small" effect="plain">
+              {{ row.category }}
+            </el-tag>
+          </div>
+        </div>
+      </template>
+    </el-table-column>
+    
+    <el-table-column width="180" align="right">
+      <template #default="{ row }">
+        <div class="template-actions">
+          <el-button
+            size="small"
+            type="info"
+            @click.stop="previewTemplate(row)"
+            class="preview-btn"
+          >
+            <Icon icon="mdi:eye-outline" /> Preview
+          </el-button>
+          <el-button
+            size="small"
+            type="success"
+            @click.stop="deployTemplateDirectly(row)"
+            v-if="row.metadata?.autoStart !== false"
+            class="deploy-btn"
+          >
+            <Icon icon="mdi:rocket-launch" /> Deploy
+          </el-button>
+        </div>
+      </template>
+    </el-table-column>
+  </el-table>
+</el-dialog>
 
     <!-- Template Preview Dialog -->
     <el-dialog 
@@ -370,6 +391,7 @@ const templates = ref([]);
 const previewTemplateContent = ref('');
 const selectedTemplate = ref(null);
 const templateSearch = ref('');
+const selectedCategory = ref('All');
 
 const composeForm = ref({
   containerName: '',
@@ -399,7 +421,8 @@ services:
     metadata: {
       autoStart: true,
       ports: [80],
-      icon: 'mdi:nginx'
+      icon: 'mdi:nginx',
+      category: 'Web'  // Dodana kategoria
     }
   },
   {
@@ -435,7 +458,8 @@ volumes:
     metadata: {
       autoStart: true,
       ports: [8000],
-      icon: 'mdi:wordpress'
+      icon: 'mdi:wordpress',
+      category: 'CMS'  // Dodana kategoria
     }
   },
   {
@@ -458,18 +482,46 @@ volumes:
     metadata: {
       autoStart: true,
       ports: [5432],
-      icon: 'mdi:database'
+      icon: 'mdi:database',
+      category: 'CMS'
     }
   }
 ];
 
 const filteredTemplates = computed(() => {
-  if (!templateSearch.value) return templates.value;
-  const search = templateSearch.value.toLowerCase();
-  return templates.value.filter(t => 
-    t.name.toLowerCase().includes(search) || 
-    t.description.toLowerCase().includes(search)
-  );
+  let filtered = templates.value;
+  
+  // Filtruj po kategorii
+  if (selectedCategory.value && selectedCategory.value !== 'All') {
+    filtered = filtered.filter(t => t.category === selectedCategory.value);
+  }
+  
+  // Filtruj po wyszukiwaniu
+  if (templateSearch.value) {
+    const search = templateSearch.value.toLowerCase();
+    filtered = filtered.filter(t => 
+      t.name.toLowerCase().includes(search) || 
+      t.description.toLowerCase().includes(search))
+  }
+  
+  return filtered;
+});
+
+const getCategories = computed(() => {
+  const categories = new Set();
+  
+  // Dodaj 'All' jako pierwszą opcję
+  categories.add('All');
+  
+  // Zbierz wszystkie unikalne kategorie z szablonów
+  templates.value.forEach(template => {
+    if (template.category) {
+      categories.add(template.category);
+    }
+  });
+  
+  // Posortuj kategorie alfabetycznie
+  return Array.from(categories).sort((a, b) => a.localeCompare(b));
 });
 
 const formatContainerName = (name) => {
@@ -847,10 +899,30 @@ const loadTemplates = async () => {
         }
       }
     );
-    templates.value = response.data.templates || defaultTemplates;
+    
+    // Dodaj metadata.category jeśli nie istnieje w domyślnych szablonach
+    templates.value = (response.data.templates || defaultTemplates).map(template => {
+      if (!template.metadata) {
+        template.metadata = {};
+      }
+      // Upewnij się, że category istnieje w metadata
+      if (!template.metadata.category) {
+        template.metadata.category = 'Other'; // Domyślna kategoria
+      }
+      return template;
+    });
+    
   } catch (error) {
     console.log('Using default templates due to error:', error);
-    templates.value = defaultTemplates;
+    // Upewnij się, że domyślne szablony mają kategorie
+    templates.value = defaultTemplates.map(template => {
+      if (!template.metadata) {
+        template.metadata = { category: 'Other' };
+      } else if (!template.metadata.category) {
+        template.metadata.category = 'Other';
+      }
+      return template;
+    });
   }
 };
 
@@ -1313,6 +1385,29 @@ onBeforeUnmount(() => {
   height: calc(100% - 60px);
 }
 
+.filters-container {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.category-select {
+  width: 200px;
+}
+
+.search-input {
+  flex: 1;
+}
+
+.template-category {
+  margin-top: 6px;
+}
+
+.template-category :deep(.el-tag) {
+  background-color: #f0f5ff;
+  color: #3b82f6;
+  border-color: #d6e4ff;
+}
 
 @keyframes rotating {
   from { transform: rotate(0deg); }

@@ -157,14 +157,17 @@ export default {
       "free": "Free",
       "device": "Urządzenie"
     },
-      "raidDialog": {
+    "raid": "Manage RAID",
+    "raidDialog": {
       "title": "Create RAID Array",
       "raidLevel": "RAID Level",
       "devices": "Devices",
+      "selectDevices": "Select devices for RAID",
       "name": "RAID Device Name",
+      "chunkSize": "Chunk Size",
       "create": "Create RAID",
-      "minDevicesError": "At least 2 devices are required",
-      "createSuccess": "RAID array created successfully"
+      "capacityInfo": "Estimated capacity: {capacity}",
+      "minDevicesWarning": "RAID {level} requires at least {count} devices"
     },
     "createRaid": "Create RAID",
     "raidLevels": {
@@ -351,7 +354,8 @@ export default {
     restartNow: "Zrestartuj teraz",
     restartInProgress: "Trwa restart systemu",
     restartDescription: "Strona odświeży się automatycznie po zakończeniu restartu. Proszę czekać...",
-    restartFailed: "Nie udało się zrestartować systemu"
+    restartFailed: "Nie udało się zrestartować systemu",
+    pendingUpdates: 'Oczekujące aktualizacje'
   },
   ram: {
     title: 'Użycie RAM',
@@ -969,6 +973,15 @@ backup: {
     "scheduleErrorMessage": "Nie udało się zaplanować aktualizacji",
     "remindLaterMessage": "Przypomnimy o aktualizacji za 24 godziny",
     "checkError": "Nie udało się sprawdzić aktualizacji"
+  },
+  systemUpdates: {
+    notifications: {
+      updatesAvailable: 'Dostępne są nowe aktualizacje',
+      updatesAvailableMessage: 'System znalazł {count} nowych aktualizacji do zainstalowania',
+      checkFailed: 'Sprawdzanie aktualizacji nie powiodło się',
+      installCompleted: 'Aktualizacje zostały zainstalowane',
+      installFailed: 'Instalacja aktualizacji nie powiodła się'
+    }
   },
   Services: "Usługi",
   Docker: "Docker",

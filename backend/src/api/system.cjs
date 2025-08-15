@@ -16,7 +16,6 @@ const CRON_JOBS_FILE = path.join('/etc', 'nas-panel', 'cron-jobs.json');
 let updateCronJob = null;
 // Inicjalizacja zadań
 const cronJobs = new Map();
-
 // Helper do wykonania komendy z obietnicą
 
 const execPromise = (command, options = {}) => {
@@ -222,7 +221,7 @@ function writeCache(data) {
 
 // Funkcja do sprawdzania aktualizacji z możliwością wymuszenia
 async function checkForUpdates(force = false) {
-  // Sprawdź cache jeśli nie wymuszamy
+  // Najpierw sprawdź cache jeśli nie wymuszamy
   if (!force) {
     const cache = readCache();
     if (cache && (Date.now() - cache.timestamp < CACHE_TTL)) {
@@ -231,51 +230,13 @@ async function checkForUpdates(force = false) {
   }
 
   try {
+    // Uruchom tylko jeśli wymuszone lub cache wygasło
     await execPromise('timeout 30 apt-get update');
     const output = await execPromise('apt-get -s dist-upgrade');
-    const updates = [];
-    const packageNames = new Set();
+    const updates = parseAptUpdates(output);
     
-    output.split('\n').forEach(line => {
-      if (line.startsWith('Inst ')) {
-        const parts = line.split(/\s+/);
-        if (parts.length >= 4) {
-          const name = parts[1];
-          if (!packageNames.has(name)) {
-            packageNames.add(name);
-            updates.push({
-              name,
-              current_version: parts[2].replace(/[()]/g, ''),
-              new_version: parts[3],
-              description: '' // Inicjalizacja pustego opisu
-            });
-          }
-        }
-      }
-    });
-
-    // Poprawione pobieranie opisów
     if (updates.length > 0) {
-      const descriptions = await execPromise(
-        `apt-cache show ${Array.from(packageNames).join(' ')} | ` +
-        `awk '/^Package:/ {pkg=$2} /^Description(-[a-z]+)?:/ {desc=desc ? desc " " $0 : $0} ` +
-        `/^$/ {if (pkg && desc) {print pkg ":" desc; desc=""; pkg=""}} END {if (pkg && desc) print pkg ":" desc}'`
-      );
-      
-      const descMap = {};
-      descriptions.split('\n').forEach(line => {
-        const [pkg, ...descParts] = line.split(':');
-        if (pkg && descParts.length > 0) {
-          // Usuwamy prefix "Description:" z opisu
-          descMap[pkg] = descParts.join(':')
-            .replace(/^Description(-[a-z]+)?:\s*/, '')
-            .trim();
-        }
-      });
-
-      updates.forEach(update => {
-        update.description = descMap[update.name] || 'No Description';
-      });
+      await enrichWithPackageDescriptions(updates);
     }
 
     writeCache(updates);
@@ -284,6 +245,54 @@ async function checkForUpdates(force = false) {
     console.error('Update check error:', error);
     throw error;
   }
+}
+
+function parseAptUpdates(output) {
+  const updates = [];
+  const packageNames = new Set();
+  
+  output.split('\n').forEach(line => {
+    if (line.startsWith('Inst ')) {
+      const parts = line.split(/\s+/);
+      if (parts.length >= 4) {
+        const name = parts[1];
+        if (!packageNames.has(name)) {
+          packageNames.add(name);
+          updates.push({
+            name,
+            current_version: parts[2].replace(/[()]/g, ''),
+            new_version: parts[3],
+            description: ''
+          });
+        }
+      }
+    }
+  });
+  
+  return updates;
+}
+
+async function enrichWithPackageDescriptions(updates) {
+  const packageNames = updates.map(u => u.name).join(' ');
+  const descriptions = await execPromise(
+    `apt-cache show ${packageNames} | ` +
+    `awk '/^Package:/ {pkg=$2} /^Description(-[a-z]+)?:/ {desc=desc ? desc " " $0 : $0} ` +
+    `/^$/ {if (pkg && desc) {print pkg ":" desc; desc=""; pkg=""}} END {if (pkg && desc) print pkg ":" desc}'`
+  );
+  
+  const descMap = {};
+  descriptions.split('\n').forEach(line => {
+    const [pkg, ...descParts] = line.split(':');
+    if (pkg && descParts.length > 0) {
+      descMap[pkg] = descParts.join(':')
+        .replace(/^Description(-[a-z]+)?:\s*/, '')
+        .trim();
+    }
+  });
+
+  updates.forEach(update => {
+    update.description = descMap[update.name] || 'No Description';
+  });
 }
 
 // Zaplanuj automatyczne odświeżanie o północy
@@ -295,6 +304,8 @@ cron.schedule('0 0 * * *', () => {
 });
 
 module.exports = function(app, requireAuth) {
+app.locals.clients = new Set();
+
   app.get('/system/updates/check', requireAuth, async (req, res) => {
     try {
       const forceRefresh = req.query.force === 'true';
@@ -335,37 +346,78 @@ app.get('/system/updates/check-deps/:pkg', requireAuth, async (req, res) => {
 
 // Instalacja aktualizacji
 app.post('/system/updates/install', requireAuth, async (req, res) => {
-  const { packages = [], no_confirm = false } = req.body
+  const { packages = [], no_confirm = false } = req.body;
   
   try {
-    let command
+    const processId = uuidv4();
+    let command;
+    
     if (packages.length > 0) {
-      command = `DEBIAN_FRONTEND=noninteractive apt-get install -y ${packages.join(' ')}`
+      command = `DEBIAN_FRONTEND=noninteractive apt-get install -y ${packages.join(' ')}`;
     } else {
-      command = `DEBIAN_FRONTEND=noninteractive apt-get upgrade -y`
+      command = `DEBIAN_FRONTEND=noninteractive apt-get upgrade -y`;
     }
 
-    // Uruchomienie w tle z zapisem PID
-    const child = exec(command, { detached: true })
-    const processId = uuidv4()
-    
-    activeProcesses.set(processId, {
+    const child = spawn('/bin/bash', ['-c', command], {
+      detached: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    const processData = {
+      id: processId,
       child,
       packages,
-      startTime: new Date()
-    })
+      startTime: new Date(),
+      clients: new Set(),
+      output: ''
+    };
+
+    activeProcesses.set(processId, processData);
+
+    // Przetwarzanie outputu w czasie rzeczywistym
+    child.stdout.on('data', (data) => {
+      const output = data.toString();
+      processData.output += output;
+      
+      // Przetwarzaj postęp instalacji
+      const progressData = parseAptProgress(output);
+      
+      // Powiadom wszystkich klientów
+      processData.clients.forEach(client => {
+        client.res.write(`data: ${JSON.stringify(progressData)}\n\n`);
+      });
+    });
+
+    child.stderr.on('data', (data) => {
+      processData.output += data.toString();
+    });
+
+    child.on('close', (code) => {
+      const success = code === 0;
+      
+      processData.clients.forEach(client => {
+        client.res.write(`data: ${JSON.stringify({
+          progress: success ? 100 : 0,
+          status: success ? 'success' : 'exception',
+          message: success ? 'Installation complete' : `Installation failed with code ${code}`
+        })}\n\n`);
+        client.res.end();
+      });
+      
+      activeProcesses.delete(processId);
+    });
 
     res.json({ 
       success: true,
       processId,
       message: 'Installation started in background'
-    })
+    });
 
   } catch (error) {
     res.status(500).json({
       success: false,
       error: error.toString()
-    })
+    });
   }
 });
 
@@ -576,9 +628,8 @@ app.post('/system/settings', async (req, res) => {
   });
 
 async function updateCronSchedule(updateSettings) {
-  const UPDATE_JOB_ID = 'system-auto-updates'; // Stałe ID dla tego zadania
+  const UPDATE_JOB_ID = 'system-auto-updates';
 
-  // Usuń istniejące zadanie jeśli istnieje
   if (updateCronJob) {
     updateCronJob.destroy();
     updateCronJob = null;
@@ -591,21 +642,27 @@ async function updateCronSchedule(updateSettings) {
 
   if (updateSettings.autoUpdate) {
     try {
-      // Utwórz nowe zadanie
       const task = cron.schedule(
         updateSettings.schedule,
         async () => {
           console.log('Running scheduled system update...');
           try {
-            await execPromise(updateSettings.updateCommand);
-            // Aktualizuj informacje o ostatnim wykonaniu
+            const updates = await checkForUpdates(true); // Wymuś aktualizację
+            
+            if (updates.length > 0) {
+            
+              // Jeśli auto-instalacja jest włączona
+              if (updateSettings.autoInstall) {
+                await execPromise(updateSettings.updateCommand);
+              }
+            }
+
             cronJobs.set(UPDATE_JOB_ID, {
               ...cronJobs.get(UPDATE_JOB_ID),
               lastRun: new Date(),
               nextRun: calculateNextRun(updateSettings.schedule)
             });
             saveCronJobs();
-            console.log('System updates completed');
           } catch (error) {
             console.error('System updates failed:', error);
           }
@@ -616,10 +673,8 @@ async function updateCronSchedule(updateSettings) {
         }
       );
 
-      // Oblicz następne wykonanie
       const nextRun = calculateNextRun(updateSettings.schedule);
 
-      // Zapisz zadanie w głównej mapie zadań
       cronJobs.set(UPDATE_JOB_ID, {
         id: UPDATE_JOB_ID,
         name: 'Automatyczne aktualizacje systemu',
@@ -676,25 +731,44 @@ function getStatusMessage(progress) {
 }
 
 // Helper functions
-function parseAptProgress(line) {
-  // Przykładowe parsowanie outputu apt
-  if (line.includes('Unpacking')) {
-    return { progress: 30, message: 'Unpacking package...', status: '' }
-  }
-  if (line.includes('Setting up')) {
-    return { progress: 80, message: 'Configuring package...', status: '' }
-  }
-  if (line.match(/Get:\d+/)) {
-    const match = line.match(/(\d+)%/)
-    const percent = match ? parseInt(match[1]) : 0
-    return { 
-      progress: Math.floor(percent * 0.7), // Download to 70% całego procesu
-      message: 'Downloading package...',
-      status: '',
-      indeterminate: percent === 0
+function parseAptProgress(output) {
+  const lines = output.split('\n');
+  let progress = 0;
+  let message = 'Starting installation...';
+  let status = '';
+  
+  for (const line of lines) {
+    if (line.includes('Unpacking')) {
+      progress = Math.min(progress + 10, 70);
+      message = `Unpacking: ${line.split('Unpacking ')[1]}`;
+    } 
+    else if (line.includes('Setting up')) {
+      progress = Math.min(progress + 5, 95);
+      message = `Configuring: ${line.split('Setting up ')[1]}`;
+    }
+    else if (line.match(/Get:\d+/)) {
+      const percentMatch = line.match(/(\d+)%/);
+      if (percentMatch) {
+        progress = Math.min(parseInt(percentMatch[1]) * 0.7, 70);
+        message = `Downloading packages...`;
+      }
+    }
+    else if (line.includes('Reading package lists')) {
+      progress = 5;
+      message = 'Reading package lists...';
+    }
+    else if (line.includes('Building dependency tree')) {
+      progress = 10;
+      message = 'Building dependency tree...';
     }
   }
-  return null
+  
+  return {
+    progress,
+    message,
+    status,
+    time: new Date().toISOString()
+  };
 }
 
 function extractDownloadSize(output) {
@@ -959,7 +1033,6 @@ app.post('/api/system/schedule-update', requireAuth, async (req, res) => {
     res.status(500).json({ error: error.message })
   }
 })
-
 
 // Funkcja do pobierania następnej daty wykonania
 function getNextRun(schedule) {

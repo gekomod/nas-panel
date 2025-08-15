@@ -73,6 +73,130 @@ const execPromise = (command, options = {}) => {
   });
 };
 
+
+// Load and save webserver configuration
+function loadWebserverConfig() {
+  const configPath = '/etc/nas-web/nas-web.conf';
+  try {
+    if (fs.existsSync(configPath)) {
+      const content = fs.readFileSync(configPath, 'utf8');
+      const config = {};
+      
+      content.split('\n').forEach(line => {
+        // Pomijaj komentarze i puste linie
+        if (!line.trim() || line.trim().startsWith('#')) return;
+        
+        // Usuń komentarze z końca linii i podziel na klucz-wartość
+        const cleanLine = line.split('#')[0].trim();
+        const [key, value] = cleanLine.split('=').map(part => part.trim());
+        
+        if (key && value !== undefined) {
+          // Dla pól liczbowych (jak CACHE_MAX_SIZE) wyciągnij tylko wartość liczbową
+          if (key === 'CACHE_MAX_SIZE' || key === 'CACHE_TTL' || 
+              key === 'GZIP_MIN_SIZE' || key === 'HSTS_MAX_AGE' ||
+              key === 'LOG_MAX_SIZE' || key === 'LOG_BACKUP_COUNT' ||
+              key === 'MAX_THREADS' || key === 'MAX_CONNECTIONS' ||
+              key === 'CONNECTION_TIMEOUT' || key === 'HTTP2_MAX_STREAMS' ||
+              key === 'HTTP2_WINDOW_SIZE' || key === 'PORT') {
+            const numericValue = value.match(/\d+/);
+            config[key] = numericValue ? parseInt(numericValue[0], 10) : 0;
+          }
+          // Dla wartości logicznych
+          else if (value.toLowerCase() === 'true') config[key] = true;
+          else if (value.toLowerCase() === 'false') config[key] = false;
+          // Dla pozostałych - string
+          else config[key] = value;
+        }
+      });
+      
+      return config;
+    }
+  } catch (error) {
+    console.error('Error loading webserver config:', error);
+  }
+  return null;
+}
+
+function saveWebserverConfig(config) {
+  const configPath = '/etc/nas-web/nas-web.conf';
+  try {
+    // Upewnij się, że katalog istnieje
+    const dir = path.dirname(configPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    
+    let content = `# NAS-WEB Server Configuration\n`;
+    
+    // Sekcja podstawowa
+    content += `PORT=${config.PORT}\n`;
+    content += `FRONTEND_PATH=${config.FRONTEND_PATH}\n`;
+    content += `API_PREFIX=${config.API_PREFIX}\n\n`;
+    
+    // Sekcja HTTPS
+    content += `# HTTPS Configuration\n`;
+    content += `ENABLE_HTTPS=${config.ENABLE_HTTPS}\n`;
+    if (config.ENABLE_HTTPS) {
+      content += `SSL_CERT_PATH=${config.SSL_CERT_PATH}\n`;
+      content += `SSL_KEY_PATH=${config.SSL_KEY_PATH}\n`;
+    } else {
+      content += `# SSL_CERT_PATH=/path/to/cert.pem  # komentarz gdy HTTPS wyłączony\n`;
+      content += `# SSL_KEY_PATH=/path/to/key.pem    # komentarz gdy HTTPS wyłączony\n`;
+    }
+    content += `\n`;
+    
+    // Sekcja Cache - teraz bez komentarzy w tej samej linii
+    content += `# Cache Configuration\n`;
+    content += `CACHE_ENABLED=${config.CACHE_ENABLED}\n`;
+    content += `CACHE_MAX_SIZE=${config.CACHE_MAX_SIZE}\n`;
+    content += `CACHE_TTL=${config.CACHE_TTL}\n\n`;
+    
+    // Sekcja Compression
+    content += `# Compression\n`;
+    content += `GZIP_ENABLED=${config.GZIP_ENABLED}\n`;
+    content += `GZIP_MIN_SIZE=${config.GZIP_MIN_SIZE}  # Minimum file size to compress (bytes)\n\n`;
+    
+    // Sekcja Security Headers
+    content += `# Security Headers\n`;
+    content += `CORS_ENABLED=${config.CORS_ENABLED}\n`;
+    content += `HSTS_ENABLED=${config.HSTS_ENABLED}\n`;
+    content += `HSTS_MAX_AGE=${config.HSTS_MAX_AGE}  # 1 year\n\n`;
+    
+    // Sekcja Logging
+    content += `# Logging\n`;
+    content += `LOG_LEVEL=${config.LOG_LEVEL}        # debug, info, warning, error\n`;
+    content += `LOG_FILE=${config.LOG_FILE}\n`;
+    content += `LOG_MAX_SIZE=${config.LOG_MAX_SIZE}       # in MB\n`;
+    content += `LOG_BACKUP_COUNT=${config.LOG_BACKUP_COUNT}    # number of rotated logs to keep\n\n`;
+    
+    // Sekcja Performance
+    content += `# Performance\n`;
+    content += `MAX_THREADS=${config.MAX_THREADS}\n`;
+    content += `MAX_CONNECTIONS=${config.MAX_CONNECTIONS}\n`;
+    content += `CONNECTION_TIMEOUT=${config.CONNECTION_TIMEOUT}  # in seconds\n\n`;
+    
+    // Sekcja HTTP/2
+    content += `# HTTP/2 Configuration\n`;
+    content += `HTTP2_ENABLED=${config.HTTP2_ENABLED}\n`;
+    if (config.HTTP2_ENABLED) {
+      content += `HTTP2_CERT_PATH=${config.HTTP2_CERT_PATH}\n`;
+      content += `HTTP2_KEY_PATH=${config.HTTP2_KEY_PATH}\n`;
+    } else {
+      content += `# HTTP2_CERT_PATH=/path/to/http2_cert.pem\n`;
+      content += `# HTTP2_KEY_PATH=/path/to/http2_key.pem\n`;
+    }
+    content += `HTTP2_MAX_STREAMS=${config.HTTP2_MAX_STREAMS}\n`;
+    content += `HTTP2_WINDOW_SIZE=${config.HTTP2_WINDOW_SIZE}  # in bytes\n`;
+    
+    fs.writeFileSync(configPath, content, 'utf8');
+    return true;
+  } catch (error) {
+    console.error('Error saving webserver config:', error);
+    return false;
+  }
+}
+
+
 // Helper do zapisywania i odczytywania cache
 function readCache() {
   try {
@@ -431,6 +555,26 @@ app.post('/system/settings', async (req, res) => {
   }
 });
 
+// Pobierz konfigurację webservera
+  app.get('/system/webserver-config', requireAuth, (req, res) => {
+    const config = loadWebserverConfig();
+    if (config) {
+      res.json(config);
+    } else {
+      res.status(500).json({ error: 'Failed to load webserver config' });
+    }
+  });
+
+// Zapisz konfigurację webservera
+  app.post('/system/save-webserver-config', requireAuth, (req, res) => {
+    const success = saveWebserverConfig(req.body);
+    if (success) {
+      res.json({ success: true });
+    } else {
+      res.status(500).json({ error: 'Failed to save webserver config' });
+    }
+  });
+
 async function updateCronSchedule(updateSettings) {
   const UPDATE_JOB_ID = 'system-auto-updates'; // Stałe ID dla tego zadania
 
@@ -783,6 +927,38 @@ app.post('/system/cron-jobs/:id/run', requireAuth, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// Endpoint do wykonania aktualizacji
+app.post('/api/system/update', requireAuth, async (req, res) => {
+  try {
+    exec('sudo /usr/bin/update-script.sh', (error, stdout, stderr) => {
+      if (error) {
+        console.error(`Błąd aktualizacji: ${error}`)
+        return res.status(500).json({ error: 'Błąd podczas aktualizacji' })
+      }
+      res.json({ message: 'Aktualizacja rozpoczęta' })
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// Endpoint do zaplanowania aktualizacji
+app.post('/api/system/schedule-update', requireAuth, async (req, res) => {
+  const { time } = req.body
+  
+  try {
+    // Tutaj dodaj logikę planowania (np. cron job)
+    exec(`echo "sudo /usr/bin/update-script.sh" | at ${time}`, (error) => {
+      if (error) {
+        return res.status(500).json({ error: 'Błąd podczas planowania' })
+      }
+      res.json({ message: `Aktualizacja zaplanowana na ${time}` })
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
 
 
 // Funkcja do pobierania następnej daty wykonania

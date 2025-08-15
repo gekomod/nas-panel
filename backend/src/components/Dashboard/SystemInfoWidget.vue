@@ -47,6 +47,28 @@
         </span>
         <span class="value">{{ t('systemInfo.restartRequired') }}</span>
       </div>
+<div class="info-row" v-if="data.system.pendingUpdates > 0">
+  <span class="label">
+    <Icon :icon="data.system.pendingUpdates > 0 ? 'material-symbols-light:deployed-code-update-outline-sharp' : 'ic:round-update-disabled'" width="14" />
+    {{ t('systemInfo.pendingUpdates') }}:
+  </span>
+  <span 
+    class="value" 
+    :class="{ 
+      'update-available': data.system.pendingUpdates > 0,
+      'no-updates': data.system.pendingUpdates === 0
+    }"
+    @click="data.system.pendingUpdates > 0 && navigateToUpdates()"
+  >
+    <template v-if="data.system.pendingUpdates > 0">
+      <Icon icon="streamline-pixel:interface-essential-alert-circle-2" width="14" />
+      {{ data.system.pendingUpdates }}
+    </template>
+    <template v-else>
+      {{ t('common.none') }}
+    </template>
+  </span>
+</div>
     </div>
 
     <!-- Dialog restartu -->
@@ -96,8 +118,8 @@ export default {
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { Icon } from '@iconify/vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 const { t } = useI18n()
-import { ElMessage, ElNotification } from 'element-plus'
 
 const data = ref({
   system: {
@@ -106,7 +128,8 @@ const data = ref({
     kernel: '',
     time: '',
     uptime: 0,
-    requiresRestart: false
+    requiresRestart: false,
+    pendingUpdates: 0
   },
   cpu: {
     model: ''
@@ -119,6 +142,13 @@ const isRestarting = ref(false)
 let intervalId = null
 let restartTimeout = null
 const loading = ref(true)
+const router = useRouter()
+
+const navigateToUpdates = () => {
+  if (data.value.system.pendingUpdates > 0) {
+    router.push('/system/updates')
+  }
+}
 
 const formatSystemTime = (timestamp) => {
   try {
@@ -147,26 +177,41 @@ const formatUptime = (seconds) => {
 const fetchData = async () => {
   try {
     loading.value = true
-    const response = await fetch(`${window.location.protocol}//${window.location.hostname}:${import.meta.env.VITE_API_PORT}/api/system-info`)
+    // Pobieramy zarówno informacje systemowe jak i aktualizacje
+    const [systemResponse, updatesResponse] = await Promise.all([
+      fetch(`${window.location.protocol}//${window.location.hostname}:${import.meta.env.VITE_API_PORT}/api/system-info`),
+      fetch(`${window.location.protocol}//${window.location.hostname}:${import.meta.env.VITE_API_PORT}/system/updates/check`)
+    ])
     
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
+    if (!systemResponse.ok || !updatesResponse.ok) {
+      throw new Error('Failed to fetch system data')
     }
     
-    const info = await response.json()
+    const [info, updates] = await Promise.all([
+      systemResponse.json(),
+      updatesResponse.json()
+    ])
     
     if (info) {
-      data.value = info
+      data.value = {
+        ...info,
+        system: {
+          ...info.system,
+          pendingUpdates: updates.updates?.length || 0 // Dodajemy liczbę aktualizacji
+        }
+      }
       lastUpdate.value = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
   } catch (error) {
     lastUpdate.value = t('common.error')
     console.error('Error fetching system info:', error)
+    // W przypadku błędu ustawiamy 0 aktualizacji
+    data.value.system.pendingUpdates = 0
   } finally {
     loading.value = false
-      if (data.value.system.requiresRestart && !localStorage.getItem('rebootReminder')) {
-        setTimeout(() => { showRestartDialog.value = true }, 1000)
-      }
+    if (data.value.system.requiresRestart && !localStorage.getItem('rebootReminder')) {
+      setTimeout(() => { showRestartDialog.value = true }, 1000)
+    }
   }
 }
 
@@ -443,6 +488,31 @@ onBeforeUnmount(() => {
 
 .btn.now:hover {
   background: #b71c1c;
+}
+
+.no-updates {
+  color: var(--el-color-success);
+}
+
+.update-available {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--el-color-warning);
+  font-weight: 500;
+}
+
+.info-row .label .icon {
+  margin-right: 6px;
+}
+
+.clickable {
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.clickable:hover {
+  opacity: 0.8;
 }
 
 @keyframes fadeIn {

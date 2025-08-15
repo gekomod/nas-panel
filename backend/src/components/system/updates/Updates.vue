@@ -8,7 +8,7 @@
           <el-tooltip :content="t('systemUpdates.refresh')">
             <el-button 
               size="small" 
-              @click="checkUpdates" 
+              @click="checkUpdates(true)" 
               :loading="isChecking"
               text
             >
@@ -217,6 +217,14 @@ const updateSchedule = ref('daily')
 const updateType = ref('security')
 const rebootAfterUpdate = ref(false)
 
+const updateSettings = ref({
+  autoUpdate: false,
+  autoInstall: false,
+  schedule: '0 0 * * *', // Domyślnie codziennie o północy
+  updateCommand: 'sudo apt-get update && sudo apt-get upgrade -y',
+  notifyOnUpdates: true
+});
+
 const scheduleOptions = [
   { value: 'daily', label: t('systemUpdates.daily') },
   { value: 'weekly', label: t('systemUpdates.weekly') },
@@ -240,17 +248,16 @@ const hasUpdates = computed(() => updates.value.length > 0)
 const lastCheckedFormatted = computed(() => lastChecked.value ? new Date(lastChecked.value).toLocaleString() : '')
 
 // Methods
-const checkUpdates = async () => {
+const checkUpdates = async (force = false) => {
   isChecking.value = true;
   error.value = '';
   
   try {
-    // Wysyłamy force=true aby zignorować cache przy ręcznym sprawdzaniu
-    const response = await api.get('/system/updates/check?force=true');
+    const response = await api.get(`/system/updates/check?force=${force}`);
     updates.value = response.data.updates || [];
     lastChecked.value = new Date().toISOString();
     
-    if (!hasUpdates.value) {
+    if (!hasUpdates.value && force) {
       ElMessage.success(t('systemUpdates.systemUpToDate'));
     }
   } catch (err) {
@@ -465,21 +472,13 @@ const saveAutomaticUpdatesSettings = async () => {
 
 // Lifecycle hooks
 onMounted(() => {
-  checkUpdates()
-  
-  // Load automatic updates settings
-//  api.get('/system/updates/settings').then(response => {
-//    const settings = response.data
-//    automaticUpdatesEnabled.value = settings.enabled
-//    updateSchedule.value = settings.schedule || 'daily'
-//    updateType.value = settings.type || 'security'
-//    rebootAfterUpdate.value = settings.reboot || false
-//  }).catch(console.error)
-})
+  checkUpdates(false);
+});
 
 onBeforeUnmount(() => {
   Object.values(eventSources.value).forEach(source => source.close())
 })
+
 </script>
 
 <style scoped>

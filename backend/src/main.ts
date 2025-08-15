@@ -117,6 +117,8 @@ async function initializeApp() {
     
     await profilePerformance('i18n setup', () => {
       app.use(i18n)
+      // Dodajemy i18n do routera
+      router.i18n = i18n.global
       return Promise.resolve()
     })
     

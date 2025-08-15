@@ -1002,7 +1002,7 @@ const stopStatsRefresh = () => {
 
 .action-buttons {
   display: flex;
-  gap: 8px;
+  gap: 2px;
 }
 
 /* Dialog Styles */

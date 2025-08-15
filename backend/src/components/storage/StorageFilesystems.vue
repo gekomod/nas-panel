@@ -12,7 +12,7 @@
               :disabled="loading"
               text
             >
-              <Icon icon="mdi:usb-flash-drive" width="16" height="16" />
+              <Icon icon="streamline-cyber-color:harddisk-4" width="16" height="16" />
             </el-button>
           </el-tooltip>
           <el-tooltip :content="$t('storageFilesystems.format')">
@@ -22,7 +22,17 @@
               :disabled="loading"
               text
             >
-              <Icon icon="mdi:format-list-checks" width="16" height="16" />
+              <Icon icon="icon-park:clear-format" width="16" height="16" />
+            </el-button>
+          </el-tooltip>
+          <el-tooltip :content="$t('storageFilesystems.raid')">
+            <el-button 
+              size="small" 
+              @click="showRaidDialog" 
+              :disabled="loading"
+              text
+            >
+              <Icon icon="icon-park:solid-state-disk" width="16" height="16" />
             </el-button>
           </el-tooltip>
           <el-tooltip :content="$t('storageFilesystems.refresh')">
@@ -35,18 +45,6 @@
               <Icon icon="mdi:refresh" width="16" height="16" :class="{ 'spin': loading }" />
             </el-button>
           </el-tooltip>
-
-          <el-tooltip :content="$t('storageFilesystems.createRaid')">
-            <el-button 
-              size="small" 
-              @click="showRaidDialog" 
-              :disabled="loading"
-              text
-            >
-              <Icon icon="mdi:disk" width="16" height="16" />
-            </el-button>
-          </el-tooltip>
-
           <el-tooltip :content="$t('storageFilesystems.partition')">
 	    <el-button 
 	      size="small" 
@@ -165,50 +163,6 @@
   </div>
 </el-dialog>
 
-<!-- Dodaj przed format dialog -->
-<el-dialog v-model="raidDialogVisible" :title="$t('storageFilesystems.raidDialog.title')" width="600px">
-  <el-form :model="raidForm" label-position="top">
-    <el-form-item :label="$t('storageFilesystems.raidDialog.raidLevel')">
-      <el-select v-model="raidForm.level" style="width: 100%">
-        <el-option label="RAID 0 (Stripping)" value="0" />
-        <el-option label="RAID 1 (Mirroring)" value="1" />
-        <el-option label="RAID 5 (Parity)" value="5" />
-        <el-option label="RAID 6 (Double Parity)" value="6" />
-        <el-option label="RAID 10 (Striped Mirror)" value="10" />
-      </el-select>
-    </el-form-item>
-
-    <el-form-item :label="$t('storageFilesystems.raidDialog.devices')">
-      <el-select 
-        v-model="raidForm.devices" 
-        multiple
-        style="width: 100%"
-      >
-        <el-option
-          v-for="device in availableRaidDevices"
-          :key="device.path"
-          :label="device.path"
-          :value="device.path"
-          :disabled="device.mountpoint"
-        />
-      </el-select>
-    </el-form-item>
-
-    <el-form-item :label="$t('storageFilesystems.raidDialog.name')">
-      <el-input v-model="raidForm.name" placeholder="md0" />
-    </el-form-item>
-  </el-form>
-  
-  <template #footer>
-    <el-button @click="raidDialogVisible = false">
-      {{ $t('common.cancel') }}
-    </el-button>
-    <el-button type="primary" @click="createRaid">
-      {{ $t('storageFilesystems.raidDialog.create') }}
-    </el-button>
-  </template>
-</el-dialog>
-
     <!-- Format Dialog -->
     <el-dialog v-model="formatDialogVisible" :title="$t('storageFilesystems.formatDialog.title')" width="500px">
       <el-form :model="formatForm" label-position="top">
@@ -286,12 +240,7 @@
         <template #default="{ row }">
           <div class="device-cell">
             <Icon :icon="getDeviceIcon(row.device)" width="18" height="18" />
-            <span>
-              {{ row.device }}
-              <el-tag v-if="row.device.includes('/dev/md')" size="mini" type="warning">
-                {{ $t('storageFilesystems.raidArray') }}
-              </el-tag>
-            </span>
+            <span>{{ row.device }}</span>
           </div>
         </template>
       </el-table-column>
@@ -496,6 +445,73 @@
     </el-button>
   </template>
 </el-dialog>
+
+  <!-- Dialog do tworzenia RAID -->
+  <el-dialog v-model="raidDialogVisible" :title="$t('storageFilesystems.raidDialog.title')" width="600px">
+    <el-form :model="raidForm" label-position="top">
+      <el-form-item :label="$t('storageFilesystems.raidDialog.raidLevel')">
+        <el-select v-model="raidForm.level" style="width: 100%">
+          <el-option label="RAID 0 (Stripe)" value="0" />
+          <el-option label="RAID 1 (Mirror)" value="1" />
+          <el-option label="RAID 5 (Parity)" value="5" />
+          <el-option label="RAID 6 (Double Parity)" value="6" />
+          <el-option label="RAID 10 (Mirror + Stripe)" value="10" />
+        </el-select>
+      </el-form-item>
+      
+      <el-form-item :label="$t('storageFilesystems.raidDialog.devices')">
+        <el-select 
+          v-model="raidForm.devices" 
+          multiple 
+          style="width: 100%"
+          :placeholder="$t('storageFilesystems.raidDialog.selectDevices')"
+        >
+          <el-option
+            v-for="device in raidEligibleDevices"
+            :key="device.path"
+            :label="`${device.path} (${device.model || 'Unknown'})`"
+            :value="device.path"
+            :disabled="isSystemDisk(device.path)"
+          />
+        </el-select>
+      </el-form-item>
+      
+      <el-form-item :label="$t('storageFilesystems.raidDialog.name')">
+        <el-input v-model="raidForm.name" placeholder="md0" />
+      </el-form-item>
+      
+      <el-form-item :label="$t('storageFilesystems.raidDialog.chunkSize')" v-if="raidForm.level === '0' || raidForm.level === '5' || raidForm.level === '6' || raidForm.level === '10'">
+        <el-select v-model="raidForm.chunkSize" style="width: 100%">
+          <el-option label="64 KB" value="64" />
+          <el-option label="128 KB" value="128" />
+          <el-option label="256 KB" value="256" />
+          <el-option label="512 KB" value="512" />
+        </el-select>
+      </el-form-item>
+    </el-form>
+    
+    <div class="raid-info" v-if="raidForm.devices.length > 0">
+      <el-alert :title="raidInfo.title" :type="raidInfo.type" :closable="false">
+        <p>{{ raidInfo.description }}</p>
+        <p v-if="raidForm.level === '1'">{{ $t('storageFilesystems.raidDialog.capacityInfo', { capacity: formatBytes(raidCapacity) }) }}</p>
+        <p v-else>{{ $t('storageFilesystems.raidDialog.capacityInfo', { capacity: formatBytes(raidCapacity) }) }}</p>
+      </el-alert>
+    </div>
+    
+    <template #footer>
+      <el-button @click="raidDialogVisible = false">
+        {{ $t('common.cancel') }}
+      </el-button>
+      <el-button 
+        type="primary" 
+        @click="createRaid" 
+        :loading="raidLoading"
+        :disabled="raidForm.devices.length < requiredDevicesForLevel"
+      >
+        {{ $t('storageFilesystems.raidDialog.create') }}
+      </el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script>
@@ -517,7 +533,7 @@ const abortController = ref(new AbortController())
 const { t } = useI18n()
 
 const api = axios.create({
-  baseURL: `${window.location.protocol}//${window.location.hostname}:${import.meta.env.VITE_API_PORT}`,
+  baseURL: `${window.location.protocol}//${window.location.hostname}:1112`,
   signal: abortController.value.signal
 })
 
@@ -567,29 +583,15 @@ const totalDiskSize = ref(0);
 const usedDiskSpace = ref(0);
 const diskUsagePercentage = ref(0);
 
+// Nowe zmienne dla RAID
 const raidDialogVisible = ref(false);
+const raidLoading = ref(false);
 const raidForm = ref({
   level: '1',
   devices: [],
-  name: ''
+  name: '',
+  chunkSize: '128'
 });
-
-const availableRaidDevices = computed(() => {
-  return allDevices.value.filter(dev => 
-    !dev.path.includes('md') && 
-    !dev.path.includes('loop') &&
-    !dev.mountpoint
-  );
-});
-
-const showRaidDialog = () => {
-  raidDialogVisible.value = true;
-  raidForm.value = {
-    level: '1',
-    devices: [],
-    name: ''
-  };
-};
 
 const loadFstabEntries = async () => {
   try {
@@ -659,7 +661,7 @@ const unmountedPartitions = computed(() => {
 
 // Helper function to identify system disks
 function isSystemDisk(devicePath) {
-  const systemDiskPatterns = ['/dev/sda', '/dev/nvme0n1']; // Add more patterns if needed
+  const systemDiskPatterns = ['/dev/sdb', '/dev/nvme0n1']; // Add more patterns if needed
   return systemDiskPatterns.some(pattern => devicePath.startsWith(pattern));
 }
 
@@ -731,36 +733,6 @@ const openFstabEditor = async () => {
     }
   }
 }
-
-const createRaid = async () => {
-  try {
-    if (raidForm.value.devices.length < 2) {
-      throw new Error(t('storageFilesystems.raidDialog.minDevicesError'));
-    }
-
-    const response = await axios.post('/api/storage/create-raid', {
-      devices: raidForm.value.devices,
-      raidLevel: raidForm.value.level,
-      name: raidForm.value.name
-    });
-
-    if (response.data.success) {
-      ElNotification({
-        title: t('common.success'),
-        message: t('storageFilesystems.raidDialog.createSuccess'),
-        type: 'success'
-      });
-      raidDialogVisible.value = false;
-      await fetchDevices();
-    }
-  } catch (error) {
-    ElNotification({
-      title: t('common.error'),
-      message: error.response?.data?.details || error.message,
-      type: 'error'
-    });
-  }
-};
 
 // Methods
 const showMountDialog = async () => {
@@ -920,6 +892,9 @@ const mountDevice = async () => {
 const formatDevice = async () => {
   try {
     formatLoading.value = true;
+
+    // Sprawdź czy to urządzenie RAID
+    const isRaid = formatForm.value.device.includes('/dev/md');
     
     // Dla ZFS - pokaż specjalne ostrzeżenie
     if (formatForm.value.fsType === 'zfs') {
@@ -935,6 +910,26 @@ const formatDevice = async () => {
           'Potwierdzenie tworzenia ZFS',
           {
             confirmButtonText: 'Tak, utwórz ZFS',
+            cancelButtonText: 'Anuluj',
+            type: 'error',
+            dangerouslyUseHTMLString: true
+          }
+        );
+      } catch {
+        return; // Użytkownik anulował
+      }
+    }
+
+    if (isRaid) {
+      try {
+        await ElMessageBox.confirm(
+          `<strong>UWAGA: Formatujesz urządzenie RAID!</strong><br><br>
+          Będziesz formatować: <strong>${formatForm.value.device}</strong><br>
+          <span style="color:red;">WSZYSTKIE DANE NA RAID ZOSTANĄ USUNIĘTE.</span><br><br>
+          Kontynuować?`,
+          'Potwierdzenie formatowania RAID',
+          {
+            confirmButtonText: 'Tak, formatuj RAID',
             cancelButtonText: 'Anuluj',
             type: 'error',
             dangerouslyUseHTMLString: true
@@ -1163,22 +1158,6 @@ const getFsIcon = (type) => {
   return icons[type.toLowerCase()] || 'mdi:file-question'
 }
 
-const renderDeviceLabel = (device) => {
-  let label = device.path;
-  if (device.isRaid) {
-    label += ' [RAID]';
-  } else if (device.model && device.model !== 'Unknown') {
-    label += ` (${device.model})`;
-  }
-  if (device.fstype) {
-    label += ` [${device.fstype}]`;
-  }
-  if (device.label) {
-    label += ` - ${device.label}`;
-  }
-  return label;
-};
-
 const getStatusIcon = (status) => {
   const icons = {
     active: 'mdi:check-circle',
@@ -1228,7 +1207,7 @@ const partitionForm = ref({
 
 const partitionableDevices = computed(() => {
   return allDevices.value.filter(device => 
-    device.type === 'disk' && 
+    (device.type === 'disk' || device.path.includes('/dev/md')) && 
     !device.path.includes('loop') &&
     !isSystemDisk(device.path)
   );
@@ -1269,6 +1248,25 @@ const createPartitions = async () => {
     validatePartitions();
     if (isSystemDisk(partitionForm.value.device)) {
       throw new Error('Cannot partition system disk');
+    }
+
+    // Check if it's a RAID device
+    const isRaid = partitionForm.value.device.includes('/dev/md');
+    
+    if (isRaid) {
+      try {
+        await ElMessageBox.confirm(
+          `You are about to partition a RAID device (${partitionForm.value.device}). Continue?`,
+          'Partition RAID Device',
+          {
+            confirmButtonText: 'Continue',
+            cancelButtonText: 'Cancel',
+            type: 'warning'
+          }
+        );
+      } catch {
+        return; // User canceled
+      }
     }
     
     // Create partition command
@@ -1432,6 +1430,161 @@ const isPartitionExceeding = (part) => {
   return sizeInBytes > totalDiskSize.value;
 };
 
+// Obliczanie pojemności RAID
+const raidCapacity = computed(() => {
+  if (raidForm.value.devices.length === 0) return 0;
+  
+  // Pobieramy rozmiar pierwszego dysku (zakładamy, że wszystkie mają ten sam rozmiar)
+  const device = allDevices.value.find(d => d.path === raidForm.value.devices[0]);
+  if (!device) return 0;
+  
+  // Obliczamy całkowitą pojemność wszystkich dysków
+  const totalSize = device.size * raidForm.value.devices.length;
+  
+  switch (raidForm.value.level) {
+    case '0': // RAID 0 - striping
+      return totalSize;
+    case '1': // RAID 1 - mirroring
+      return device.size;
+    case '5': // RAID 5 - single parity
+      return totalSize - device.size;
+    case '6': // RAID 6 - double parity
+      return totalSize - (2 * device.size);
+    case '10': // RAID 10 - mirror + stripe
+      return totalSize / 2;
+    default:
+      return 0;
+  }
+});
+
+// Informacje o wybranym poziomie RAID
+const raidInfo = computed(() => {
+  const info = {
+    '0': {
+      title: 'RAID 0 (Striping)',
+      description: 'Dane są dzielone i zapisywane na wszystkich dyskach równolegle. Zwiększa wydajność, ale nie zapewnia redundancji.',
+      type: 'warning'
+    },
+    '1': {
+      title: 'RAID 1 (Mirroring)',
+      description: 'Dane są identycznie kopiowane na wszystkich dyskach. Zapewnia redundancję, ale zmniejsza dostępną pojemność.',
+      type: 'success'
+    },
+    '5': {
+      title: 'RAID 5 (Parity)',
+      description: 'Dane i informacje o parzystości są rozłożone na wszystkich dyskach. Wymaga co najmniej 3 dysków.',
+      type: 'info'
+    },
+    '6': {
+      title: 'RAID 6 (Double Parity)',
+      description: 'Podobny do RAID 5, ale z podwójną parzystością. Wymaga co najmniej 4 dysków.',
+      type: 'info'
+    },
+    '10': {
+      title: 'RAID 10 (Mirror + Stripe)',
+      description: 'Łączy mirroring i striping. Wymaga parzystej liczby dysków (minimum 4).',
+      type: 'success'
+    }
+  };
+  
+  return info[raidForm.value.level] || info['1'];
+});
+
+// Minimalna liczba dysków wymagana dla wybranego poziomu RAID
+const requiredDevicesForLevel = computed(() => {
+  switch (raidForm.value.level) {
+    case '0': return 2;
+    case '1': return 2;
+    case '5': return 3;
+    case '6': return 4;
+    case '10': return 4;
+    default: return 2;
+  }
+});
+
+// Urządzenia kwalifikujące się do RAID (dyski, które nie są systemowe i nie są już w RAID)
+const raidEligibleDevices = computed(() => {
+  return allDevices.value.filter(device => 
+    device.type === 'disk' && 
+    !device.path.includes('loop') &&
+    !isSystemDisk(device.path) &&
+    !device.path.includes('md') &&
+    !device.model?.includes('RAID')
+  );
+});
+
+// Metoda do wyświetlania dialogu RAID
+const showRaidDialog = async () => {
+  try {
+    loading.value = true;
+    await fetchDevices();
+    raidDialogVisible.value = true;
+  } catch (err) {
+    error.value = t('storageFilesystems.errorLoadingDevices');
+    console.error('Error loading devices:', err);
+  } finally {
+    loading.value = false;
+  }
+};
+
+// Metoda do tworzenia RAID
+const createRaid = async () => {
+  try {
+    raidLoading.value = true;
+    
+    // Walidacja
+    if (raidForm.value.devices.length < requiredDevicesForLevel.value) {
+      throw new Error(`RAID ${raidForm.value.level} wymaga co najmniej ${requiredDevicesForLevel.value} dysków`);
+    }
+    
+    // Potwierdzenie
+    try {
+      await ElMessageBox.confirm(
+        `<strong>UWAGA: Tworzysz RAID ${raidForm.value.level}!</strong><br><br>
+        Wszystkie dane na wybranych dyskach zostaną utracone.<br>
+        Kontynuować?<br><br>
+        Wybrane dyski: ${raidForm.value.devices.join(', ')}`,
+        'Potwierdzenie tworzenia RAID',
+        {
+          confirmButtonText: 'Tak, utwórz RAID',
+          cancelButtonText: 'Anuluj',
+          type: 'error',
+          dangerouslyUseHTMLString: true
+        }
+      );
+    } catch {
+      return; // Użytkownik anulował
+    }
+    
+    // Tworzenie RAID
+    const response = await axios.post('/api/storage/create-raid', {
+      devices: raidForm.value.devices,
+      raidLevel: raidForm.value.level,
+      name: raidForm.value.name
+    });
+    
+    ElNotification({
+      title: 'Sukces',
+      message: `RAID ${raidForm.value.level} utworzony pomyślnie jako ${response.data.raidDevice}`,
+      type: 'success',
+      duration: 5000
+    });
+    
+    raidDialogVisible.value = false;
+    await refreshFilesystems();
+  } catch (error) {
+    ElNotification({
+      title: 'Błąd tworzenia RAID',
+      message: error.response?.data?.details || error.message,
+      type: 'error',
+      duration: 0
+    });
+  } finally {
+    raidLoading.value = false;
+  }
+};
+
+
 // Aktualizujemy watch na zmianę urządzenia
 watch(() => partitionForm.value.device, (newVal) => {
   if (newVal) {
@@ -1577,9 +1730,12 @@ onUnmounted(() => {
   overflow-x: auto;
 }
 
-.raid-device-badge {
-  margin-left: 8px;
-  background-color: #f0ad4e;
-  color: white;
+.raid-info {
+  margin-top: 20px;
+  margin-bottom: 20px;
+}
+
+.raid-info p {
+  margin: 5px 0;
 }
 </style>

@@ -426,63 +426,45 @@ app.get('/api/storage/smart/details/:device', requireAuth, async (req, res) => {
 // Zmodyfikowana funkcja do pobierania urządzeń
 app.get('/api/storage/devices', requireAuth, async (req, res) => {
   try {
-    // First try with JSON format
-    let lsblkData = await tryGetLsblkJson();
+    // Pobieramy zarówno dyski jak i partycje
+    const { stdout } = await execAsync('lsblk -o NAME,SIZE,TYPE,MODEL,SERIAL,PATH,FSTYPE,MOUNTPOINT -n -J');
+    const lsblkData = JSON.parse(stdout);
     
-    // If JSON fails, fall back to legacy parsing
-    if (!lsblkData) {
-      lsblkData = await tryGetLsblkLegacy();
-    }
-
-    if (!lsblkData) {
-      throw new Error('Could not get device information from lsblk');
-    }
-
-    // Get RAID devices
-    const mdDevices = await getMdDevices();
-
-    const devices = lsblkData.blockdevices.map(dev => {
-      const isRaid = dev.type === 'raid' || mdDevices.includes(dev.name);
-      return {
-        path: `/dev/${dev.name}`,
-        model: isRaid ? `RAID Device` : (dev.model || 'Unknown'),
-        serial: dev.serial || (isRaid ? `RAID-${dev.name}` : 'Unknown'),
-        type: dev.type,
-        fstype: dev.fstype || '',
-        mountpoint: dev.mountpoint || '',
-        label: dev.label || '',
-        isRaid: isRaid,
-        partitions: dev.children ? dev.children.map(part => ({
-          path: `/dev/${part.name}`,
-          fstype: part.fstype || '',
-          mountpoint: part.mountpoint || '',
-          type: part.type,
-          label: part.label || '',
-          isRaid: isRaid
-        })) : []
-      };
-    });
+    const devices = lsblkData.blockdevices.map(dev => ({
+      path: `/dev/${dev.name}`,
+      model: dev.model || 'Unknown',
+      serial: dev.serial || 'Unknown',
+      type: dev.type,
+      size: dev.size ? parseInt(dev.size) : 0,
+      fstype: dev.fstype || '',
+      mountpoint: dev.mountpoint || '',
+      partitions: dev.children ? dev.children.map(part => ({
+        path: `/dev/${part.name}`,
+        fstype: part.fstype || '',
+        mountpoint: part.mountpoint || '',
+        size: part.size,
+        type: part.type
+      })) : []
+    }));
 
     res.json({
       success: true,
       data: devices
     });
-
   } catch (error) {
-    console.error('Device listing error:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to list storage devices',
-      details: error.message,
-      systemError: error.toString()
+      details: error.message
     });
   }
 });
+// Mount device
 
 // Helper functions
 async function tryGetLsblkJson() {
   try {
-    const { stdout } = await execAsync('lsblk -o NAME,TYPE,MODEL,SERIAL,PATH,FSTYPE,MOUNTPOINT,LABEL,RAID -n -J');
+    const { stdout } = await execAsync('lsblk -b -o NAME,TYPE,MODEL,SERIAL,PATH,FSTYPE,MOUNTPOINT,LABEL,SIZE -n -J');
     const data = JSON.parse(stdout);
     return data?.blockdevices ? data : null;
   } catch (error) {
@@ -493,7 +475,7 @@ async function tryGetLsblkJson() {
 
 async function tryGetLsblkLegacy() {
   try {
-    const { stdout } = await execAsync('lsblk -o NAME,TYPE,MODEL,SERIAL,PATH,FSTYPE,MOUNTPOINT,LABEL,RAID -n');
+    const { stdout } = await execAsync('lsblk -o NAME,TYPE,MODEL,SERIAL,PATH,FSTYPE,MOUNTPOINT,LABEL -n');
     return parseLegacyLsblk(stdout);
   } catch (error) {
     console.error('Legacy lsblk failed:', error.message);
@@ -714,21 +696,6 @@ app.post('/api/storage/format', requireAuth, async (req, res) => {
       : device;
 
     console.log(`Formatting ${targetDevice} as ${fsType}`); // Debug
-
-    // Obsługa RAID
-    if (raidOptions && raidOptions.createRaid) {
-      const raidResponse = await axios.post('/api/storage/create-raid', {
-        devices: raidOptions.devices,
-        raidLevel: raidOptions.level,
-        name: raidOptions.name
-      });
-
-      if (!raidResponse.data.success) {
-        throw new Error('RAID creation failed');
-      }
-
-      device = raidResponse.data.raidDevice;
-    }
 
     // 1. Weryfikacja urządzenia
     const { stdout: deviceSize } = await execAsyncs(`lsblk -b -n -o SIZE ${targetDevice}`);

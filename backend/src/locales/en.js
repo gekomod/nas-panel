@@ -314,7 +314,8 @@ export default {
     restartNow: "Restart now",
     restartInProgress: "System is restarting",
     restartDescription: "The page will refresh automatically after restart. Please wait...",
-    restartFailed: "Failed to restart system"
+    restartFailed: "Failed to restart system",
+    pendingUpdates: 'Pending updates'
   },
   ram: {
     title: 'RAM Usage',
