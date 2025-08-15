@@ -235,13 +235,17 @@ app.post('/services/docker/restart', requireAuth, async (req, res) => {
 });
 
 app.post('/services/docker/install', requireAuth, async (req, res) => {
+  let distro = 'unknown';
+  let release = 'unknown';
+  let output = '';
+
   try {
     // First check the distribution
     const checkDistro = await execAsync('lsb_release -is');
-    const distro = checkDistro.stdout.trim().toLowerCase();
+    distro = checkDistro.stdout.trim().toLowerCase();
     
     const checkRelease = await execAsync('lsb_release -cs');
-    const release = checkRelease.stdout.trim().toLowerCase();
+    release = checkRelease.stdout.trim().toLowerCase();
 
     // Base commands
     let commands = [
@@ -257,7 +261,7 @@ app.post('/services/docker/install', requireAuth, async (req, res) => {
     // Docker installation commands - different approach for Debian 12+
     let dockerSetupCommands = [];
     
-    if (distro === 'debian' && parseInt(release.match(/bookworm|trixie/)) ? 11 : 0) {
+    if (distro === 'debian' && (release === 'bookworm' || release === 'trixie')) {
       // For Debian Bookworm (12) and Trixie (13) - new method without apt-key
       dockerSetupCommands = [
         'install -m 0755 -d /etc/apt/keyrings',
@@ -285,7 +289,6 @@ app.post('/services/docker/install', requireAuth, async (req, res) => {
     // Combine all commands
     commands = commands.concat(dockerSetupCommands);
 
-    let output = '';
     for (const cmd of commands) {
       try {
         const { stdout, stderr } = await execAsync(cmd);
@@ -307,9 +310,9 @@ app.post('/services/docker/install', requireAuth, async (req, res) => {
       success: false,
       error: 'Docker installation failed',
       details: error.message,
-      output: error.stderr || error.stdout || output,
-      distro: distro || 'unknown',
-      release: release || 'unknown'
+      output: output,
+      distro: distro,
+      release: release
     });
   }
 });
