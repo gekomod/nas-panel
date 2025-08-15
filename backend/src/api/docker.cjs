@@ -254,15 +254,36 @@ app.post('/services/docker/install', requireAuth, async (req, res) => {
       commands[1] += ' software-properties-common';
     }
 
-    // Continue with Docker installation
-    commands = commands.concat([
-      'curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -',
-      `add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"`,
-      'apt-get update -y && apt-get install -y docker-ce docker-ce-cli containerd.io',
-      'systemctl enable docker',
-      'systemctl start docker',
-      'docker run hello-world'
-    ]);
+    // Docker installation commands - different approach for Debian 12+
+    let dockerSetupCommands = [];
+    
+    if (distro === 'debian' && parseInt(release.match(/bookworm|trixie/)) ? 11 : 0) {
+      // For Debian Bookworm (12) and Trixie (13) - new method without apt-key
+      dockerSetupCommands = [
+        'install -m 0755 -d /etc/apt/keyrings',
+        'curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg',
+        'chmod a+r /etc/apt/keyrings/docker.gpg',
+        `echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${release} stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null`,
+        'apt-get update -y',
+        'apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin',
+        'systemctl enable docker',
+        'systemctl start docker',
+        'docker run hello-world'
+      ];
+    } else {
+      // For older Debian/Ubuntu - traditional method with apt-key
+      dockerSetupCommands = [
+        'curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -',
+        `add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"`,
+        'apt-get update -y && apt-get install -y docker-ce docker-ce-cli containerd.io',
+        'systemctl enable docker',
+        'systemctl start docker',
+        'docker run hello-world'
+      ];
+    }
+
+    // Combine all commands
+    commands = commands.concat(dockerSetupCommands);
 
     let output = '';
     for (const cmd of commands) {
@@ -277,18 +298,21 @@ app.post('/services/docker/install', requireAuth, async (req, res) => {
 
     res.json({
       success: true,
-      output: output
+      output: output,
+      distro: distro,
+      release: release
     });
   } catch (error) {
     res.status(500).json({
       success: false,
       error: 'Docker installation failed',
       details: error.message,
-      output: error.stderr || error.stdout || output
+      output: error.stderr || error.stdout || output,
+      distro: distro || 'unknown',
+      release: release || 'unknown'
     });
   }
 });
-
 
   // Get Docker containers
   app.get('/services/docker/containers', requireAuth, async (req, res) => {
