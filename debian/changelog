@@ -1,3 +1,9 @@
+nas-panel (1.0.7-3) unstable; urgency=medium
+
+  * Debian 13 docker fix ubuntu to debian
+
+ -- gekomod <zaba141@o2.pl>  Sun, 15 Aug 2025 11:42:24 +0200
+
 nas-panel (1.0.7-2) unstable; urgency=medium
 
   * Naprawa błędu instalacji docker fix Debian 13
