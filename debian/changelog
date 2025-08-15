@@ -1,3 +1,10 @@
+nas-panel (1.0.7) unstable; urgency=medium
+
+  * Naprawa błędu instalacji docker
+  * Naprawa Formatowania/montowania/edycji partycji dysków
+
+ -- gekomod <zaba141@o2.pl>  Sun, 15 Aug 2025 10:51:24 +0200
+
 nas-panel (1.0.6) unstable; urgency=medium
 
   * Naprawa błędu z duplikowaniem się widgetów w dialogu zarządzania

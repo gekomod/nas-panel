@@ -234,18 +234,35 @@ app.post('/services/docker/restart', requireAuth, async (req, res) => {
   }
 });
 
-  app.post('/services/docker/install', requireAuth, async (req, res) => {
+app.post('/services/docker/install', requireAuth, async (req, res) => {
   try {
-    const commands = [
+    // First check the distribution
+    const checkDistro = await execAsync('lsb_release -is');
+    const distro = checkDistro.stdout.trim().toLowerCase();
+    
+    const checkRelease = await execAsync('lsb_release -cs');
+    const release = checkRelease.stdout.trim().toLowerCase();
+
+    // Base commands
+    let commands = [
       'apt-get update -y',
-      'apt-get install -y apt-transport-https ca-certificates curl gnupg-agent software-properties-common',
+      'apt-get install -y apt-transport-https ca-certificates curl gnupg-agent'
+    ];
+
+    // Add software-properties-common if not Debian Trixie
+    if (!(distro === 'debian' && release === 'trixie')) {
+      commands[1] += ' software-properties-common';
+    }
+
+    // Continue with Docker installation
+    commands = commands.concat([
       'curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -',
-      'add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"',
+      `add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"`,
       'apt-get update -y && apt-get install -y docker-ce docker-ce-cli containerd.io',
       'systemctl enable docker',
       'systemctl start docker',
       'docker run hello-world'
-    ];
+    ]);
 
     let output = '';
     for (const cmd of commands) {
@@ -267,7 +284,7 @@ app.post('/services/docker/restart', requireAuth, async (req, res) => {
       success: false,
       error: 'Docker installation failed',
       details: error.message,
-      output: error.stderr || error.stdout
+      output: error.stderr || error.stdout || output
     });
   }
 });
