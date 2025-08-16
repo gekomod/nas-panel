@@ -3,7 +3,7 @@
     <template #header>
       <div class="widget-header">
         <Icon icon="mdi:docker" width="20" class="header-icon" />
-        <span>Kontenery Docker</span>
+        <span>{{ t('widgets.Docker') }}</span>
         <el-tag :type="dockerStatusTagType" size="small" class="status-tag">
           {{ dockerStatusText }}
         </el-tag>
@@ -11,7 +11,7 @@
     </template>
 
     <div v-if="!dockerRunning" class="docker-offline">
-      <el-empty description="Docker jest wyłączony">
+      <el-empty :description="t('docker.messages.saveError')">
         <el-button 
           type="primary" 
           size="small"
@@ -19,14 +19,14 @@
           :loading="startingDocker"
         >
           <Icon icon="mdi:power" class="button-icon" />
-          Uruchom Docker
+          {{ t('docker.messages.saveSuccess') }}
         </el-button>
       </el-empty>
     </div>
 
     <div v-else v-loading="loading" class="widget-content">
       <div v-if="containers.length === 0" class="no-containers">
-        <el-empty :image-size="100" description="Brak uruchomionych kontenerów" />
+        <el-empty :image-size="100" :description="t('docker.messages.noContainers')" />
       </div>
       
       <div v-else v-for="container in containers" :key="container.id" class="container-item">
@@ -41,7 +41,7 @@
           @click="toggleContainer(container)"
           :loading="container.loading"
         >
-          {{ container.state === 'running' ? 'Uruchomiony' : 'Zatrzymany' }}
+          {{ container.state === 'running' ? t('docker.status.running') : t('docker.status.stopped') }}
         </el-button>
       </div>
     </div>
@@ -60,6 +60,8 @@ import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { Icon } from '@iconify/vue'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 
 const containers = ref([])
 const loading = ref(false)
@@ -69,7 +71,7 @@ let intervalId = null
 
 const dockerRunning = computed(() => dockerStatus.value === 'active')
 const dockerStatusText = computed(() => {
-  return dockerStatus.value === 'active' ? 'Docker działa' : 'Docker wyłączony'
+  return dockerStatus.value === 'active' ? t('docker.status.running') : t('docker.status.stopped')
 })
 const dockerStatusTagType = computed(() => {
   return dockerStatus.value === 'active' ? 'success' : 'danger'

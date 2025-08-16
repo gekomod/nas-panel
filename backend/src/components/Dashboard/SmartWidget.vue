@@ -3,7 +3,7 @@
     <template #header>
       <div class="widget-header">
         <Icon icon="ph:hard-drives" width="18" />
-        <span class="widget-title">Monitorowane dyski</span>
+        <span class="widget-title">{{ t('storageSmart.title') }}</span>
         <el-tag :type="overallStatus" size="small" :effect="overallStatus === 'danger' ? 'dark' : 'plain'" round>
           {{ overallStatusText }}
         </el-tag>
@@ -28,13 +28,13 @@
             >
               <template #content>
                 <div v-if="disk.badSectors > 0">
-                  <p>Znalezione bad sector: {{ disk.badSectors }}</p>
+                  <p>{{ t('storageSmart.statusValues.badSectors') }}: {{ disk.badSectors }}</p>
                 </div>
                 <div v-if="disk.outOfSpecParams.length > 0">
-                  <p>Parametry poza normą:</p>
+                  <p>{{ t('storageSmart.details.outOfSpec') }}:</p>
                   <ul>
                     <li v-for="param in disk.outOfSpecParams" :key="param.id">
-                      {{ param.name }}: {{ param.value }} (norma: {{ param.threshold }})
+                      {{ param.name }}: {{ param.value }} ({{ t('storageSmart.details.threshold') }}: {{ param.threshold }})
                     </li>
                   </ul>
                 </div>
@@ -64,7 +64,7 @@
     
     <div v-else class="empty-state">
       <Icon icon="ph:info" width="16" />
-      <span>Brak dysków objętych monitoringiem</span>
+      <span>{{ t('storageSmart.notAvailableMessage') }}</span>
     </div>
   </el-card>
 </template>
@@ -81,6 +81,8 @@ import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { Icon } from '@iconify/vue'
 import axios from 'axios'
 import PromisePool from 'es6-promise-pool';
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 
 const monitoredDisks = ref([])
 const loading = ref(false)
@@ -90,9 +92,9 @@ let intervalId = null
 const activeControllers = ref(new Set())
 
 const STATUS_TEXTS = {
-  OK: 'OK',
-  ERROR: 'ERR',
-  BAD_SECTORS: 'BAD SEKTORY'
+  OK: t('common.yes'),
+  ERROR: t('common.error'),
+  BAD_SECTORS: t('storageSmart.statusValues.badSectors')
 }
 
 const overallStatus = computed(() => {

@@ -3,7 +3,7 @@
     <template #header>
       <div class="widget-header">
         <Icon icon="mdi:network" width="20" class="header-icon" />
-        <span>Podstawowe informacje sieciowe</span>
+        <span>{{ t('network.interfaces.title') }}</span>
       </div>
     </template>
 
@@ -16,13 +16,13 @@
         
         <div class="interface-details">
           <div class="detail-row">
-            <span class="detail-label">Adres IP:</span>
+            <span class="detail-label">{{ t('network.interfaces.address') }}:</span>
             <span class="detail-value">{{ iface.address || 'Brak' }}</span>
           </div>
           <div class="detail-row">
-            <span class="detail-label">Status:</span>
+            <span class="detail-label">{{ t('network.interfaces.status') }}:</span>
             <el-tag :type="iface.status === 'up' ? 'success' : 'danger'" size="small">
-              {{ iface.status === 'up' ? 'Aktywny' : 'Nieaktywny' }}
+              {{ iface.status === 'up' ? t('network.interfaces.up') : t('network.interfaces.down') }}
             </el-tag>
           </div>
         </div>
@@ -42,6 +42,8 @@ export default {
 import { ref, onMounted } from 'vue'
 import { Icon } from '@iconify/vue'
 import axios from 'axios'
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 
 const interfaces = ref([])
 const loading = ref(false)

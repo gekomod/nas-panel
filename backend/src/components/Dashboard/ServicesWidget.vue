@@ -3,7 +3,7 @@
     <template #header>
       <div class="widget-header">
         <Icon icon="mdi:server" width="18" />
-        <span class="widget-title">Status usług</span>
+        <span class="widget-title">{{ t('services.title') }}</span>
         <el-tag :type="overallStatus" size="small" :effect="overallStatus === 'danger' ? 'dark' : 'plain'" round>
           {{ overallStatusText }}
         </el-tag>
@@ -24,7 +24,7 @@
           
           <div class="service-status">
             <el-tag :type="service.active ? 'success' : 'danger'" size="small" effect="plain">
-              {{ service.active ? 'AKTYWNA' : 'WYŁĄCZONA' }}
+              {{ service.active ? t('services.status.active') : t('services.status.inactive') }}
             </el-tag>
             <el-tooltip v-if="service.error" :content="service.error" placement="top">
               <Icon icon="mdi:alert-circle" width="16" class="error-icon" />
@@ -37,7 +37,7 @@
     
     <div v-else class="empty-state">
       <Icon icon="mdi:information-outline" width="16" />
-      <span>Brak danych o usługach</span>
+      <span>{{ t('services.noData') }}</span>
     </div>
   </el-card>
 </template>
@@ -54,6 +54,8 @@ import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { Icon } from '@iconify/vue'
 import axios from 'axios'
 import PromisePool from 'es6-promise-pool';
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 
 const services = ref([])
 const loading = ref(false)
@@ -69,9 +71,9 @@ const overallStatus = computed(() => {
 })
 
 const overallStatusText = computed(() => {
-  if (services.value.length === 0) return 'BRAK DANYCH'
+  if (services.value.length === 0) return t('services.noData')
   const inactiveCount = services.value.filter(s => !s.active).length
-  return inactiveCount ? `${inactiveCount} NIEAKTYWNE` : 'WSZYSTKO OK'
+  return inactiveCount ? `${inactiveCount} ${t('services.inactive')}` : t('services.allOk')
 })
 
 const getServiceIcon = (serviceName) => {

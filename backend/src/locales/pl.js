@@ -229,8 +229,11 @@ export default {
       wwn: 'WWN',
       interfaceSpeed: 'Prędkość interfejsu',
       currentSpeed: 'Aktualna',
-      maxSpeed: 'Maksymalna'
+      maxSpeed: 'Maksymalna',
+      outOfSpec: "Parametry poza normą",
+      threshold: "norma"
     },
+    notAvailableMessage: "Brak dysków objętych monitoringiem",
     attributes: {
       noData: 'Brak danych atrybutów SMART'
     },
@@ -296,7 +299,8 @@ export default {
       details: 'Szczegóły',
       delete: 'Usuń',
       cancel: 'Anuluj',
-      confirm: 'Potwierdź'
+      confirm: 'Potwierdź',
+      noData: "Brak danych interfejsów"
     },
     types: {
       ethernet: 'Ethernet',
@@ -328,7 +332,11 @@ export default {
     SystemInfoWidget: "Informacje systemowe",
     RamWidget: "Pamięć RAM",
     CpuWidget: "Procesor CPU",
-    FileSystemWidget: "System plików"
+    FileSystemWidget: "System plików",
+    Docker: "Kontenery Docker",
+    Network: "Interfejsy Sieciowe",
+    Smart: "Status SMART",
+    Services: "Status usług"
   },
   systemInfo: {
     system: "System",
@@ -356,6 +364,16 @@ export default {
     restartDescription: "Strona odświeży się automatycznie po zakończeniu restartu. Proszę czekać...",
     restartFailed: "Nie udało się zrestartować systemu",
     pendingUpdates: 'Oczekujące aktualizacje'
+  },
+  services: {
+    title: "Status usług",
+    status: {
+      active: "AKTYWNA",
+      inactive: "WYŁĄCZONA"
+    },
+    noData: "Brak danych o usługach",
+    allOk: "WSZYSTKO OK",
+    inactive: "NIEAKTYWNE"
   },
   ram: {
     title: 'Użycie RAM',
@@ -396,9 +414,17 @@ export default {
     refresh: "Odśwież",
     autoRefreshOn: 'Auto-odświeżanie włączone',
     autoRefreshOff: 'Auto-odświeżanie wyłączone',
-    lastUpdate: "Ostatnia aktualizacja"
+    lastUpdate: "Ostatnia aktualizacja",
+    autoRefresh: "Auto-odświeżanie",
+    autoRefreshOn: 'Auto-odświeżanie włączone',
+    autoRefreshOff: 'Auto-odświeżanie wyłączone'
   },
   docker: {
+    status: {
+      running: "Działa",
+      stopped: "Zatrzymany",
+      noContainers: "Brak uruchomionych kontenerów"
+    },
     settings: {
       title: 'Konfiguracja Dockera',
       daemonPort: 'Port demona Dockera',
@@ -431,8 +457,9 @@ export default {
       maxDownloadAttempts: "Max Download Attempts",
     },
     messages: {
-      saveSuccess: 'Ustawienia zostały zapisane',
-      saveError: 'Nie udało się zapisać ustawień'
+      saveSuccess: "Uruchom Docker",
+      saveError: "Docker jest wyłączony",
+      noContainers: "Brak uruchomionych kontenerów"
     }
   },
   settings: {

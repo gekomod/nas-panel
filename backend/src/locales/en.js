@@ -200,7 +200,22 @@ export default {
     retry: 'Retry',
     installCommand: 'sudo apt-get install smartmontools',
     unavailable: 'Unavailable',
-    commandCopied: 'Command copied to clipboard'
+    commandCopied: 'Command copied to clipboard',
+    details: {
+      outOfSpec: "Out of spec parameters",
+      threshold: "threshold"
+    },
+    notAvailableMessage: "No monitored disks"
+  },
+  services: {
+    title: "Services Status",
+    status: {
+      active: "ACTIVE",
+      inactive: "INACTIVE"
+    },
+    noData: "No service data",
+    allOk: "ALL OK",
+    inactive: "INACTIVE"
   },
   network: {
     interfaces: {
@@ -256,7 +271,8 @@ export default {
       details: 'Details',
       delete: 'Delete',
       cancel: 'Cancel',
-      confirm: 'Confirm'
+      confirm: 'Confirm',
+      noData: "No interface data"
     },
     types: {
       ethernet: 'Ethernet',
@@ -288,7 +304,11 @@ export default {
     SystemInfoWidget: "System Information",
     RamWidget: "RAM Memory",
     CpuWidget: "CPU Processor",
-    FileSystemWidget: "File System"
+    FileSystemWidget: "File System",
+    Docker: "Docker Containers",
+    Network: "Network Interfaces",
+    Smart: "SMART Status",
+    Services: "Services Status"
   },
   systemInfo: {
     system: "System",
@@ -355,7 +375,10 @@ export default {
     refresh: "Refresh",
     autoRefreshOn: 'Auto refresh enabled',
     autoRefreshOff: 'Auto refresh disabled',
-    lastUpdate: "Last update"
+    lastUpdate: "Last update",
+    autoRefresh: "Auto refresh",
+    autoRefreshOn: 'Auto refresh enabled',
+    autoRefreshOff: 'Auto refresh disabled'
   },
   docker: {
     settings: {
@@ -389,9 +412,15 @@ export default {
       tlsKey: "TLS Key",
       maxDownloadAttempts: "Max Download Attempts"
     },
+    status: {
+      running: "Running",
+      stopped: "Stopped",
+      noContainers: "No running containers"
+    },
     messages: {
-      saveSuccess: 'Settings saved successfully',
-      saveError: 'Failed to save settings'
+      saveSuccess: "Start Docker",
+      saveError: "Docker is stopped",
+      noContainers: "No running containers"
     }
   },
   settings: {
