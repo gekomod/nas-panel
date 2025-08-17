@@ -21,33 +21,48 @@ function isAntivirusInstalled() {
 //Check DB Virus
 function getVirusDbVersion() {
   try {
-    // Sprawdzenie wersji ClamAV
-    const versionOutput = execSync('clamscan --version').toString().trim();
+    // 1. Sprawdzenie wersji ClamAV
+    const versionOutput = execSync('clamscan --version', { encoding: 'utf-8' }).trim();
     
-    // Znajdź ścieżkę do bazy danych
-    let dbPath = '/var/lib/clamav'; // Domyślna ścieżka w większości systemów
+    // 2. Znajdź ścieżkę do bazy danych
+    let dbPath = '/var/lib/clamav'; // Domyślna ścieżka
     try {
-      const clamconfOutput = execSync('clamconf').toString();
-      const dbMatch = clamconfOutput.match(/DatabaseDirectory\s+(.*)/);
-      if (dbMatch) dbPath = dbMatch[1].trim();
+      const clamconfOutput = execSync('clamconf', { encoding: 'utf-8' });
+      const dbMatch = clamconfOutput.match(/DatabaseDirectory\s*=\s*(.*)/);
+      if (dbMatch) {
+        dbPath = dbMatch[1].trim()
+          .replace(/^['"]|['"]$/g, ''); // Usuń cudzysłowy jeśli istnieją
+      }
     } catch (e) {
-      console.warn('Nie można określić ścieżki bazy danych, używam domyślnej');
+      console.warn('Nie można określić ścieżki bazy danych, używam domyślnej:', dbPath);
     }
 
-    // Sprawdź pliki bazy danych
+    // 3. Normalizuj ścieżkę (usuń zbędne znaki)
+    dbPath = dbPath.trim().replace(/^=?\s*['"]?|['"]$/g, '');
+
+    // 4. Sprawdź pliki bazy danych
     let dbFiles = [];
+    let dbStatus = 'empty';
+    let mainDbDate = null;
+    
     try {
-      dbFiles = fs.readdirSync(dbPath)
-        .filter(file => file.endsWith('.cvd') || file.endsWith('.cld'));
+      if (fs.existsSync(dbPath)) {
+        dbFiles = fs.readdirSync(dbPath)
+          .filter(file => ['.cvd', '.cld'].includes(path.extname(file).toLowerCase()));
+        
+        dbStatus = dbFiles.length > 0 ? 'active' : 'empty';
+
+        const mainDbPath = path.join(dbPath, 'main.cvd');
+        if (fs.existsSync(mainDbPath)) {
+          mainDbDate = fs.statSync(mainDbPath).mtime;
+        }
+      } else {
+        console.error('Katalog bazy danych nie istnieje:', dbPath);
+        dbStatus = 'missing';
+      }
     } catch (e) {
       console.error('Błąd odczytu katalogu bazy danych:', e.message);
-    }
-
-    // Sprawdź datę modyfikacji głównego pliku bazy
-    let mainDbDate = null;
-    const mainDbPath = path.join(dbPath, 'main.cvd');
-    if (fs.existsSync(mainDbPath)) {
-      mainDbDate = fs.statSync(mainDbPath).mtime;
+      dbStatus = 'error';
     }
 
     return {
@@ -55,13 +70,16 @@ function getVirusDbVersion() {
       dbPath,
       dbFiles,
       dbDate: mainDbDate,
-      dbStatus: dbFiles.length > 0 ? 'active' : 'empty'
+      dbStatus,
+      lastChecked: new Date().toISOString()
     };
+    
   } catch (error) {
     console.error('Błąd pobierania informacji o bazie:', error);
     return { 
       error: 'Failed to get virus DB info',
-      details: error.message
+      details: error.message,
+      dbStatus: 'error'
     };
   }
 }
