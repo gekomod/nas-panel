@@ -132,43 +132,12 @@ const routes = [
     children: [
       {
         path: '/services/samba',
+        component: () => import('@/components/services/Samba/SambaDash.vue'),
         meta: { 
           title: 'routes.samba',
           requiresAuth: true,
           icon: 'mdi:folder-network' 
-        },
-        children: [
-          {
-            path: '/services/samba/shares',
-            name: 'Samba',
-            component: () => import('@/components/services/Samba/SambaShares.vue'),
-            meta: { 
-              title: 'routes.samba_shares',
-              requiresAuth: true,
-              icon: 'mdi:folder-network' 
-            }
-          },
-          {
-            path: '/services/samba/settings',
-            name: 'SambaSettings',
-            component: () => import('@/components/services/Samba/SambaSettings.vue'),
-            meta: { 
-              title: 'routes.samba_settings',
-              requiresAuth: true,
-              icon: 'mdi:cog' 
-            }
-          },
-          {
-            path: '/services/samba/status',
-            name: 'SambaStatus',
-            component: () => import('@/components/services/Samba/SambaStatus.vue'),
-            meta: { 
-              title: 'routes.samba_status',
-              requiresAuth: true,
-              icon: 'mdi:server-network' 
-            }
-          }
-        ]
+        }
       },
       {
         path: '/services/docker',

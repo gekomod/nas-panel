@@ -103,6 +103,55 @@ body {
   --el-text-color-placeholder: #666;
   --el-disabled-bg-color: #2a2a2a;
 }
+
+body.dark {
+  --el-color-white: #1a1a1a;
+  --el-color-black: #ffffff;
+  --el-bg-color: #121212;
+  --el-text-color-primary: #e0e0e0;
+  --el-border-color-light: #333333;
+  --el-border-color-extra-light: #424242;
+  --el-fill-color-blank: #1e1e1e;
+  
+  // Kolory dla komponentów
+  --card-bg: #1e1e1e;
+  --header-bg: #1e1e1e;
+  --border-color: #424242;
+  --text-color: #e0e0e0;
+  --text-secondary: #a0a0a0;
+  --table-header-bg: #2d2d2d;
+  --table-border: #424242;
+  --shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+// Nadpisania dla Element Plus
+body.dark {
+  .el-card {
+    background-color: var(--card-bg);
+    border-color: var(--border-color);
+    color: var(--text-color);
+  }
+
+  .el-table {
+    --el-table-border-color: var(--border-color);
+    --el-table-header-bg-color: var(--table-header-bg);
+    --el-table-tr-bg-color: var(--card-bg);
+    --el-table-text-color: var(--text-color);
+    --el-table-row-hover-bg-color: var(--border-color);
+  }
+
+  .el-tabs {
+    --el-tabs-header-bg-color: var(--card-bg);
+    --el-tabs-item-color: var(--text-secondary);
+    --el-tabs-item-active-color: var(--el-color-primary);
+  }
+
+  .el-descriptions {
+    --el-descriptions-title-color: var(--text-color);
+    --el-descriptions-item-bordered-label-background: var(--table-header-bg);
+  }
+}
+
 .el-submenu__title:hover{
 outline: 0 !important;
 background: #304156 !important;

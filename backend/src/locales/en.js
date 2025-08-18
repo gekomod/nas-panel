@@ -934,5 +934,65 @@ backup: {
     "scheduleErrorMessage": "Failed to schedule update",
     "remindLaterMessage": "We'll remind you in 24 hours",
     "checkError": "Failed to check for updates"
+  },
+  "samba": {
+    "title": "Samba Management",
+    "description": "File sharing configuration via SMB/CIFS protocol",
+    "status": {
+      "running": "Running",
+      "stopped": "Stopped"
+    },
+    "actions": {
+      "start": "Start",
+      "stop": "Stop",
+      "restart": "Restart",
+      "install": "Install Samba"
+    },
+    "alerts": {
+      "notInstalled": {
+        "title": "Samba is not installed",
+        "message": "To use Samba features, install the package on the server"
+      },
+      "serviceStopped": {
+        "title": "Samba service is stopped"
+      }
+    },
+    "tabs": {
+      "shares": "Shares",
+      "settings": "Settings",
+      "status": "Status"
+    },
+    "shares": {
+      "title": "Samba Shares",
+      "newShare": "New Share",
+      "noShares": "No shares available",
+      "columns": {
+        "name": "Name",
+        "path": "Path",
+        "comment": "Description",
+        "readOnly": "Read only"
+      },
+      "form": {
+        "name": "Share name",
+        "path": "Server path",
+        "pathPlaceholder": "/path/to/folder",
+        "comment": "Description",
+        "readOnly": "Read only"
+      },
+      "createTitle": "New Share",
+      "editTitle": "Edit Share",
+      "deleteConfirm": "Are you sure you want to delete share \"{name}\"?",
+      "deleteSuccess": "Share has been deleted"
+    },
+    "messages": {
+      "startSuccess": "Samba service started",
+      "stopSuccess": "Samba service stopped",
+      "restartSuccess": "Samba service restarted"
+    },
+    "errors": {
+      "startFailed": "Error starting service",
+      "stopFailed": "Error stopping service",
+      "deleteFailed": "Error deleting share"
+    }
   }
 }

@@ -1010,6 +1010,66 @@ backup: {
       installFailed: 'Instalacja aktualizacji nie powiodła się'
     }
   },
+  "samba": {
+    "title": "Zarządzanie Sambą",
+    "description": "Konfiguracja udostępniania plików przez protokół SMB/CIFS",
+    "status": {
+      "running": "Działa",
+      "stopped": "Zatrzymana"
+    },
+    "actions": {
+      "start": "Włącz",
+      "stop": "Wyłącz",
+      "restart": "Restartuj",
+      "install": "Zainstaluj Sambę"
+    },
+    "alerts": {
+      "notInstalled": {
+        "title": "Samba nie jest zainstalowana",
+        "message": "Aby korzystać z funkcji Samba, zainstaluj pakiet na serwerze"
+      },
+      "serviceStopped": {
+        "title": "Usługa Samba jest wyłączona"
+      }
+    },
+    "tabs": {
+      "shares": "Udostępnienia",
+      "settings": "Ustawienia",
+      "status": "Status"
+    },
+    "shares": {
+      "title": "Udostępnienia Samba",
+      "newShare": "Nowe udostępnienie",
+      "noShares": "Brak udostępnień",
+      "columns": {
+        "name": "Nazwa",
+        "path": "Ścieżka",
+        "comment": "Opis",
+        "readOnly": "Tylko do odczytu"
+      },
+      "form": {
+        "name": "Nazwa udostępnienia",
+        "path": "Ścieżka na serwerze",
+        "pathPlaceholder": "/ścieżka/do/folderu",
+        "comment": "Opis",
+        "readOnly": "Tylko do odczytu"
+      },
+      "createTitle": "Nowe udostępnienie",
+      "editTitle": "Edytuj udostępnienie",
+      "deleteConfirm": "Czy na pewno chcesz usunąć udostępnienie \"{name}\"?",
+      "deleteSuccess": "Udostępnienie zostało usunięte"
+    },
+    "messages": {
+      "startSuccess": "Usługa Samba włączona",
+      "stopSuccess": "Usługa Samba wyłączona",
+      "restartSuccess": "Usługa Samba zrestartowana"
+    },
+    "errors": {
+      "startFailed": "Błąd podczas włączania usługi",
+      "stopFailed": "Błąd podczas wyłączania usługi",
+      "deleteFailed": "Błąd podczas usuwania"
+    }
+  },
   Services: "Usługi",
   Docker: "Docker",
 }

@@ -1,4 +1,3 @@
-// services/Samba/api.js
 import axios from 'axios'
 
 const SAMBA_API_BASE = '/services/samba'
@@ -86,7 +85,6 @@ export default {
 
   async updateHomeDirSettings(settings) {
     try {
-      // Validate settings before sending
       const validatedSettings = {
         enabled: !!settings.enabled,
         enableUserHomes: !!settings.enableUserHomes,

@@ -1,15 +1,23 @@
 <template>
   <div class="samba-settings">
-    <el-card>
-      <template #header>
-        <h2>
-          <Icon icon="mdi:cog" width="24" height="24" />
-          <span style="margin-left: 10px;">Ustawienia Samba</span>
-        </h2>
-      </template>
+    <el-alert
+      v-if="!serviceStatus.running"
+      title="Usługa Samba jest wyłączona"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="service-alert"
+    />
 
-      <el-tabs type="border-card">
-        <el-tab-pane label="Główne">
+    <div class="section-header">
+      <h2>
+        <Icon icon="mdi:cog" width="24" height="24" />
+        <span>Ustawienia Samba</span>
+      </h2>
+    </div>
+
+    <el-tabs type="border-card" class="clean-settings-tabs">
+      <el-tab-pane label="Główne">
           <el-form :model="settings" label-width="250px" label-position="left">
             <el-form-item label="Workgroup">
               <el-input v-model="settings.workgroup" />
@@ -31,9 +39,9 @@
               <el-input-number v-model="settings.logLevel" :min="0" :max="10" />
             </el-form-item>
           </el-form>
-        </el-tab-pane>
+      </el-tab-pane>
 
-        <el-tab-pane label="Katalogi domowe">
+      <el-tab-pane label="Katalogi domowe">
           <el-form :model="homeSettings" label-width="300px" label-position="left">
             <el-form-item label="Włączone">
               <el-switch v-model="homeSettings.enabled" />
@@ -77,26 +85,34 @@
               </el-form-item>
             </template>
           </el-form>
-        </el-tab-pane>
-      </el-tabs>
+      </el-tab-pane>
+    </el-tabs>
 
-      <div class="action-buttons">
-        <el-button type="primary" @click="saveSettings" :loading="saving">
-          Zapisz ustawienia
-        </el-button>
-        <el-button @click="restartService" :loading="restarting">
-          Restartuj usługę
-        </el-button>
-      </div>
-    </el-card>
+    <div class="action-buttons">
+      <el-button type="primary" @click="saveSettings" :loading="saving">
+        Zapisz ustawienia
+      </el-button>
+      <el-button @click="restartService" :loading="restarting">
+        Restartuj usługę
+      </el-button>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, defineProps, defineEmits } from 'vue';
 import { Icon } from '@iconify/vue';
 import { ElMessage } from 'element-plus';
 import SambaService from './api.js';
+
+const props = defineProps({
+  serviceStatus: {
+    type: Object,
+    required: true
+  }
+});
+
+const emit = defineEmits(['service-restarted']);
 
 const settings = ref({
   workgroup: 'WORKGROUP',
@@ -161,7 +177,7 @@ async function saveSettings() {
     saving.value = true;
     
     const settingsToSend = {
-      settings: {  // <-- Note the nested settings object
+      settings: {
         workgroup: settings.value.workgroup || 'WORKGROUP',
         security: settings.value.security || 'user',
         interfaces: settings.value.interfaces || 'eth0',
@@ -170,14 +186,13 @@ async function saveSettings() {
       }
     };
     
-    // Ensure homeSettings has all required fields
     const homeSettingsToSend = {
       enabled: homeSettings.value.enabled || false,
       enableUserHomes: homeSettings.value.enableUserHomes || false,
-      browsable: homeSettings.value.browsable !== false, // default true
-      inheritAcls: homeSettings.value.inheritAcls !== false, // default true
+      browsable: homeSettings.value.browsable !== false,
+      inheritAcls: homeSettings.value.inheritAcls !== false,
       inheritPermissions: homeSettings.value.inheritPermissions || false,
-      enableRecycleBin: homeSettings.value.enableRecycleBin !== false, // default true
+      enableRecycleBin: homeSettings.value.enableRecycleBin !== false,
       followSymlinks: homeSettings.value.followSymlinks || false,
       wideLinks: homeSettings.value.wideLinks || false
     };
@@ -200,6 +215,7 @@ async function restartService() {
     restarting.value = true;
     await SambaService.restartService();
     ElMessage.success('Usługa zrestartowana pomyślnie');
+    emit('service-restarted');
   } catch (error) {
     ElMessage.error('Błąd restartowania usługi: ' + error.message);
   } finally {
@@ -210,24 +226,49 @@ async function restartService() {
 
 <style scoped>
 .samba-settings {
-  padding: 20px;
+  --form-bg: #ffffff;
+  --form-text: #606266;
+  --form-hint: #909399;
+  --tabs-bg: #ffffff;
+}
+
+.dark .samba-settings {
+  --form-bg: #1e1e1e;
+  --form-text: #e0e0e0;
+  --form-hint: #a0a0a0;
+  --tabs-bg: #1e1e1e;
+}
+
+.samba-settings {
+  background: var(--form-bg);
+  color: var(--form-text);
+}
+
+.section-header {
+  border-bottom: 1px solid var(--border-color);
+}
+
+.clean-settings-tabs {
+  background: var(--tabs-bg);
 }
 
 .form-hint {
-  font-size: 12px;
-  color: #909399;
-  margin-top: 5px;
-  margin-left: 10px;
-  line-height: 1.4;
+  color: var(--form-hint);
+}
+
+:deep(.el-tabs__item) {
+  color: var(--form-text);
+}
+
+:deep(.el-tabs__item.is-active) {
+  background: var(--form-bg);
+}
+
+:deep(.el-form-item__label) {
+  color: var(--form-text);
 }
 
 .action-buttons {
-  margin-top: 20px;
-  display: flex;
-  gap: 10px;
-}
-
-.el-tabs {
   margin-top: 20px;
 }
 </style>
