@@ -11,6 +11,7 @@ const diskusage = require('diskusage');
 const { exec } = require('child_process');
 require('dotenv').config({ path: './.env' });
 
+const ServerRoutes = require('./src/api/server.cjs');
 const StorageRoutes = require('./src/api/storage.cjs');
 const NetworkRoutes = require('./src/api/network.cjs');
 const SystemRoutes = require('./src/api/system.cjs');
@@ -160,6 +161,7 @@ const requireAuth = (err, req, res, next) => {
 
 // SMART Endpoints
 
+ServerRoutes(app,requireAuth);
 StorageRoutes(app,requireAuth);
 NetworkRoutes(app,requireAuth);
 SystemRoutes(app,requireAuth);

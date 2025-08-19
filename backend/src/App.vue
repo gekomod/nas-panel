@@ -1,6 +1,6 @@
 <template>
   <div class="app-container" :class="theme">
-    <template v-if="!isLoginPage">
+    <template v-if="!$route.meta.hideLayout">
       <Navbar 
         @toggle-sidebar="toggleSidebar" 
         :theme="theme"
@@ -52,6 +52,14 @@ const toggleSidebar = () => {
     isSidebarCollapsed.value = !isSidebarCollapsed.value
   }
 }
+
+const showSidebar = computed(() => {
+  return !route.meta.hideLayout
+})
+
+const showNavbar = computed(() => {
+  return !route.meta.hideLayout
+})
 
 const handleThemeChange = (newTheme) => {
   theme.value = newTheme

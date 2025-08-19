@@ -143,6 +143,23 @@
           </el-dropdown-menu>
         </template>
       </el-dropdown>
+      
+        <div class="server-controls">
+	    <el-button 
+	      type="warning" 
+	      @click="confirmRestart"
+	    >
+	    <Icon icon="mdi:restart" />
+	      Restart Serwera
+	    </el-button>
+	    <el-button 
+	      type="danger" 
+	      @click="confirmShutdown"
+	    >
+	    <Icon icon="mdi:power" />
+	      Wyłącz Serwer
+	    </el-button>
+	</div>
     </div>
 
     <!-- Dialog aktualizacji -->
@@ -255,6 +272,7 @@ import { ref, computed, onMounted, onBeforeUnmount, inject } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuth } from '@/services/AuthService'
+import serverService from '@/services/ServerService'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { Icon } from '@iconify/vue'
 import axios from 'axios'
@@ -500,6 +518,52 @@ const remindLater = () => {
   localStorage.setItem('nextUpdateCheck', Date.now() + 24 * 60 * 60 * 1000)
   showUpdateDialog.value = false
   ElMessage.info(t('update.remindLaterMessage'))
+}
+
+const confirmRestart = async () => {
+  try {
+    await ElMessageBox.confirm(
+      'Czy na pewno chcesz zrestartować serwer? Spowoduje to chwilową niedostępność usług.',
+      'Potwierdzenie restartu',
+      {
+        confirmButtonText: 'Tak, restartuj',
+        cancelButtonText: 'Anuluj',
+        type: 'warning',
+      }
+    )
+
+    // Najpierw przekieruj na stronę statusu
+    router.push('/server/restart')
+    
+    // Poczekaj chwilę aż strona się załaduje, potem wykonaj restart
+    setTimeout(async () => {
+      try {
+        await serverService.restart()
+      } catch (error) {
+        console.log('Restart command sent, server is restarting...')
+      }
+    }, 1000) // 1 sekunda opóźnienia
+    
+  } catch (error) {
+    // Anulowano
+    console.log('Restart cancelled')
+  }
+}
+
+const confirmShutdown = () => {
+  ElMessageBox.confirm(
+    'Czy na pewno chcesz wyłączyć serwer? Spowoduje to całkowite zatrzymanie usług.',
+    'Potwierdzenie wyłączenia',
+    {
+      confirmButtonText: 'Tak, wyłącz',
+      cancelButtonText: 'Anuluj',
+      type: 'error',
+    }
+  ).then(() => {
+    serverService.shutdown().then(() => {
+      router.push('/server/shutdown')
+    })
+  })
 }
 
 // Lifecycle hooks

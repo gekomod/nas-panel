@@ -58,6 +58,7 @@ export default {
     "system_logs": "Logi systemowe",
     "local_logs": "Logi lokalne",
     "remote_logs": "Logi zdalne",
+    "server_status": "Informacje Z Serwer'a",
     "app": {
       "name": "Panel NAS"
     }

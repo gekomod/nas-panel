@@ -58,6 +58,7 @@ export default {
     "system_logs": "System Logs",
     "local_logs": "Local Logs",
     "remote_logs": "Remote Logs",
+    "server_status": "Server Information",
     "app": {
       "name": "NAS Panel"
     }

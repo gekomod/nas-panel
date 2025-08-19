@@ -12,6 +12,7 @@ const routes = [
     component: () => import('./views/LoginView.vue'),
     meta: { 
       hideInMenu: true,
+      hideLayout: true,
       icon: 'mdi:login',
       title: 'routes.login'
     }
@@ -381,6 +382,18 @@ const routes = [
         ]
       }
     ]
+  },
+  {
+    path: '/server/:type(restart|shutdown)',
+    name: 'ServerStatus',
+    component: () => import('@/components/system/ServerStatus.vue'),
+    props: true,
+    meta: { 
+        title: 'routes.server_status',
+	requiresAuth: false,
+	hideInMenu: true,
+	hideLayout: true
+	  }
   }
 ]
 

@@ -10,6 +10,7 @@ import { initDatabase } from './database/sqlite-service'
 import { i18n } from './locales'
 import lodash from 'lodash'
 import { NotificationPlugin } from './services/NotificationService'
+import serverService from '@/services/ServerService'
 
 const env = {
   NODE_ENV: import.meta.env.MODE || 'development',

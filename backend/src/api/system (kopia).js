@@ -490,6 +490,26 @@ app.delete('/system/updates/cancel/:pkg', requireAuth, async (req, res) => {
   }
 })
 
+// Endpoint zdrowia systemu
+app.get('/api/system-health', (req, res) => {
+  res.status(200).json({ status: 'healthy' })
+})
+
+// Endpoint restartu systemu
+app.post('/api/system-restart', requireAuth, (req, res) => {
+  // W rzeczywistości tutaj powinna być logika restartu systemu
+  console.log('Received restart command')
+  
+  // Symulacja opóźnienia restartu
+  setTimeout(() => {
+    // W rzeczywistości tutaj powinno być wywołanie systemowe np.:
+    // require('child_process').exec('sudo reboot')
+    process.exit(0) // Tylko dla testów - wyłącza serwer Node
+  }, 3000)
+  
+  res.json({ status: 'restarting' })
+})
+
 // Funkcja do ładowania ustawień
 function loadSettings() {
   try {

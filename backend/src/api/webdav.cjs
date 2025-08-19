@@ -1,4 +1,3 @@
-// src/api/webdav.js
 const path = require('path');
 const fs = require('fs').promises;
 const { exec } = require('child_process');
