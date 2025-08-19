@@ -183,6 +183,10 @@
             <el-divider />
 
             <h3>Performance Settings</h3>
+            <el-form-item label="Włącz Threadpool">
+              <el-switch v-model="settings.webserver.THREADPOOL_ENABLED" />
+            </el-form-item>
+            
             <el-form-item label="Max Worker Threads">
               <el-input-number 
                 v-model="settings.webserver.MAX_THREADS" 
@@ -437,6 +441,7 @@ const settings = ref({
     LOG_FILE: '/var/log/nas-web.log',
     LOG_MAX_SIZE: 10,
     LOG_BACKUP_COUNT: 5,
+    THREADPOOL_ENABLED: true,
     MAX_THREADS: 10,
     MAX_CONNECTIONS: 100,
     CONNECTION_TIMEOUT: 30,
