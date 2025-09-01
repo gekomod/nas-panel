@@ -1,5 +1,5 @@
 import logger from './utils/logger'
-import { createApp } from 'vue'
+import { createApp, defineAsyncComponent } from 'vue'
 import App from './App.vue'
 import router from './router'
 import ElementPlus from 'element-plus'
@@ -90,6 +90,9 @@ async function initializeApp() {
     await profilePerformance('Database initialization', initDatabase)
 
     const app = createApp(App)
+    
+    // Performance monitoring
+    app.config.performance = true
     
     app.config.errorHandler = (err, instance, info) => {
       // Ignoruj puste błędy

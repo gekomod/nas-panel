@@ -59,6 +59,12 @@ export default {
     "local_logs": "Logi lokalne",
     "remote_logs": "Logi zdalne",
     "server_status": "Informacje Z Serwer'a",
+    power_management: 'Zarządzanie Zasilaniem',
+    power_schedule: 'Harmonogram Zasilania',
+    wake_on_lan: 'Wake-on-LAN',
+    ups_monitoring: 'Monitoring UPS',
+    power_actions: 'Akcje Zasilania',
+    energy_monitoring: 'Monitorowanie Energii',
     "app": {
       "name": "Panel NAS"
     }

@@ -4,6 +4,7 @@ import TerminalView from '@/views/TerminalView.vue'
 import FileManager from '@/components/FileManager/FileBrowser.vue'
 import NotificationsView from '@/views/NotificationsView.vue'
 import { useAuth } from './services/AuthService'
+import { i18n } from './locales' // importujemy bezpośrednio i18n
 
 const routes = [
   {
@@ -119,6 +120,66 @@ const routes = [
           title: 'routes.dynamic_dns',
           requiresAuth: true,
           icon: 'mdi:ip-network' 
+        }
+      }
+    ]
+  },
+  {
+    path: '/power',
+    meta: { 
+      title: 'routes.power_management',
+      requiresAuth: true,
+      icon: 'mdi:power-plug' 
+    },
+    children: [
+      {
+        path: '/power/schedule',
+        name: 'PowerSchedule',
+        component: () => import('@/components/power/Schedule.vue'),
+        meta: { 
+          title: 'routes.power_schedule',
+          requiresAuth: true,
+          icon: 'mdi:clock-outline' 
+        }
+      },
+      {
+        path: '/power/wake-on-lan',
+        name: 'WakeOnLAN',
+        component: () => import('@/components/power/WakeOnLAN.vue'),
+        meta: { 
+          title: 'routes.wake_on_lan',
+          requiresAuth: true,
+          icon: 'mdi:lan-connect' 
+        }
+      },
+      {
+        path: '/power/ups',
+        name: 'UPSMonitoring',
+        component: () => import('@/components/power/UPSMonitoring.vue'),
+        meta: { 
+          title: 'routes.ups_monitoring',
+          requiresAuth: true,
+          icon: 'mdi:car-battery' 
+        }
+      },
+      {
+        path: '/power/actions',
+        name: 'PowerActions',
+        component: () => import('@/components/power/PowerActions.vue'),
+        meta: { 
+          title: 'routes.power_actions',
+          requiresAuth: true,
+          icon: 'mdi:power' 
+        }
+      },
+      {
+        path: '/power/energy',
+        name: 'EnergyMonitoring',
+        component: () => import('@/components/power/EnergyMonitoring.vue'),
+        meta: { 
+          title: 'routes.energy_monitoring',
+          requiresAuth: true,
+          icon: 'mdi:lightning-bolt' 
         }
       }
     ]
@@ -405,8 +466,9 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   const { isAuthenticated, checkAuth } = useAuth()
   
-  if (router.i18n) {
-    const t = router.i18n.t
+  // Używamy bezpośrednio zaimportowanego i18n
+  if (i18n && i18n.global) {
+    const t = i18n.global.t
     document.title = to.meta.title 
       ? `${t(to.meta.title)} | Nas-Panel` 
       : 'Nas-Panel'
