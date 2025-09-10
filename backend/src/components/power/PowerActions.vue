@@ -31,7 +31,7 @@
         </div>
       </template>
 
-      <el-table :data="actionHistory" style="width: 100%">
+      <el-table :data="actionHistory" style="width: 100%" v-loading="historyLoading">
         <el-table-column prop="timestamp" label="Data" width="160" />
         <el-table-column prop="action" label="Akcja" />
         <el-table-column prop="status" label="Status" width="100">
@@ -73,9 +73,10 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Icon } from '@iconify/vue'
+import axios from 'axios'
 
 const actions = reactive([
   {
@@ -121,20 +122,8 @@ const actions = reactive([
   }
 ])
 
-const actionHistory = ref([
-  {
-    timestamp: '2024-01-31 14:30',
-    action: 'Restart systemu',
-    status: 'success',
-    user: 'admin'
-  },
-  {
-    timestamp: '2024-01-30 22:15',
-    action: 'Wyłączenie systemu',
-    status: 'success',
-    user: 'admin'
-  }
-])
+const actionHistory = ref([])
+const historyLoading = ref(false)
 
 const confirmDialog = reactive({
   visible: false,
@@ -147,6 +136,19 @@ const confirmDialog = reactive({
 
 const confirmInput = ref('')
 const pendingAction = ref(null)
+
+const loadHistory = async () => {
+  historyLoading.value = true
+  try {
+    const response = await axios.get('/power/history')
+    actionHistory.value = response.data.history
+  } catch (error) {
+    console.error('Błąd podczas ładowania historii:', error)
+    ElMessage.error('Nie udało się załadować historii akcji')
+  } finally {
+    historyLoading.value = false
+  }
+}
 
 const executeAction = (action) => {
   pendingAction.value = action
@@ -182,37 +184,27 @@ const performAction = async (action) => {
   action.loading = true
   
   try {
-    // Symulacja opóźnienia akcji
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    
-    // Symulacja sukcesu (w rzeczywistości tutaj byłoby API call)
-    const success = Math.random() > 0.2 // 80% szans na sukces
-    
-    if (success) {
-      ElMessage.success(`Akcja ${action.title} wykonana pomyślnie`)
-      
-      actionHistory.value.unshift({
-        timestamp: new Date().toLocaleString(),
-        action: action.title,
-        status: 'success',
-        user: 'admin'
-      })
-    } else {
-      throw new Error('Symulowany błąd wykonania akcji')
-    }
-  } catch (error) {
-    ElMessage.error(`Błąd podczas wykonywania akcji: ${error.message}`)
-    
-    actionHistory.value.unshift({
-      timestamp: new Date().toLocaleString(),
-      action: action.title,
-      status: 'error',
-      user: 'admin'
+    const confirmation = action.requiresInput ? 'POTWIERDZAM' : undefined
+    await axios.post('/power/action', { 
+      action: action.id, 
+      confirmation 
     })
+    
+    ElMessage.success(`Akcja ${action.title} wykonana pomyślnie`)
+    
+    // Odśwież historię
+    await loadHistory()
+  } catch (error) {
+    console.error('Błąd podczas wykonywania akcji:', error)
+    ElMessage.error(`Błąd podczas wykonywania akcji: ${error.response?.data?.error || error.message}`)
   } finally {
     action.loading = false
   }
 }
+
+onMounted(() => {
+  loadHistory()
+})
 </script>
 
 <style scoped>

@@ -10,7 +10,7 @@
             </div>
           </template>
 
-          <el-form :model="form" label-width="140px">
+          <el-form :model="form" label-width="140px" v-loading="configLoading">
             <el-form-item label="Włącz Wake-on-LAN">
               <el-switch v-model="form.enabled" />
             </el-form-item>
@@ -45,6 +45,7 @@
                 type="primary"
                 :disabled="!form.enabled"
                 @click="saveSettings"
+                :loading="savingConfig"
               >
                 <icon icon="mdi:content-save" width="16" />
                 Zapisz ustawienia
@@ -63,7 +64,7 @@
             </div>
           </template>
 
-          <el-table :data="devices" style="width: 100%">
+          <el-table :data="devices" style="width: 100%" v-loading="devicesLoading">
             <el-table-column prop="name" label="Nazwa" />
             <el-table-column prop="mac" label="MAC" width="140" />
             <el-table-column label="Operacje" width="120">
@@ -120,9 +121,10 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Icon } from '@iconify/vue'
+import axios from 'axios'
 
 const form = reactive({
   enabled: true,
@@ -138,37 +140,99 @@ const deviceForm = reactive({
   ip: ''
 })
 
-const devices = ref([
-  { id: 1, name: 'Komputer główny', mac: '00:1A:2B:3C:4D:5E', ip: '192.168.1.100' },
-  { id: 2, name: 'Laptop', mac: '00:1B:2C:3D:4E:5F', ip: '192.168.1.101' }
-])
+const devices = ref([])
+const configLoading = ref(false)
+const devicesLoading = ref(false)
+const savingConfig = ref(false)
 
-const saveSettings = () => {
-  ElMessage.success('Ustawienia Wake-on-LAN zapisane')
+const loadConfig = async () => {
+  configLoading.value = true
+  try {
+    const response = await axios.get('/wakeonlan/config')
+    Object.assign(form, response.data.config)
+  } catch (error) {
+    console.error('Błąd podczas ładowania konfiguracji Wake-on-LAN:', error)
+    ElMessage.error('Nie udało się załadować konfiguracji Wake-on-LAN')
+  } finally {
+    configLoading.value = false
+  }
 }
 
-const wakeDevice = (device) => {
-  ElMessage.success(`Wysyłanie pakietu Wake-on-LAN do ${device.name}`)
+const loadDevices = async () => {
+  devicesLoading.value = true
+  try {
+    const response = await axios.get('/wakeonlan/devices')
+    devices.value = response.data.devices
+  } catch (error) {
+    console.error('Błąd podczas ładowania urządzeń Wake-on-LAN:', error)
+    ElMessage.error('Nie udało się załadować urządzeń Wake-on-LAN')
+  } finally {
+    devicesLoading.value = false
+  }
 }
 
-const addDevice = () => {
-  if (deviceForm.name && deviceForm.mac) {
-    devices.value.push({
-      id: Date.now(),
-      ...deviceForm
+const saveSettings = async () => {
+  savingConfig.value = true
+  try {
+    await axios.post('/wakeonlan/config', { config: form })
+    ElMessage.success('Ustawienia Wake-on-LAN zapisane')
+  } catch (error) {
+    console.error('Błąd podczas zapisywania konfiguracji Wake-on-LAN:', error)
+    ElMessage.error('Nie udało się zapisać konfiguracji Wake-on-LAN')
+  } finally {
+    savingConfig.value = false
+  }
+}
+
+const wakeDevice = async (device) => {
+  try {
+    await axios.post('/wakeonlan/wake', {
+      mac: device.mac,
+      ip: device.ip || form.ipAddress,
+      port: form.port
     })
-    ElMessage.success('Urządzenie dodane')
-    showAddDevice.value = false
-    Object.assign(deviceForm, { name: '', mac: '', ip: '' })
+    ElMessage.success(`Wysyłanie pakietu Wake-on-LAN do ${device.name}`)
+  } catch (error) {
+    console.error('Błąd podczas wysyłania pakietu Wake-on-LAN:', error)
+    ElMessage.error('Nie udało się wysłać pakietu Wake-on-LAN')
+  }
+}
+
+const addDevice = async () => {
+  if (deviceForm.name && deviceForm.mac) {
+    try {
+      const response = await axios.post('/wakeonlan/devices', { device: deviceForm })
+      devices.value.push({
+        id: response.data.id,
+        ...deviceForm
+      })
+      ElMessage.success('Urządzenie dodane')
+      showAddDevice.value = false
+      Object.assign(deviceForm, { name: '', mac: '', ip: '' })
+    } catch (error) {
+      console.error('Błąd podczas dodawania urządzenia:', error)
+      ElMessage.error('Nie udało się dodać urządzenia')
+    }
   } else {
     ElMessage.warning('Wypełnij nazwę i adres MAC')
   }
 }
 
-const deleteDevice = (device) => {
-  devices.value = devices.value.filter(d => d.id !== device.id)
-  ElMessage.success('Urządzenie usunięte')
+const deleteDevice = async (device) => {
+  try {
+    await axios.delete(`/wakeonlan/devices/${device.id}`)
+    devices.value = devices.value.filter(d => d.id !== device.id)
+    ElMessage.success('Urządzenie usunięte')
+  } catch (error) {
+    console.error('Błąd podczas usuwania urządzenia:', error)
+    ElMessage.error('Nie udało się usunąć urządzenia')
+  }
 }
+
+onMounted(() => {
+  loadConfig()
+  loadDevices()
+})
 </script>
 
 <style scoped>

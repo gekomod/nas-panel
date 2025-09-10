@@ -170,7 +170,7 @@ function saveWebserverConfig(config) {
     
     // Sekcja Performance
     content += `# Performance\n`;
-    content += `THREADPOOL_ENABLED=$(config.THREADPOOL_ENABLED)\n`;
+    content += `THREADPOOL_ENABLED=${config.THREADPOOL_ENABLED}\n`;
     content += `MAX_THREADS=${config.MAX_THREADS}\n`;
     content += `MAX_CONNECTIONS=${config.MAX_CONNECTIONS}\n`;
     content += `CONNECTION_TIMEOUT=${config.CONNECTION_TIMEOUT}  # in seconds\n\n`;

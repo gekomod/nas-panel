@@ -89,16 +89,16 @@
       </el-popover>
 
       <!-- Wybór języka -->
-      <el-select 
-        v-model="$i18n.locale" 
-        class="language-select"
-        popper-class="language-select-dropdown"
-        style="width: 110px; margin-left: 20px"
-        v-if="!isMobile"
-      >
-        <el-option label="English" value="en" />
-        <el-option label="Polski" value="pl" />
-      </el-select>
+  <el-select 
+    v-model="currentLocale" 
+    class="language-select"
+    popper-class="language-select-dropdown"
+    style="width: 110px; margin-left: 20px"
+    v-if="!isMobile"
+  >
+    <el-option label="English" value="en" />
+    <el-option label="Polski" value="pl" />
+  </el-select>
 
       <!-- Przełącznik motywu -->
       <el-dropdown trigger="click" @command="handleThemeChange">
@@ -270,7 +270,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, inject } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { useI18n } from 'vue-i18n'
+import { useI18n } from 'vue-i18n' // Dodaj import
 import { useAuth } from '@/services/AuthService'
 import serverService from '@/services/ServerService'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
@@ -278,11 +278,18 @@ import { Icon } from '@iconify/vue'
 import axios from 'axios'
 import { markdownToHtml } from '@/utils/markdown'
 
-const { t } = useI18n()
+// Użyj composable useI18n()
+const { t, locale } = useI18n()
 const notificationService = inject('notifications')
 const notifications = computed(() => notificationService.notifications.value)
 const unreadNotifications = computed(() => notificationService.unreadCount.value)
 const { markAsRead, markAllAsRead } = notificationService
+
+// Dodaj computed property dla locale
+const currentLocale = computed({
+  get: () => locale.value,
+  set: (value) => { locale.value = value }
+})
 
 const props = defineProps({
   theme: {
@@ -372,7 +379,8 @@ const formatTime = (time) => {
   if (diff < 1000 * 60 * 60) return t('time.minutesAgo', { minutes: Math.floor(diff / (1000 * 60)) })
   if (diff < 1000 * 60 * 60 * 24) return t('time.hoursAgo', { hours: Math.floor(diff / (1000 * 60 * 60)) })
   
-  return date.toLocaleDateString($i18n.locale.value, {
+  // Użyj locale.value zamiast $i18n.locale.value
+  return date.toLocaleDateString(locale.value, {
     day: 'numeric',
     month: 'short',
     year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined

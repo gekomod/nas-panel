@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "concurrently \"npm run server\" \"vite --host 0.0.0.0\"",
     "server": "node server.cjs --host",
+    "page": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview",
     "postbuild": "cp node_modules/@sqlite.org/sqlite-wasm/sqlite-wasm/jswasm/*.wasm dist/assets/"

@@ -45,6 +45,14 @@ function showError(error: unknown, context?: Record<string, unknown>) {
 
   const errorObj = error instanceof Error ? error : new Error(String(error))
   const errorMessage = errorObj.message || 'Unknown error'
+  
+  if (errorMessage.includes('$i18n is not defined')) {
+    logger.debug('Ignored i18n error (known issue)', { 
+      message: errorMessage,
+      context 
+    })
+    return
+  }
 
   logger.error('Application Error', { 
     message: errorMessage,
@@ -109,6 +117,14 @@ async function initializeApp() {
     // Usunięto compilerOptions które mogły powodować problemy
     delete app.config.compilerOptions
     
+    await profilePerformance('i18n setup', () => {
+      app.use(i18n)
+      // Dodajemy i18n do routera
+      router.i18n = i18n.global
+      app.config.globalProperties.$i18n = i18n.global
+      return Promise.resolve()
+    })
+    
     await profilePerformance('Router setup', () => {
       app.use(router)
       return Promise.resolve()
@@ -116,13 +132,6 @@ async function initializeApp() {
     
     await profilePerformance('ElementPlus setup', () => {
       app.use(ElementPlus)
-      return Promise.resolve()
-    })
-    
-    await profilePerformance('i18n setup', () => {
-      app.use(i18n)
-      // Dodajemy i18n do routera
-      router.i18n = i18n.global
       return Promise.resolve()
     })
     

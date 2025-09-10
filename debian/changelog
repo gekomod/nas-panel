@@ -1,3 +1,9 @@
+nas-panel (1.0.9) unstable; urgency=medium
+
+  * Fix Power Manager
+
+ -- gekomod <zaba141@o2.pl>  Sat, 10 Aug 2025 22:32:24 +0200
+
 nas-panel (1.0.8) unstable; urgency=medium
 
   * Add Power Manager

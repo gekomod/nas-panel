@@ -114,30 +114,16 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Icon } from '@iconify/vue'
+import axios from 'axios'
 
 const loading = ref(false)
 const showAddDialog = ref(false)
 const editingSchedule = ref(null)
 
-const schedules = ref([
-  {
-    id: 1,
-    action: 'restart',
-    time: '02:00',
-    days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
-    enabled: true
-  },
-  {
-    id: 2,
-    action: 'shutdown',
-    time: '06:00',
-    days: ['saturday', 'sunday'],
-    enabled: false
-  }
-])
+const schedules = ref([])
 
 const form = reactive({
   action: 'restart',
@@ -145,6 +131,19 @@ const form = reactive({
   days: [],
   enabled: true
 })
+
+const loadSchedules = async () => {
+  loading.value = true
+  try {
+    const response = await axios.get('/power/schedules')
+    schedules.value = response.data.schedules
+  } catch (error) {
+    console.error('Błąd podczas ładowania harmonogramów:', error)
+    ElMessage.error('Nie udało się załadować harmonogramów')
+  } finally {
+    loading.value = false
+  }
+}
 
 const getActionIcon = (action) => {
   const icons = {
@@ -191,6 +190,7 @@ const deleteSchedule = async (schedule) => {
       { type: 'warning' }
     )
     
+    await axios.delete(`/power/schedules/${schedule.id}`)
     schedules.value = schedules.value.filter(s => s.id !== schedule.id)
     ElMessage.success('Harmonogram usunięty')
   } catch (error) {
@@ -198,22 +198,29 @@ const deleteSchedule = async (schedule) => {
   }
 }
 
-const saveSchedule = () => {
-  if (editingSchedule.value) {
-    Object.assign(editingSchedule.value, form)
-    ElMessage.success('Harmonogram zaktualizowany')
-  } else {
-    const newSchedule = {
-      id: Date.now(),
-      ...form
+const saveSchedule = async () => {
+  try {
+    if (editingSchedule.value) {
+      await axios.post('/power/schedules', { schedule: form })
+      Object.assign(editingSchedule.value, form)
+      ElMessage.success('Harmonogram zaktualizowany')
+    } else {
+      const response = await axios.post('/power/schedules', { schedule: form })
+      const newSchedule = {
+        id: response.data.id,
+        ...form
+      }
+      schedules.value.push(newSchedule)
+      ElMessage.success('Harmonogram dodany')
     }
-    schedules.value.push(newSchedule)
-    ElMessage.success('Harmonogram dodany')
+    
+    showAddDialog.value = false
+    editingSchedule.value = null
+    resetForm()
+  } catch (error) {
+    console.error('Błąd podczas zapisywania harmonogramu:', error)
+    ElMessage.error('Nie udało się zapisać harmonogramu')
   }
-  
-  showAddDialog.value = false
-  editingSchedule.value = null
-  resetForm()
 }
 
 const resetForm = () => {
@@ -224,6 +231,10 @@ const resetForm = () => {
     enabled: true
   })
 }
+
+onMounted(() => {
+  loadSchedules()
+})
 </script>
 
 <style scoped>
