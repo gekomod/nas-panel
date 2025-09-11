@@ -273,6 +273,7 @@ export default {
       rx_packets: 'Odebrane pakiety',
       tx_packets: 'Wysłane pakiety',
       speed_test: 'Test prędkości',
+      speed: 'Speed',
       start_test: 'Rozpocznij test',
       testing: 'Trwa testowanie...',
       download: 'Pobieranie',

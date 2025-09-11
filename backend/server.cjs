@@ -394,33 +394,6 @@ async function getGroups(username) {
   })
 }
 
-async function getFilesystems() {
-  try {
-    const { exec } = await import('child_process');
-    return new Promise((resolve) => {
-      exec('df -h --output=source,size,pcent,target | awk \'NR>1{print $1","$2","$3","$4}\'', (err, stdout) => {
-        if (err) return resolve([]);
-        
-        const lines = stdout.trim().split('\n');
-        const filesystems = lines.map(line => {
-          const [device, size, percent, mount] = line.split(',');
-          return {
-            device,
-            size: size.trim(),
-            percent: percent.trim(),
-            percentNumber: parseInt(percent.trim()),
-            mount: mount.trim()
-          };
-        });
-        
-        resolve(filesystems);
-      });
-    });
-  } catch (error) {
-    console.error('Error getting filesystems:', error);
-    return [];
-  }
-}
 
 // Dodaj nowy endpoint (umieść go z innymi endpointami)
 app.get('/api/filesystems', requireAuth, async (req, res) => {
@@ -991,7 +964,31 @@ app.get('/api/storage/filesystems', requireAuth, async (req, res) => {
         usedPercent: parseInt(pcent),
         mounted
       };
-    }).filter(fs => fs.device && !fs.device.startsWith('tmpfs'));
+    }).filter(fs => {
+      // FILTRUJ OVERLAY I DOCKER - kluczowa zmiana!
+      if (!fs.device) return false;
+      
+      const device = fs.device.toLowerCase();
+      const type = (fs.type || '').toLowerCase();
+      const mounted = (fs.mounted || '').toLowerCase();
+
+      const isOverlay = device.includes('overlay') || 
+                       type.includes('overlay') ||
+                       mounted.includes('overlay') ||
+                       mounted.includes('docker') ||
+                       device.includes('docker') ||
+                       type.includes('tmpfs') || // często używane przez docker
+                       device.includes('tmpfs');
+
+      const isSystem = mounted.startsWith('/boot') ||
+                       mounted.startsWith('/efi') ||
+                       mounted.startsWith('/run') ||
+                       mounted.startsWith('/sys') ||
+                       mounted.startsWith('/proc') ||
+                       mounted.startsWith('/dev');
+
+      return !isOverlay && !isSystem;
+    });
 
     // 3. Pobierz UUID tylko dla istniejących urządzeń
     const uuidMapping = {};
@@ -1045,6 +1042,55 @@ app.get('/api/storage/filesystems', requireAuth, async (req, res) => {
     });
   }
 });
+
+async function getFilesystems() {
+  try {
+    const { exec } = await import('child_process');
+    return new Promise((resolve) => {
+      exec('df -h --output=source,size,pcent,target | awk \'NR>1{print $1","$2","$3","$4}\'', (err, stdout) => {
+        if (err) return resolve([]);
+        
+        const lines = stdout.trim().split('\n');
+        const filesystems = lines.map(line => {
+          const [device, size, percent, mount] = line.split(',');
+          return {
+            device,
+            size: size.trim(),
+            percent: percent.trim(),
+            percentNumber: parseInt(percent.trim()),
+            mount: mount.trim()
+          };
+        }).filter(fs => {
+          // FILTRUJ OVERLAY I DOCKER
+          if (!fs.device) return false;
+          
+          const device = fs.device.toLowerCase();
+          const mount = (fs.mount || '').toLowerCase();
+
+          const isOverlay = device.includes('overlay') || 
+                           mount.includes('overlay') ||
+                           mount.includes('docker') ||
+                           device.includes('docker') ||
+                           device.includes('tmpfs');
+
+          const isSystem = mount.startsWith('/boot') ||
+                           mount.startsWith('/efi') ||
+                           mount.startsWith('/run') ||
+                           mount.startsWith('/sys') ||
+                           mount.startsWith('/proc') ||
+                           mount.startsWith('/dev');
+
+          return !isOverlay && !isSystem;
+        });
+        
+        resolve(filesystems);
+      });
+    });
+  } catch (error) {
+    console.error('Error getting filesystems:', error);
+    return [];
+  }
+}
 
 // Funkcja do sprawdzania statusu systemu plików
 async function checkFilesystemStatus(device, mountPoint) {

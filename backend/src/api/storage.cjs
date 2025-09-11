@@ -426,26 +426,69 @@ app.get('/api/storage/smart/details/:device', requireAuth, async (req, res) => {
 // Zmodyfikowana funkcja do pobierania urządzeń
 app.get('/api/storage/devices', requireAuth, async (req, res) => {
   try {
-    // Pobieramy zarówno dyski jak i partycje
-    const { stdout } = await execAsync('lsblk -o NAME,SIZE,TYPE,MODEL,SERIAL,PATH,FSTYPE,MOUNTPOINT -n -J');
+    const { stdout } = await execAsync('lsblk -o NAME,SIZE,TYPE,MODEL,SERIAL,PATH,FSTYPE,MOUNTPOINT,LABEL -n -J');
     const lsblkData = JSON.parse(stdout);
     
-    const devices = lsblkData.blockdevices.map(dev => ({
-      path: `/dev/${dev.name}`,
-      model: dev.model || 'Unknown',
-      serial: dev.serial || 'Unknown',
-      type: dev.type,
-      size: dev.size ? parseInt(dev.size) : 0,
-      fstype: dev.fstype || '',
-      mountpoint: dev.mountpoint || '',
-      partitions: dev.children ? dev.children.map(part => ({
-        path: `/dev/${part.name}`,
-        fstype: part.fstype || '',
-        mountpoint: part.mountpoint || '',
-        size: part.size,
-        type: part.type
-      })) : []
-    }));
+    const filterDevice = (device) => {
+      // TYLKO filtruj overlay i docker - nie wszystko inne!
+      const ignorePatterns = [
+        'overlay', 
+        'docker', 
+        'containerd'
+      ];
+
+      const deviceName = device.name?.toLowerCase() || '';
+      const deviceModel = device.model?.toLowerCase() || '';
+      const deviceMount = device.mountpoint?.toLowerCase() || '';
+      const deviceFsType = device.fstype?.toLowerCase() || '';
+
+      // Sprawdź czy urządzenie jest overlay/docker
+      const isOverlay = ignorePatterns.some(pattern => {
+        return deviceName.includes(pattern) ||
+               deviceModel.includes(pattern) ||
+               deviceMount.includes(pattern) ||
+               deviceFsType.includes(pattern);
+      });
+
+      // NIE filtruj małych urządzeń ani wirtualnych - mogą to być dyski użytkownika
+      return !isOverlay;
+    };
+
+    const filterPartition = (partition) => {
+      const ignorePatterns = ['overlay', 'docker', 'containerd'];
+      const partName = partition.name?.toLowerCase() || '';
+      const partMount = partition.mountpoint?.toLowerCase() || '';
+      const partFsType = partition.fstype?.toLowerCase() || '';
+
+      return !ignorePatterns.some(pattern => 
+        partName.includes(pattern) ||
+        partMount.includes(pattern) ||
+        partFsType.includes(pattern)
+      );
+    };
+
+    const devices = lsblkData.blockdevices
+      .filter(filterDevice)
+      .map(dev => ({
+        path: `/dev/${dev.name}`,
+        model: dev.model || 'Unknown',
+        serial: dev.serial || 'Unknown',
+        type: dev.type,
+        size: dev.size ? parseInt(dev.size) : 0,
+        fstype: dev.fstype || '',
+        mountpoint: dev.mountpoint || '',
+        label: dev.label || '',
+        partitions: dev.children ? dev.children
+          .filter(filterPartition)
+          .map(part => ({
+            path: `/dev/${part.name}`,
+            fstype: part.fstype || '',
+            mountpoint: part.mountpoint || '',
+            size: part.size,
+            type: part.type,
+            label: part.label || ''
+          })) : []
+      }));
 
     res.json({
       success: true,
@@ -459,6 +502,28 @@ app.get('/api/storage/devices', requireAuth, async (req, res) => {
     });
   }
 });
+
+
+// Endpoint do debugowania - pokazuje WSZYSTKIE urządzenia
+app.get('/api/storage/debug-devices', requireAuth, async (req, res) => {
+  try {
+    const { stdout } = await execAsync('lsblk -o NAME,SIZE,TYPE,MODEL,SERIAL,PATH,FSTYPE,MOUNTPOINT,LABEL -n -J');
+    const lsblkData = JSON.parse(stdout);
+    
+    res.json({
+      success: true,
+      data: lsblkData.blockdevices,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to list debug devices',
+      details: error.message
+    });
+  }
+});
+
 // Mount device
 
 // Helper functions
@@ -535,31 +600,34 @@ app.post('/api/storage/mount', requireAuth, async (req, res) => {
   }
 
   try {
-    const isZfs = fsType === 'zfs';
+    let detectedFsType = fsType;
     let mountCmd;
     let actualMountPoint = mountPoint;
 
+    // Automatyczne wykrywanie systemu plików jeśli nie podano
+    if (!detectedFsType || detectedFsType === 'auto') {
+      try {
+        const { stdout } = await execAsync(`blkid -o value -s TYPE ${device}`);
+        detectedFsType = stdout.trim().toLowerCase();
+        if (!detectedFsType) throw new Error('Cannot detect filesystem');
+      } catch (detectError) {
+        detectedFsType = 'auto'; // Pozwól kernelowi wykryć
+      }
+    }
+
     const isRaidDevice = device.includes('/dev/md');
+    const isZfs = detectedFsType === 'zfs';
     
     if (isRaidDevice) {
       // Specjalna obsługa RAID
       await execAsync(`mkdir -p "${mountPoint}"`);
-      const mountCmd = `mount ${fsType ? `-t ${fsType}` : ''} ${options ? `-o ${options}` : ''} ${device} ${mountPoint}`;
-      await execAsync(mountCmd);
-      
-      return res.json({
-        success: true,
-        message: 'RAID device mounted successfully',
-        isRaid: true
-      });
-    }
-
-    if (isZfs) {
-      // For ZFS we use 'zfs mount' instead of standard mount
+      mountCmd = `mount ${detectedFsType ? `-t ${detectedFsType}` : ''} ${options ? `-o ${options}` : ''} ${device} ${mountPoint}`;
+    } else if (isZfs) {
+      // For ZFS
       mountCmd = `sudo zpool import ${zfsPoolName || 'zpool'} && sudo zfs mount ${device}`;
       actualMountPoint = zfsPoolName || 'zpool';
     } else {
-      // Standard mounting for other filesystems
+      // Standard mounting
       if (!mountPoint) {
         return res.status(400).json({
           success: false,
@@ -567,7 +635,8 @@ app.post('/api/storage/mount', requireAuth, async (req, res) => {
           details: 'Please specify a mount point for non-ZFS filesystems'
         });
       }
-      mountCmd = `sudo mkdir -p "${mountPoint}" && sudo mount -t ${fsType} -o ${options || 'defaults'} ${device} ${mountPoint}`;
+      await execAsync(`mkdir -p "${mountPoint}"`);
+      mountCmd = `mount -t ${detectedFsType} -o ${options || 'defaults'} ${device} ${mountPoint}`;
     }
 
     const { stdout, stderr } = await execAsync(mountCmd);
@@ -587,7 +656,7 @@ app.post('/api/storage/mount', requireAuth, async (req, res) => {
     }
 
     // Add to fstab if not ZFS
-    if (!isZfs) {
+    if (!isZfs && !isRaidDevice) {
       const fstabEntries = await readFstab();
       const existingEntry = fstabEntries.find(entry => {
         const parts = entry.split(/\s+/);
@@ -595,7 +664,7 @@ app.post('/api/storage/mount', requireAuth, async (req, res) => {
       });
 
       if (!existingEntry) {
-        const newEntry = `${device} ${mountPoint} ${fsType} ${options || 'defaults'} 0 2`;
+        const newEntry = `${device} ${mountPoint} ${detectedFsType} ${options || 'defaults'} 0 2`;
         fstabEntries.push(newEntry);
         await writeFstab(fstabEntries);
       }
@@ -606,8 +675,10 @@ app.post('/api/storage/mount', requireAuth, async (req, res) => {
       message: 'Device mounted successfully',
       mountPoint: actualMountPoint,
       device: device,
+      detectedFsType: detectedFsType,
       isZfs: isZfs,
-      addedToFstab: !isZfs
+      isRaid: isRaidDevice,
+      addedToFstab: !isZfs && !isRaidDevice
     });
   } catch (error) {
     let errorDetails = error.stderr || error.message;

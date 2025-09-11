@@ -1,6 +1,6 @@
 <template>
-  <el-card class="filesystems-widget">
-    <template #header>
+  <el-card class="filesystems-widget" :body-style="{ padding: '0', height: '100%', display: 'flex', flexDirection: 'column' }">
+      <template #header>
       <div class="widget-header">
         <Icon icon="mdi:file-tree" width="20" height="20" />
         <span>{{ $t('storageFilesystems.title') }}</span>
@@ -65,72 +65,98 @@
             <Icon icon="mdi:file-edit" width="16" height="16" />
 	  </el-button>
 	 </el-tooltip>
+          <el-tooltip content="Debug urządzeń">
+            <el-button 
+              size="small" 
+              @click="debugDevices" 
+              :disabled="loading"
+              text
+            >
+              <Icon icon="mdi:bug" width="16" height="16" />
+              Debug
+            </el-button>
+          </el-tooltip>
         </div>
       </div>
     </template>
 
     <!-- Mount Dialog -->
-    <el-dialog v-model="mountDialogVisible" :title="$t('storageFilesystems.mountDialog.title')" width="500px">
-      <el-form :model="mountForm" label-position="top">
-        <el-form-item :label="$t('storageFilesystems.mountDialog.device')">
-          <el-select v-model="mountForm.device" :placeholder="$t('storageFilesystems.mountDialog.selectDevice')" @change="updatePartitions" style="width: 100%">
-            <el-option
-              v-for="device in unmountedDevices"
-              :key="device.path"
-              :label="`${device.path} (${device.model || 'Unknown'})`"
-              :value="device.path"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item 
-          v-if="availablePartitions.length > 0" 
-          :label="$t('storageFilesystems.mountDialog.partition')"
-        >
-          <el-select 
-            v-model="mountForm.partition" 
-            placeholder="Select partition"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="part in availablePartitions"
-              :key="part.path"
-              :label="part.path"
-              :value="part.path"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="$t('storageFilesystems.mountDialog.mountPoint')" v-if="mountForm.fsType !== 'zfs'">
-          <el-input v-model="mountForm.mountPoint" :placeholder="'/mnt/new_disk'" />
-        </el-form-item>
-        <el-form-item :label="$t('storageFilesystems.mountDialog.fsType')">
-          <el-select v-model="mountForm.fsType" :placeholder="$t('storageFilesystems.mountDialog.selectFsType')" style="width: 100%">
-            <el-option
-              v-for="fs in supportedFilesystems"
-              :key="fs"
-              :label="fs"
-              :value="fs.toLowerCase()"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item 
-          v-if="mountForm.fsType === 'zfs'"
-          :label="$t('storageFilesystems.mountDialog.zfsPoolName')"
-        >
-          <el-input v-model="mountForm.zfsPoolName" placeholder="mypool" />
-        </el-form-item>
-        <el-form-item :label="$t('storageFilesystems.mountDialog.options')" v-if="mountForm.fsType !== 'zfs'">
-          <el-input v-model="mountForm.options" placeholder="defaults,nofail" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="mountDialogVisible = false">
-          {{ $t('common.cancel') }}
-        </el-button>
-        <el-button type="primary" @click="mountDevice" :loading="mountLoading">
-          {{ $t('storageFilesystems.mountDialog.mount') }}
-        </el-button>
-      </template>
-    </el-dialog>
+  <el-dialog v-model="mountDialogVisible" :title="$t('storageFilesystems.mountDialog.title')" width="500px">
+    <el-form :model="mountForm" label-position="top">
+    <el-form-item :label="$t('storageFilesystems.mountDialog.device')">
+      <el-select v-model="mountForm.device" :placeholder="$t('storageFilesystems.mountDialog.selectDevice')" 
+        @change="onDeviceSelected" style="width: 100%">
+        
+        <el-option-group label="Disks">
+          <el-option
+            v-for="device in allAvailableDevices"
+            :key="device.path"
+            :label="getDeviceLabel(device)"
+            :value="device.path"
+          />
+        </el-option-group>
+        
+        <el-option-group label="Partitions">
+          <el-option
+            v-for="partition in allAvailablePartitions"
+            :key="partition.path"
+            :label="getDeviceLabel(partition)"
+            :value="partition.path"
+          />
+        </el-option-group>
+        
+      </el-select>
+    </el-form-item>
+      
+      <el-form-item v-if="selectedDeviceInfo" label="Detected Information">
+        <div class="device-info">
+          <p><strong>Filesystem:</strong> {{ selectedDeviceInfo.fsType || 'Unknown' }}</p>
+          <p><strong>Size:</strong> {{ formatBytes(selectedDeviceInfo.size) }}</p>
+          <p><strong>Label:</strong> {{ selectedDeviceInfo.label || 'None' }}</p>
+          <p v-if="selectedDeviceInfo.isRaid" class="raid-indicator">RAID Device</p>
+          <p v-if="selectedDeviceInfo.isZfs" class="zfs-indicator">ZFS Pool</p>
+        </div>
+      </el-form-item>
+
+      <el-form-item :label="$t('storageFilesystems.mountDialog.mountPoint')" 
+        v-if="!selectedDeviceInfo?.isZfs">
+        <el-input v-model="mountForm.mountPoint" :placeholder="getDefaultMountPoint()" />
+      </el-form-item>
+      
+      <el-form-item :label="$t('storageFilesystems.mountDialog.fsType')" 
+        v-if="!selectedDeviceInfo?.fsType && !selectedDeviceInfo?.isZfs">
+        <el-select v-model="mountForm.fsType" :placeholder="$t('storageFilesystems.mountDialog.selectFsType')" style="width: 100%">
+          <el-option label="Auto Detect" value="auto" />
+          <el-option
+            v-for="fs in supportedFilesystems"
+            :key="fs"
+            :label="fs"
+            :value="fs.toLowerCase()"
+          />
+        </el-select>
+      </el-form-item>
+      
+      <el-form-item 
+        v-if="selectedDeviceInfo?.isZfs"
+        :label="$t('storageFilesystems.mountDialog.zfsPoolName')"
+      >
+        <el-input v-model="mountForm.zfsPoolName" :placeholder="selectedDeviceInfo.label || 'zpool'" />
+      </el-form-item>
+      
+      <el-form-item :label="$t('storageFilesystems.mountDialog.options')" 
+        v-if="!selectedDeviceInfo?.isZfs">
+        <el-input v-model="mountForm.options" placeholder="defaults,nofail" />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="mountDialogVisible = false">
+        {{ $t('common.cancel') }}
+      </el-button>
+      <el-button type="primary" @click="mountDevice" :loading="mountLoading">
+        {{ $t('storageFilesystems.mountDialog.mount') }}
+      </el-button>
+    </template>
+  </el-dialog>
     
     <el-dialog 
   v-model="fstabDialogVisible" 
@@ -166,22 +192,29 @@
     <!-- Format Dialog -->
     <el-dialog v-model="formatDialogVisible" :title="$t('storageFilesystems.formatDialog.title')" width="500px">
       <el-form :model="formatForm" label-position="top">
-        <el-form-item :label="$t('storageFilesystems.formatDialog.device')">
-          <el-select v-model="formatForm.device" :placeholder="$t('storageFilesystems.formatDialog.selectDevice')" style="width: 100%">
-            <el-option
-              v-for="partition in unmountedPartitions"
-              :key="partition.path"
-              :label="`${partition.path} (${partition.model || 'Unknown'}) ${partition.fstype ? `[${partition.fstype}]` : ''}`"
-              :value="partition.path"
-            />
-            <el-option
-              v-for="device in unmountedDevices"
-              :key="device.path"
-              :label="`${device.path} (${device.model || 'Unknown'})`"
-              :value="device.path"
-            />
-          </el-select>
-        </el-form-item>
+<el-form-item :label="$t('storageFilesystems.formatDialog.device')">
+      <el-select v-model="formatForm.device" :placeholder="$t('storageFilesystems.formatDialog.selectDevice')" style="width: 100%">
+        <!-- Pokaż wszystkie partycje -->
+        <el-option-group label="Partitions">
+          <el-option
+            v-for="partition in allAvailablePartitions"
+            :key="partition.path"
+            :label="`${partition.path} (${partition.model || 'Unknown'}) ${partition.fstype ? `[${partition.fstype}]` : ''} ${formatBytes(partition.size)}`"
+            :value="partition.path"
+          />
+        </el-option-group>
+        
+        <!-- Pokaż wszystkie dyski -->
+        <el-option-group label="Disks">
+          <el-option
+            v-for="device in allAvailableDevices"
+            :key="device.path"
+            :label="`${device.path} (${device.model || 'Unknown'}) ${formatBytes(device.size)}`"
+            :value="device.path"
+          />
+        </el-option-group>
+      </el-select>
+    </el-form-item>
         <el-form-item :label="$t('storageFilesystems.formatDialog.fsType')">
           <el-select v-model="formatForm.fsType" :placeholder="$t('storageFilesystems.formatDialog.selectFsType')" style="width: 100%">
             <el-option
@@ -235,15 +268,24 @@
       </template>
     </el-dialog>
 
-    <el-table :data="filesystems" style="width: 100%" v-loading="loading">
-      <el-table-column :label="$t('storageFilesystems.device')" prop="device" width="120">
-        <template #default="{ row }">
-          <div class="device-cell">
-            <Icon :icon="getDeviceIcon(row.device)" width="18" height="18" />
-            <span>{{ row.device }}</span>
-          </div>
-        </template>
-      </el-table-column>
+<div class="table-container" :style="{ flex: '1', overflow: 'auto' }">
+<el-table 
+  :data="filesystems" 
+  style="width: 100%" 
+  v-loading="loading"
+  :max-height="tableHeight"
+  empty-text="No filesystems found"
+  size="small"
+  stripe
+>
+  <el-table-column :label="$t('storageFilesystems.device')" prop="device" width="120" fixed>
+    <template #default="{ row }">
+      <div class="device-cell">
+        <Icon :icon="getDeviceIcon(row.device)" width="16" height="16" />
+        <span>{{ row.device }}</span>
+      </div>
+    </template>
+  </el-table-column>
       
       <el-table-column :label="$t('storageFilesystems.tags')" prop="tags" width="100">
         <template #default="{ row }">
@@ -336,6 +378,7 @@
         </template>
       </el-table-column>
     </el-table>
+     </div>
 
     <div v-if="error" class="error-message">
       <Icon icon="mdi:alert-circle" width="18" height="18" />
@@ -512,6 +555,117 @@
       </el-button>
     </template>
   </el-dialog>
+  
+    <!-- Debug Dialog -->
+  <el-dialog 
+    v-model="debugDialogVisible" 
+    title="Debug Urządzeń" 
+    width="90%"
+    :fullscreen="isMobile"
+  >
+    <el-tabs type="border-card">
+      <!-- Zakładka: Wszystkie Urządzenia -->
+      <el-tab-pane label="Wszystkie Urządzenia">
+        <el-table 
+          :data="debugData.allDevices" 
+          stripe 
+          border
+          height="400"
+        >
+          <el-table-column prop="path" label="Ścieżka" width="150" />
+          <el-table-column prop="model" label="Model" width="120" />
+          <el-table-column prop="type" label="Typ" width="80" />
+          <el-table-column prop="fstype" label="System Plików" width="100" />
+          <el-table-column prop="mountpoint" label="Mount Point" width="200" />
+          <el-table-column prop="size" label="Rozmiar" width="100">
+            <template #default="{ row }">
+              {{ formatBytes(row.size) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="Status" width="100">
+            <template #default="{ row }">
+              <el-tag 
+                :type="isOverlayDevice(row) ? 'danger' : 'success'"
+                size="small"
+              >
+                {{ isOverlayDevice(row) ? 'OVERLAY' : 'NORMAL' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div class="debug-summary">
+          <p><strong>Łącznie urządzeń:</strong> {{ debugData.allDevices.length }}</p>
+        </div>
+      </el-tab-pane>
+
+      <!-- Zakładka: Filtrowane Urządzenia -->
+      <el-tab-pane label="Filtrowane (Pokazywane)">
+        <el-table 
+          :data="debugData.filteredDevices" 
+          stripe 
+          border
+          height="400"
+        >
+          <el-table-column prop="path" label="Ścieżka" width="150" />
+          <el-table-column prop="model" label="Model" width="120" />
+          <el-table-column prop="type" label="Typ" width="80" />
+          <el-table-column prop="fstype" label="System Plików" width="100" />
+          <el-table-column prop="mountpoint" label="Mount Point" width="200" />
+          <el-table-column prop="size" label="Rozmiar" width="100">
+            <template #default="{ row }">
+              {{ formatBytes(row.size) }}
+            </template>
+          </el-table-column>
+        </el-table>
+        <div class="debug-summary">
+          <p><strong>Pokazywane urządzenia:</strong> {{ debugData.filteredDevices.length }}</p>
+        </div>
+      </el-tab-pane>
+
+      <!-- Zakładka: Ukryte Overlay -->
+      <el-tab-pane label="Ukryte Overlay">
+        <el-table 
+          :data="debugData.overlayDevices" 
+          stripe 
+          border
+          height="400"
+        >
+          <el-table-column prop="path" label="Ścieżka" width="150" />
+          <el-table-column prop="model" label="Model" width="120" />
+          <el-table-column prop="type" label="Typ" width="80" />
+          <el-table-column prop="fstype" label="System Plików" width="100" />
+          <el-table-column prop="mountpoint" label="Mount Point" width="200" />
+          <el-table-column prop="size" label="Rozmiar" width="100">
+            <template #default="{ row }">
+              {{ formatBytes(row.size) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="Powód ukrycia" width="150">
+            <template #default="{ row }">
+              <el-tag type="danger" size="small">
+                {{ getOverlayReason(row) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div class="debug-summary">
+          <p><strong>Ukryte urządzenia overlay:</strong> {{ debugData.overlayDevices.length }}</p>
+        </div>
+      </el-tab-pane>
+    </el-tabs>
+
+    <template #footer>
+      <el-button @click="debugDialogVisible = false">
+        Zamknij
+      </el-button>
+      <el-button type="primary" @click="copyDebugData">
+        Kopiuj dane JSON
+      </el-button>
+      <el-button type="warning" @click="exportDebugData">
+        Eksportuj do pliku
+      </el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script>
@@ -583,6 +737,172 @@ const totalDiskSize = ref(0);
 const usedDiskSpace = ref(0);
 const diskUsagePercentage = ref(0);
 
+const debugDialogVisible = ref(false);
+const debugData = ref({
+  allDevices: [],
+  filteredDevices: [],
+  overlayDevices: []
+});
+
+// Funkcje pomocnicze dla debug dialog
+const isMobile = computed(() => window.innerWidth < 768);
+
+const isOverlayDevice = (device) => {
+  const devicePath = device.path.toLowerCase();
+  const deviceModel = (device.model || '').toLowerCase();
+  const deviceMount = (device.mountpoint || '').toLowerCase();
+  const deviceFsType = (device.fstype || '').toLowerCase();
+
+  const overlayPatterns = ['overlay', 'docker', 'containerd'];
+  return overlayPatterns.some(pattern => 
+    devicePath.includes(pattern) ||
+    deviceModel.includes(pattern) ||
+    deviceMount.includes(pattern) ||
+    deviceFsType.includes(pattern)
+  );
+};
+
+const getOverlayReason = (device) => {
+  const reasons = [];
+  const devicePath = device.path.toLowerCase();
+  const deviceModel = (device.model || '').toLowerCase();
+  const deviceMount = (device.mountpoint || '').toLowerCase();
+  const deviceFsType = (device.fstype || '').toLowerCase();
+
+  if (devicePath.includes('overlay')) reasons.push('Ścieżka zawiera overlay');
+  if (devicePath.includes('docker')) reasons.push('Ścieżka zawiera docker');
+  if (deviceModel.includes('overlay')) reasons.push('Model zawiera overlay');
+  if (deviceModel.includes('docker')) reasons.push('Model zawiera docker');
+  if (deviceMount.includes('overlay')) reasons.push('Mount point zawiera overlay');
+  if (deviceMount.includes('docker')) reasons.push('Mount point zawiera docker');
+  if (deviceFsType.includes('overlay')) reasons.push('FS type zawiera overlay');
+
+  return reasons.length > 0 ? reasons.join(', ') : 'Inny powód';
+};
+
+const copyDebugData = async () => {
+  try {
+    const text = JSON.stringify(debugData.value, null, 2);
+    await navigator.clipboard.writeText(text);
+    ElNotification({
+      title: 'Sukces',
+      message: 'Dane debugowe skopiowane do schowka',
+      type: 'success'
+    });
+  } catch (error) {
+    ElNotification({
+      title: 'Błąd',
+      message: 'Nie udało się skopiować danych',
+      type: 'error'
+    });
+  }
+};
+
+const exportDebugData = () => {
+  const dataStr = JSON.stringify(debugData.value, null, 2);
+  const dataUri = `data:application/json;charset=utf-8,${encodeURIComponent(dataStr)}`;
+  
+  const exportFileDefaultName = `storage-debug-${new Date().toISOString().slice(0, 10)}.json`;
+  
+  const linkElement = document.createElement('a');
+  linkElement.setAttribute('href', dataUri);
+  linkElement.setAttribute('download', exportFileDefaultName);
+  linkElement.click();
+};
+
+const mountableDevices = computed(() => {
+  // Pokaż wszystkie urządzenia i partycje, które nie są zamontowane
+  const mountedPaths = filesystems.value.map(fs => fs.device);
+  
+  const devices = allDevices.value.filter(device => 
+    !mountedPaths.includes(device.path) && 
+    device.type === 'disk'
+  );
+  
+  const partitions = allDevices.value.flatMap(device => 
+    (device.partitions || [])
+      .filter(part => !mountedPaths.includes(part.path))
+      .map(part => ({
+        ...part,
+        model: device.model || 'Unknown'
+      }))
+  );
+
+  // Filtruj TYLKO overlay
+  return [...devices, ...partitions].filter(device => {
+    const isOverlay = device.path.toLowerCase().includes('overlay') || 
+                     device.path.toLowerCase().includes('docker') ||
+                     (device.mountpoint || '').toLowerCase().includes('docker') ||
+                     (device.fstype || '').toLowerCase().includes('overlay');
+    return !isOverlay;
+  });
+});
+
+const selectedDeviceInfo = ref(null);
+
+const tableHeight = computed(() => {
+  return window.innerHeight - 200; // Dynamiczna wysokość
+});
+
+const handleResize = () => {
+  // Wymusza przeliczenie wysokości
+};
+
+const onDeviceSelected = async (devicePath) => {
+  const device = mountableDevices.value.find(d => d.path === devicePath);
+  if (!device) return;
+
+  selectedDeviceInfo.value = {
+    path: device.path,
+    fsType: device.fstype,
+    size: device.size,
+    label: device.label,
+    isRaid: device.path.includes('/dev/md'),
+    isZfs: device.fstype === 'zfs' || device.path.includes('zfs')
+  };
+
+  // Automatycznie ustaw mount point
+  if (!selectedDeviceInfo.value.isZfs) {
+    mountForm.value.mountPoint = getDefaultMountPoint();
+  }
+
+  // Automatycznie ustaw typ FS jeśli wykryty
+  if (selectedDeviceInfo.value.fsType) {
+    mountForm.value.fsType = selectedDeviceInfo.value.fsType;
+  } else if (selectedDeviceInfo.value.isZfs) {
+    mountForm.value.fsType = 'zfs';
+  }
+};
+
+const getDefaultMountPoint = () => {
+  const device = selectedDeviceInfo.value;
+  if (!device) return '/mnt/new_disk';
+  
+  let baseName = device.path.split('/').pop();
+  if (device.label) {
+    baseName = device.label.toLowerCase().replace(/\s+/g, '_');
+  }
+  
+  return `/mnt/${baseName}`;
+};
+
+const getDeviceLabel = (device) => {
+  let label = `${device.path}`;
+  if (device.model && device.model !== 'Unknown') {
+    label += ` (${device.model})`;
+  }
+  if (device.fstype) {
+    label += ` [${device.fstype.toUpperCase()}]`;
+  }
+  if (device.label) {
+    label += ` - ${device.label}`;
+  }
+  if (device.size) {
+    label += ` - ${formatBytes(device.size)}`;
+  }
+  return label;
+};
+
 // Nowe zmienne dla RAID
 const raidDialogVisible = ref(false);
 const raidLoading = ref(false);
@@ -634,30 +954,97 @@ const formatableDevices = computed(() => {
 // Computed properties
 const unmountedDevices = computed(() => {
   const mountedPaths = filesystems.value.map(fs => fs.device);
-  return allDevices.value.filter(device => 
+  const devices = allDevices.value.filter(device => 
     !mountedPaths.includes(device.path) && 
-    !device.path.includes('loop') &&
-    !device.path.includes('ram') &&
-    device.type === 'disk' &&
-    !isSystemDisk(device.path) // Exclude system disks
+    device.type === 'disk'
   );
+  return filterSystemDevices(devices);
 });
 
 const unmountedPartitions = computed(() => {
   const mountedPaths = filesystems.value.map(fs => fs.device);
-  return allDevices.value.flatMap(device => 
+  const partitions = allDevices.value.flatMap(device => 
     (device.partitions || [])
-      .filter(part => 
-        !mountedPaths.includes(part.path) &&
-        !part.path.includes('loop') &&
-        !part.path.includes('ram')
-      )
+      .filter(part => !mountedPaths.includes(part.path))
       .map(part => ({
         ...part,
-        model: device.model || 'Unknown'
+        model: device.model || 'Unknown',
+        size: part.size ? parseInt(part.size) : 0
+      }))
+  );
+  return filterSystemDevices(partitions);
+});
+
+const allAvailableDevices = computed(() => {
+  return allDevices.value.filter(device => 
+    device.type === 'disk' && 
+    !device.path.includes('loop')
+  );
+});
+
+const allAvailablePartitions = computed(() => {
+  return allDevices.value.flatMap(device => 
+    (device.partitions || [])
+      .map(part => ({
+        ...part,
+        model: device.model || 'Unknown',
+        size: part.size ? parseInt(part.size) : 0
       }))
   );
 });
+
+const debugDevices = async () => {
+  try {
+    debugDialogVisible.value = true;
+    
+    // Pobierz wszystkie urządzenia (bez filtrowania)
+    const response = await axios.get('/api/storage/debug-devices');
+    const allDevices = response.data.data || [];
+    
+    // Przekształć do formatu podobnego jak w naszej aplikacji
+    const formattedDevices = allDevices.map(dev => ({
+      path: `/dev/${dev.name}`,
+      model: dev.model || 'Unknown',
+      mountpoint: dev.mountpoint || '',
+      fstype: dev.fstype || '',
+      size: dev.size ? parseInt(dev.size) : 0,
+      type: dev.type || 'disk'
+    }));
+
+    // Filtruj overlay devices
+    const overlayDevices = formattedDevices.filter(device => {
+      const devicePath = device.path.toLowerCase();
+      const deviceModel = (device.model || '').toLowerCase();
+      const deviceMount = (device.mountpoint || '').toLowerCase();
+      const deviceFsType = (device.fstype || '').toLowerCase();
+
+      const overlayPatterns = ['overlay', 'docker', 'containerd'];
+      return overlayPatterns.some(pattern => 
+        devicePath.includes(pattern) ||
+        deviceModel.includes(pattern) ||
+        deviceMount.includes(pattern) ||
+        deviceFsType.includes(pattern)
+      );
+    });
+
+    // Filtruj normalne urządzenia
+    const filteredDevices = filterSystemDevices(formattedDevices);
+
+    debugData.value = {
+      allDevices: formattedDevices,
+      filteredDevices: filteredDevices,
+      overlayDevices: overlayDevices
+    };
+
+  } catch (error) {
+    ElNotification({
+      title: 'Błąd debugowania',
+      message: 'Nie udało się pobrać danych debugowych',
+      type: 'error'
+    });
+    console.error('Debug error:', error);
+  }
+};
 
 // Helper function to identify system disks
 function isSystemDisk(devicePath) {
@@ -737,29 +1124,29 @@ const openFstabEditor = async () => {
 // Methods
 const showMountDialog = async () => {
   try {
-    loading.value = true
-    await fetchDevices()
-    mountDialogVisible.value = true
+    loading.value = true;
+    await fetchDevices();
+    mountDialogVisible.value = true;
   } catch (err) {
-    error.value = t('storageFilesystems.errorLoadingDevices')
-    console.error('Error loading devices:', err)
+    error.value = t('storageFilesystems.errorLoadingDevices');
+    console.error('Error loading devices:', err);
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
 
 const showFormatDialog = async () => {
   try {
-    loading.value = true
-    await fetchDevices()
-    formatDialogVisible.value = true
+    loading.value = true;
+    await fetchDevices();
+    formatDialogVisible.value = true;
   } catch (err) {
-    error.value = t('storageFilesystems.errorLoadingDevices')
-    console.error('Error loading devices:', err)
+    error.value = t('storageFilesystems.errorLoadingDevices');
+    console.error('Error loading devices:', err);
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
 
 const checkFstabEntry = async (device, mountPoint) => {
   try {
@@ -818,62 +1205,29 @@ const mountDevice = async () => {
     mountLoading.value = true;
     error.value = null;
     
-    const deviceToMount = mountForm.value.partition || mountForm.value.device;
-    const isZfs = mountForm.value.fsType === 'zfs';
-    
-    const mountPoint = isZfs && !mountForm.value.mountPoint ? 
-      mountForm.value.zfsPoolName || 'zpool' : 
-      mountForm.value.mountPoint;
+    const deviceInfo = selectedDeviceInfo.value;
+    if (!deviceInfo) throw new Error('No device selected');
 
-    // For non-ZFS, ask about fstab
-    let addToFstab = false;
-    if (!isZfs) {
-      try {
-        await ElMessageBox.confirm(
-          'Czy dodać to montowanie do /etc/fstab dla automatycznego montowania przy starcie systemu?',
-          'Dodawanie do fstab',
-          {
-            confirmButtonText: 'Tak, dodaj do fstab',
-            cancelButtonText: 'Nie',
-            type: 'info'
-          }
-        );
-        addToFstab = true;
-      } catch {
-        // User canceled
-      }
+    // Dla ZFS użyj automatycznie wykrytej nazwy puli
+    if (deviceInfo.isZfs) {
+      mountForm.value.zfsPoolName = mountForm.value.zfsPoolName || deviceInfo.label || 'zpool';
     }
 
-    await fetchDevices();
-
     const response = await axios.post('/api/storage/mount', {
-      device: deviceToMount,
-      mountPoint: mountPoint,
+      device: mountForm.value.device,
+      mountPoint: mountForm.value.mountPoint,
       fsType: mountForm.value.fsType,
       options: mountForm.value.options,
       zfsPoolName: mountForm.value.zfsPoolName
     });
 
     if (response.data.success) {
-      // If user wanted to add to fstab but it wasn't added automatically (e.g., already exists)
-      if (addToFstab && !response.data.addedToFstab && !isZfs) {
-        await toggleFstabEntry(
-          deviceToMount,
-          mountPoint,
-          mountForm.value.fsType,
-          mountForm.value.options,
-          true
-        );
-      }
-
       ElNotification({
         title: 'Success',
-        message: response.data.isZfs ? 
-          `ZFS pool ${mountForm.value.zfsPoolName || 'zpool'} mounted successfully` : 
-          'Device mounted successfully',
+        message: response.data.message,
         type: 'success'
       });
-      mountDialogVisible.value = false;
+      mountDialogVisible = false;
       await refreshFilesystems();
     }
   } catch (err) {
@@ -887,7 +1241,7 @@ const mountDevice = async () => {
   } finally {
     mountLoading.value = false;
   }
-}
+};
 
 const formatDevice = async () => {
   try {
@@ -1584,6 +1938,30 @@ const createRaid = async () => {
   }
 };
 
+const filterSystemDevices = (devices) => {
+  const overlayPatterns = ['overlay', 'docker', 'containerd'];
+
+  return devices.filter(device => {
+    const devicePath = device.path.toLowerCase();
+    const deviceModel = (device.model || '').toLowerCase();
+    const deviceMount = (device.mountpoint || '').toLowerCase();
+    const deviceFsType = (device.fstype || '').toLowerCase();
+
+    // Sprawdź czy urządzenie jest overlay/docker
+    const isOverlay = overlayPatterns.some(pattern => 
+      devicePath.includes(pattern) ||
+      deviceModel.includes(pattern) ||
+      deviceMount.includes(pattern) ||
+      deviceFsType.includes(pattern)
+    );
+
+    // NIE filtruj małych urządzeń, wirtualnych, ani systemowych mount points
+    // To mogą być prawdziwe dyski użytkownika!
+    return !isOverlay;
+  });
+};
+
+
 
 // Aktualizujemy watch na zmianę urządzenia
 watch(() => partitionForm.value.device, (newVal) => {
@@ -1602,12 +1980,14 @@ watch(() => partitionForm.value.partitions, () => {
 }, { deep: true });
 
 onMounted(() => {
-  refreshFilesystems()
-  fetchDevices()  // Fixed typo here
+  refreshFilesystems();
+  fetchDevices();
   loadFstabEntries();
+  window.addEventListener('resize', handleResize);
 });
 
 onUnmounted(() => {
+  window.removeEventListener('resize', handleResize);
   abortController.value.abort();
 });
 </script>
@@ -1657,6 +2037,14 @@ onUnmounted(() => {
 
 .filesystems-widget {
   height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.table-container {
+  flex: 1;
+  overflow: auto;
+  min-height: 300px;
 }
 
 .widget-header {
@@ -1735,7 +2123,155 @@ onUnmounted(() => {
   margin-bottom: 20px;
 }
 
+.device-info {
+  padding: 10px;
+  background-color: var(--el-fill-color-light);
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.device-info p {
+  margin: 5px 0;
+}
+
+.raid-indicator {
+  color: var(--el-color-warning);
+  font-weight: bold;
+}
+
+.zfs-indicator {
+  color: var(--el-color-primary);
+  font-weight: bold;
+}
+
 .raid-info p {
   margin: 5px 0;
+}
+
+/* Zapewnia że tabela się rozciąga */
+:deep(.el-table) {
+  flex: 1;
+}
+
+:deep(.el-table__body-wrapper) {
+  overflow-x: hidden;
+}
+
+/* Responsywność dla małych ekranów */
+@media (max-width: 1200px) {
+  .widget-header {
+    flex-wrap: wrap;
+  }
+  
+  .header-actions {
+    margin-top: 10px;
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+/* Lepsze wyświetlanie na mobilnych */
+@media (max-width: 768px) {
+  :deep(.el-table td) {
+    padding: 4px 8px;
+  }
+  
+  :deep(.el-table .cell) {
+    font-size: 12px;
+  }
+}
+
+/* Poprawki dla małych ekranów - ukryj mniej ważne kolumny */
+@media (max-width: 992px) {
+  :deep(.el-table th:nth-child(2)), /* Tags */
+  :deep(.el-table td:nth-child(2)),
+  :deep(.el-table th:nth-child(7)), /* Reference */
+  :deep(.el-table td:nth-child(7)) {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  :deep(.el-table th:nth-child(3)), /* Type */
+  :deep(.el-table td:nth-child(3)),
+  :deep(.el-table th:nth-child(8)), /* Status */
+  :deep(.el-table td:nth-child(8)) {
+    display: none;
+  }
+}
+
+/* Lepsze wyświetlanie progresu użycia */
+:deep(.el-progress) {
+  min-width: 100px;
+}
+
+/* Poprawki dla urządzeń mobilnych */
+.device-cell, .mount-cell, .size-cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Lepsze wyświetlanie przycisków akcji */
+:deep(.el-table__row .el-button) {
+  margin: 2px;
+  padding: 6px;
+}
+
+/* Zapewnia że dialogi są responsywne */
+:deep(.el-dialog) {
+  max-width: 95vw;
+}
+
+@media (max-width: 768px) {
+  :deep(.el-dialog) {
+    width: 90vw !important;
+    margin: 20px auto;
+  }
+}
+
+/* Poprawki dla listy partycji w dialogu */
+.partition-item {
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.partition-item > * {
+  flex: 1;
+  min-width: 120px;
+}
+
+/* Lepsze wyświetlanie informacji o urządzeniu */
+.device-info {
+  font-size: 0.8em;
+  line-height: 1.4;
+}
+
+.device-info p {
+  margin: 3px 0;
+}
+
+.debug-summary {
+  margin-top: 15px;
+  padding: 10px;
+  background-color: var(--el-fill-color-light);
+  border-radius: 4px;
+}
+
+.debug-summary p {
+  margin: 5px 0;
+  font-size: 0.9em;
+}
+
+:deep(.el-tabs__content) {
+  padding: 0;
+}
+
+:deep(.el-table) {
+  font-size: 0.8em;
+}
+
+:deep(.el-table .cell) {
+  padding: 4px 8px;
 }
 </style>

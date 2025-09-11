@@ -69,6 +69,33 @@
         
         <el-table-column prop="address" :label="$t('network.interfaces.address')" />
         <el-table-column prop="netmask" :label="$t('network.interfaces.netmask')" />
+        
+        <!-- NOWA KOLUMNA: Prędkość i duplex -->
+        <el-table-column :label="$t('network.interfaces.speed')" width="120">
+  <template #default="{ row }">
+    <el-tooltip 
+      v-if="row.speed !== 'unknown'" 
+      :content="`${row.speed} ${row.duplex} duplex`"
+      placement="top"
+    >
+      <div class="speed-info">
+        <div class="speed-value">{{ row.speed }}</div>
+        <div class="duplex-tag">
+          <el-tag 
+            :type="row.duplex === 'full' ? 'success' : 'warning'" 
+            size="mini"
+          >
+            {{ row.duplex }}
+          </el-tag>
+        </div>
+      </div>
+    </el-tooltip>
+    <div v-else class="unknown-speed">
+      <el-tag type="info" size="small">N/A</el-tag>
+    </div>
+  </template>
+        </el-table-column>
+        
         <el-table-column prop="status" :label="$t('network.interfaces.status')">
           <template #default="{ row }">
             <el-tag :type="row.status === 'up' ? 'success' : 'danger'" size="small">
@@ -312,6 +339,49 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.speed-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.speed-value {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--el-color-primary);
+}
+
+.duplex-tag {
+  margin-top: 2px;
+}
+
+.unknown-speed {
+  text-align: center;
+}
+
+/* Responsywność dla mniejszych ekranów */
+@media (max-width: 1200px) {
+  :deep(.el-table th:nth-child(4)), /* Netmask */
+  :deep(.el-table td:nth-child(4)) {
+    display: none;
+  }
+}
+
+@media (max-width: 992px) {
+  :deep(.el-table th:nth-child(3)), /* Address */
+  :deep(.el-table td:nth-child(3)) {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  :deep(.el-table th:nth-child(2)), /* Method */
+  :deep(.el-table td:nth-child(2)) {
+    display: none;
+  }
 }
 
 :deep(.el-table .cell) {
