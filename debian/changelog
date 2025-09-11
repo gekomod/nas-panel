@@ -1,3 +1,10 @@
+nas-panel (1.1.0) unstable; urgency=medium
+
+  * Fix Filesystems Lists
+  * Fix Interfaces
+
+ -- gekomod <zaba141@o2.pl>  Sat, 11 Aug 2025 23:19:24 +0200
+
 nas-panel (1.0.9) unstable; urgency=medium
 
   * Fix Power Manager
