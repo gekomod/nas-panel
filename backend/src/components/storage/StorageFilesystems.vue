@@ -701,7 +701,7 @@ const fstabLoading = ref(false);
 const fstabEntries = ref([]);
 
 // Mount dialog
-const mountDialogVisible = ref(false)
+const mountDialogVisible = ref()
 const mountLoading = ref(false)
 const mountForm = ref({
   device: '',

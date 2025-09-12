@@ -42,8 +42,213 @@ function validateNetmask(mask) {
   return !isNaN(maskNum) && maskNum >= 0 && maskNum <= 32;
 }
 
+// Sprawdzanie czy Docker jest zainstalowany
+const checkDocker = async () => {
+  try {
+    await execAsync('which docker');
+    return { installed: true, error: null };
+  } catch (error) {
+    return { installed: false, error: 'Docker nie jest zainstalowany' };
+  }
+};
+
+// Sprawdzanie statusu Dockera
+const checkDockerStatus = async () => {
+  try {
+    const { stdout } = await execAsync('sudo systemctl is-active docker');
+    return { status: stdout.trim(), running: stdout.trim() === 'active' };
+  } catch (error) {
+    return { status: 'inactive', running: false, error: error.message };
+  }
+};
+
+// Sprawdzanie czy ufw-docker jest zainstalowany
+const checkUfwDocker = async () => {
+  try {
+    await execAsync('which ufw-docker');
+    return { installed: true, error: null };
+  } catch (error) {
+    return { installed: false, error: 'ufw-docker nie jest zainstalowany' };
+  }
+};
+
+// Instalacja ufw-docker
+const installUfwDocker = async () => {
+  try {
+    // Pobierz ufw-docker
+    await execAsync('sudo wget -O /usr/local/bin/ufw-docker https://github.com/chaifeng/ufw-docker/raw/master/ufw-docker');
+    
+    // Nadaj uprawnienia wykonania
+    await execAsync('sudo chmod +x /usr/local/bin/ufw-docker');
+    
+    // Zainstaluj
+    await execAsync('sudo ufw-docker install');
+    
+    return { success: true, message: 'ufw-docker zainstalowany pomyślnie' };
+  } catch (error) {
+    return { 
+      success: false, 
+      error: 'Błąd instalacji ufw-docker', 
+      details: error.message 
+    };
+  }
+};
+
+// Pobierz uruchomione kontenery Docker
+const getDockerContainers = async () => {
+  try {
+    const { stdout } = await execAsync('sudo docker ps --format "{{.Names}}|{{.Image}}|{{.Ports}}"');
+    
+    const containers = stdout.trim().split('\n')
+      .filter(line => line.trim())
+      .map(line => {
+        const [name, image, ports] = line.split('|');
+        return {
+          name,
+          image,
+          ports: ports.split(',').map(p => p.trim()).filter(p => p),
+          exposedPorts: extractPorts(ports)
+        };
+      });
+    
+    return { success: true, containers };
+  } catch (error) {
+    return { success: false, error: error.message, containers: [] };
+  }
+};
+
+// Funkcja pomocnicza do ekstrakcji portów
+const extractPorts = (portsString) => {
+  const ports = [];
+  const portRegex = /(\d+)\/tcp/g;
+  let match;
+  
+  while ((match = portRegex.exec(portsString)) !== null) {
+    ports.push(parseInt(match[1]));
+  }
+  
+  return ports;
+};
+
+// Dodaj regułę UFW dla kontenera Docker
+const addUfwDockerRule = async (containerName, port, protocol = 'tcp') => {
+  try {
+    const { stdout } = await execAsync(`sudo ufw-docker allow ${containerName} ${port}/${protocol}`);
+    
+    return { 
+      success: true, 
+      message: `Reguła dodana dla kontenera ${containerName} na porcie ${port}/${protocol}`,
+      output: stdout 
+    };
+  } catch (error) {
+    return { 
+      success: false, 
+      error: `Błąd dodawania reguły dla ${containerName}`,
+      details: error.message 
+    };
+  }
+};
+
+// Pobierz istniejące reguły UFW dla Docker
+const getUfwDockerRules = async () => {
+  try {
+    // Pobierz wszystkie reguły UFW i filtruj te związane z Dockerem
+    const { stdout } = await execAsync('sudo ufw status numbered');
+    
+    const rules = stdout.trim().split('\n')
+      .filter(line => line.trim())
+      .map((line, index) => {
+        // Szukaj reguł związanych z Dockerem
+        if (line.toLowerCase().includes('docker') || 
+            line.includes('ufw-docker') ||
+            line.match(/172\.17\.|172\.18\.|172\.19\.|172\.2[0-9]\.|172\.3[0-1]\./)) {
+          
+          const match = line.match(/\[(\s*\d+\s*)\]\s+(.*?)\s+(ALLOW|DENY|ALLOW IN|DENY IN)\s+(.*?)(?:\s+#\s+(.*))?/i);
+          
+          if (match) {
+            return {
+              id: match[1].trim(),
+              target: match[2].trim(),
+              action: match[3].toLowerCase().replace(' in', ''),
+              direction: 'in', // UFW docker rules are usually inbound
+              port: extractPortFromTarget(match[2]),
+              protocol: extractProtocolFromTarget(match[2]),
+              comment: match[5] || 'docker rule',
+              source: 'ufw',
+              raw: line.trim()
+            };
+          }
+          
+          // Alternatywne parsowanie dla innych formatów
+          return {
+            id: index.toString(),
+            target: line.trim(),
+            action: 'allow',
+            direction: 'in',
+            port: 'unknown',
+            protocol: 'tcp',
+            comment: 'docker-related rule',
+            source: 'ufw',
+            raw: line.trim()
+          };
+        }
+        return null;
+      })
+      .filter(rule => rule !== null);
+
+    return { success: true, rules };
+  } catch (error) {
+    console.error('Error getting UFW Docker rules:', error);
+    return { success: false, error: error.message, rules: [] };
+  }
+};
+
+const extractPortFromTarget = (target) => {
+  const portMatch = target.match(/(\d+)(?:\/|$)/);
+  return portMatch ? portMatch[1] : 'any';
+};
+
+// Funkcja pomocnicza do ekstrakcji protokołu
+const extractProtocolFromTarget = (target) => {
+  const protocolMatch = target.match(/\/(tcp|udp)$/);
+  return protocolMatch ? protocolMatch[1] : 'tcp';
+};
+
 module.exports = function(app, requireAuth) {
   app.use(/^\/network(\/.*)?$/, checkNetworkTools);
+
+app.get('/network/docker/debug-rules', requireAuth, async (req, res) => {
+  try {
+    const commands = [
+      'sudo ufw status numbered',
+      'sudo ufw-docker list || echo "ufw-docker not available"',
+      'sudo iptables -L -n | grep -i docker || true',
+      'sudo iptables -t nat -L -n | grep -i docker || true'
+    ];
+
+    const results = {};
+    
+    for (const cmd of commands) {
+      try {
+        const { stdout } = await execAsync(cmd);
+        results[cmd] = stdout;
+      } catch (error) {
+        results[cmd] = `ERROR: ${error.message}`;
+      }
+    }
+
+    res.json({
+      success: true,
+      results
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false,
+      error: 'Debug failed',
+      details: error.message
+    });
+  }
+});
 
   // Pobierz listę interfejsów
 app.get('/network/interfaces', requireAuth, async (req, res) => {
@@ -607,46 +812,223 @@ app.post('/network/firewall/status/:action', requireAuth, async (req, res) => {
 // Lista reguł
 app.get('/network/firewall/rules', requireAuth, async (req, res) => {
   try {
-    const { stdout } = await execAsync('LANG=C sudo ufw status numbered | tail -n +3');
-    
-    const rules = stdout.split('\n')
-      .filter(line => line.trim().startsWith('[')) // Tylko linie z regułami
-      .map(line => {
-        // Przykładowa linia: [ 1] Anywhere                   ALLOW IN    80                         # test
-        const match = line.match(/\[(\s*\d+\s*)\]\s+([^\s]+)(?:\s+\(v6\))?\s+(\w+)\s+(\w+)\s+([^\s#]+)(?:\s+#\s+(.*))?/);
-        
-        if (!match) {
-          return null;
-        }
+    // Pobierz reguły UFW
+    const ufwRules = [];
+    try {
+      const { stdout: ufwStdout } = await execAsync('LANG=C sudo ufw status numbered | tail -n +3');
+      
+      ufwStdout.split('\n')
+        .filter(line => line.trim().startsWith('['))
+        .forEach(line => {
+          const match = line.match(/\[(\s*\d+\s*)\]\s+([^\s]+)(?:\s+\(v6\))?\s+(\w+)\s+(\w+)\s+([^\s#]+)(?:\s+#\s+(.*))?/);
+          
+          if (match) {
+            ufwRules.push({
+              id: match[1].trim(),
+              target: match[2],
+              action: match[3].toLowerCase(),
+              direction: match[4],
+              port: match[5].trim(),
+              comment: match[6] || '',
+              source: 'ufw'
+            });
+          }
+        });
+    } catch (ufwError) {
+      console.warn('UFW rules not available:', ufwError.message);
+    }
 
-        return {
-          id: match[1].trim(),
-          target: match[2], // Anywhere
-          action: match[3].toLowerCase(), // ALLOW → allow
-          direction: match[4], // IN/OUT
-          port: match[5].trim(), // 80
-          comment: match[6] || '' // test
-        };
-      })
-      .filter(rule => rule !== null);
+    // Pobierz reguły iptables
+    const iptablesRules = [];
+    try {
+      // INPUT chain
+      const { stdout: inputStdout } = await execAsync('sudo iptables -L INPUT -n --line-numbers -v');
+      parseIptablesChain(inputStdout, 'INPUT', iptablesRules);
+      
+      // OUTPUT chain
+      const { stdout: outputStdout } = await execAsync('sudo iptables -L OUTPUT -n --line-numbers -v');
+      parseIptablesChain(outputStdout, 'OUTPUT', iptablesRules);
+      
+      // FORWARD chain
+      const { stdout: forwardStdout } = await execAsync('sudo iptables -L FORWARD -n --line-numbers -v');
+      parseIptablesChain(forwardStdout, 'FORWARD', iptablesRules);
+
+    } catch (iptablesError) {
+      console.warn('iptables rules not available:', iptablesError.message);
+    }
 
     res.json({
       success: true,
-      data: rules
+      data: {
+        ufw: ufwRules,
+        iptables: iptablesRules,
+        all: [...ufwRules, ...iptablesRules]
+      },
+      counts: {
+        ufw: ufwRules.length,
+        iptables: iptablesRules.length,
+        total: ufwRules.length + iptablesRules.length
+      }
     });
 
   } catch (error) {
-    console.error('Error getting firewall rules:', {
-      error: error.message,
-      stdout: error.stdout,
-      stderr: error.stderr
-    });
-    
+    console.error('Error getting firewall rules:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to get firewall rules',
-      details: error.message,
-      rawOutput: error.stdout
+      details: error.message
+    });
+  }
+});
+
+// Funkcja pomocnicza do parsowania łańcuchów iptables
+function parseIptablesChain(output, chainName, rulesArray) {
+  const lines = output.split('\n');
+  let currentRule = null;
+
+  for (const line of lines) {
+    // Pomijaj puste linie i nagłówki
+    if (!line.trim() || line.startsWith('Chain') || line.startsWith('target')) {
+      continue;
+    }
+
+    // Główna linia z regułą
+    const ruleMatch = line.match(/^\s*(\d+)\s+(\w+)\s+(\w+)\s+(\w+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)(?:\s+(.*))?/);
+    
+    if (ruleMatch) {
+      currentRule = {
+        id: `${chainName}-${ruleMatch[1]}`,
+        num: ruleMatch[1],
+        chain: chainName,
+        target: ruleMatch[2],
+        protocol: ruleMatch[3],
+        opt: ruleMatch[4],
+        in: ruleMatch[5],
+        out: ruleMatch[6],
+        source: ruleMatch[7],
+        destination: ruleMatch[8],
+        options: ruleMatch[9] || '',
+        source_type: 'iptables',
+        packets: '0',
+        bytes: '0'
+      };
+      rulesArray.push(currentRule);
+    } 
+    // Linia z pakietami i bajtami
+    else if (currentRule && line.includes('pkts') && line.includes('bytes')) {
+      const statsMatch = line.match(/(\d+[KM]?)\s+(\d+[KM]?)/);
+      if (statsMatch) {
+        currentRule.packets = statsMatch[1];
+        currentRule.bytes = statsMatch[2];
+      }
+    }
+    // Dodatkowe opcje
+    else if (currentRule && line.trim()) {
+      currentRule.options += ' ' + line.trim();
+    }
+  }
+}
+
+// Dodatkowy endpoint tylko dla iptables
+app.get('/network/iptables/rules', requireAuth, async (req, res) => {
+  try {
+    const chains = ['INPUT', 'OUTPUT', 'FORWARD'];
+    const allRules = [];
+
+    for (const chain of chains) {
+      try {
+        const { stdout } = await execAsync(`sudo iptables -L ${chain} -n --line-numbers -v`);
+        parseIptablesChain(stdout, chain, allRules);
+      } catch (chainError) {
+        console.warn(`Failed to get ${chain} chain:`, chainError.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      data: allRules,
+      counts: {
+        input: allRules.filter(r => r.chain === 'INPUT').length,
+        output: allRules.filter(r => r.chain === 'OUTPUT').length,
+        forward: allRules.filter(r => r.chain === 'FORWARD').length,
+        total: allRules.length
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get iptables rules',
+      details: error.message
+    });
+  }
+});
+
+// Endpoint do dodawania reguł iptables
+app.post('/network/iptables/rules', requireAuth, async (req, res) => {
+  try {
+    const { chain, target, protocol, source, destination, dport, sport, comment } = req.body;
+
+    let command = 'sudo iptables';
+    
+    // Określ łańcuch
+    if (chain) command += ` -A ${chain.toUpperCase()}`;
+    
+    // Protokół
+    if (protocol && protocol !== 'all') command += ` -p ${protocol}`;
+    
+    // Źródło
+    if (source) command += ` -s ${source}`;
+    
+    // Cel
+    if (destination) command += ` -d ${destination}`;
+    
+    // Port docelowy
+    if (dport) command += ` --dport ${dport}`;
+    
+    // Port źródłowy
+    if (sport) command += ` --sport ${sport}`;
+    
+    // Akcja
+    command += ` -j ${target || 'ACCEPT'}`;
+    
+    // Komentarz (jako dodatkowe opcje)
+    if (comment) command += ` -m comment --comment "${comment}"`;
+
+    await execAsync(command);
+
+    res.json({
+      success: true,
+      message: 'iptables rule added successfully',
+      command: command
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to add iptables rule',
+      details: error.message
+    });
+  }
+});
+
+// Endpoint do usuwania reguł iptables
+app.delete('/network/iptables/rules/:chain/:number', requireAuth, async (req, res) => {
+  try {
+    const { chain, number } = req.params;
+    
+    await execAsync(`sudo iptables -D ${chain} ${number}`);
+
+    res.json({
+      success: true,
+      message: `Rule ${number} deleted from ${chain} chain`
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete iptables rule',
+      details: error.message
     });
   }
 });
@@ -738,5 +1120,82 @@ app.get('/network/firewall/stats', requireAuth, async (req, res) => {
   }
 })
 
+  // Docker status
+  app.get('/network/docker/status', requireAuth, async (req, res) => {
+    try {
+      const [dockerCheck, dockerStatus, ufwDockerCheck] = await Promise.all([
+        checkDocker(),
+        checkDockerStatus(),
+        checkUfwDocker()
+      ]);
+
+      res.json({
+        docker: {
+          installed: dockerCheck.installed,
+          status: dockerStatus.status,
+          running: dockerStatus.running
+        },
+        ufwDocker: {
+          installed: ufwDockerCheck.installed
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get Docker status' });
+    }
+  });
+
+  // Instalacja ufw-docker
+  app.post('/network/docker/install-ufw-docker', requireAuth, async (req, res) => {
+    try {
+      const result = await installUfwDocker();
+      if (result.success) {
+        res.json(result);
+      } else {
+        res.status(500).json(result);
+      }
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to install ufw-docker' });
+    }
+  });
+
+  // Lista kontenerów Docker
+  app.get('/network/docker/containers', requireAuth, async (req, res) => {
+    try {
+      const result = await getDockerContainers();
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get Docker containers' });
+    }
+  });
+
+  // Dodaj regułę UFW dla kontenera
+  app.post('/network/docker/ufw-rule', requireAuth, async (req, res) => {
+    try {
+      const { containerName, port, protocol } = req.body;
+      
+      if (!containerName || !port) {
+        return res.status(400).json({ error: 'Container name and port are required' });
+      }
+
+      const result = await addUfwDockerRule(containerName, port, protocol);
+      if (result.success) {
+        res.json(result);
+      } else {
+        res.status(500).json(result);
+      }
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to add UFW rule for container' });
+    }
+  });
+
+  // Lista reguł UFW dla Docker
+  app.get('/network/docker/ufw-rules', requireAuth, async (req, res) => {
+    try {
+      const result = await getUfwDockerRules();
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get UFW Docker rules' });
+    }
+  });
 
 };

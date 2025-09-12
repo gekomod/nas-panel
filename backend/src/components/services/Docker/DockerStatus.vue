@@ -121,6 +121,9 @@
       <el-tab-pane label="Compose" name="compose">
         <DockerCompose />
       </el-tab-pane>
+      <el-tab-pane label="Builder" name="builder">
+	<DockerBuilder />
+      </el-tab-pane>
       <el-tab-pane label="Backup" name="backup">
         <DockerBackup />
       </el-tab-pane>
@@ -163,6 +166,7 @@ import DockerInstall from './DockerInstall.vue';
 import ContainerStats from './ContainerStats.vue';
 import DockerSettings from './DockerSettings.vue';
 import DockerBackup from './DockerBackup.vue';
+import DockerBuilder from './DockerBuilder.vue';
 
 const status = ref({
   installed: false,

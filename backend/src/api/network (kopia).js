@@ -46,67 +46,90 @@ module.exports = function(app, requireAuth) {
   app.use(/^\/network(\/.*)?$/, checkNetworkTools);
 
   // Pobierz listę interfejsów
-  app.get('/network/interfaces', requireAuth, async (req, res) => {
-    try {
-      const { stdout: ipLinkOut } = await execAsync('ip -j link show');
-      const interfaces = JSON.parse(ipLinkOut)
-        .filter(iface => !['lo', 'docker', 'veth'].some(exclude => iface.ifname.startsWith(exclude)))
-        .map(iface => ({
-          device: iface.ifname,
-          status: iface.operstate === 'UP' ? 'up' : 'down',
-          mac: iface.address,
-          mtu: iface.mtu,
-          type: iface.ifname.startsWith('eth') ? 'ethernet' : 
-               iface.ifname.startsWith('wlan') ? 'wireless' : 'other'
-        }));
-
-      // Uzupełnij o dodatkowe informacje
-      const results = await Promise.all(interfaces.map(async iface => {
-        try {
-          const { stdout: ipAddrOut } = await execAsync(`ip -j addr show dev ${iface.device}`);
-          const ipData = JSON.parse(ipAddrOut)[0];
-          
-          // Pobierz adres IPv4
-          let address = null, netmask = null, gateway = null, method = 'unknown';
-          if (ipData.addr_info) {
-            const ipv4 = ipData.addr_info.find(addr => addr.family === 'inet');
-            if (ipv4) {
-              address = ipv4.local;
-              netmask = ipv4.prefixlen;
-            }
-          }
-
-          // Pobierz metodę konfiguracji
-          try {
-            const { stdout: nmcliOut } = await execAsync(`nmcli -t -f IP4 dev show ${iface.device}`);
-            method = nmcliOut.includes('IP4.DHCP[1]') ? 'dhcp' : 
-                    nmcliOut.includes('IP4.ADDRESS[1]') ? 'static' : 'unknown';
-          } catch (e) {
-            //console.error(`Error getting config method for ${iface.device}:`, e);
-          }
-
-          // Pobierz WOL
-          let wol = false;
-          try {
-            const { stdout: wolOut } = await execAsync(`ethtool ${iface.device} | grep Wake-on`);
-            wol = wolOut.includes('g') || wolOut.includes('d');
-          } catch (e) {
-            //console.error(`Error checking WOL for ${iface.device}:`, e);
-          }
-
-          return { ...iface, address, netmask, gateway, method, wol };
-        } catch (error) {
-         // console.error(`Error getting details for ${iface.device}:`, error);
-          return iface;
-        }
+app.get('/network/interfaces', requireAuth, async (req, res) => {
+  try {
+    const { stdout: ipLinkOut } = await execAsync('ip -j link show');
+    const interfaces = JSON.parse(ipLinkOut)
+      .filter(iface => !['lo', 'docker', 'veth'].some(exclude => iface.ifname.startsWith(exclude)))
+      .map(iface => ({
+        device: iface.ifname,
+        status: iface.operstate === 'UP' ? 'up' : 'down',
+        mac: iface.address,
+        mtu: iface.mtu,
+        type: iface.ifname.startsWith('eth') ? 'ethernet' : 
+             iface.ifname.startsWith('wlan') ? 'wireless' : 'other'
       }));
 
-      res.json(results);
-    } catch (error) {
-      //console.error('Network interfaces API error:', error);
-      res.status(500).json({ error: 'Failed to get network interfaces' });
-    }
-  });
+    // Uzupełnij o dodatkowe informacje + PRĘDKOŚĆ
+    const results = await Promise.all(interfaces.map(async iface => {
+      try {
+        const { stdout: ipAddrOut } = await execAsync(`ip -j addr show dev ${iface.device}`);
+        const ipData = JSON.parse(ipAddrOut)[0];
+        
+        // Pobierz adres IPv4
+        let address = null, netmask = null, gateway = null, method = 'unknown';
+        if (ipData.addr_info) {
+          const ipv4 = ipData.addr_info.find(addr => addr.family === 'inet');
+          if (ipv4) {
+            address = ipv4.local;
+            netmask = ipv4.prefixlen;
+          }
+        }
+
+        // Pobierz metodę konfiguracji
+        try {
+          const { stdout: nmcliOut } = await execAsync(`nmcli -t -f IP4 dev show ${iface.device}`);
+          method = nmcliOut.includes('IP4.DHCP[1]') ? 'dhcp' : 
+                  nmcliOut.includes('IP4.ADDRESS[1]') ? 'static' : 'unknown';
+        } catch (e) {
+          //console.error(`Error getting config method for ${iface.device}:`, e);
+        }
+
+        // Pobierz WOL
+        let wol = false;
+        try {
+          const { stdout: wolOut } = await execAsync(`ethtool ${iface.device} | grep Wake-on`);
+          wol = wolOut.includes('g') || wolOut.includes('d');
+        } catch (e) {
+          //console.error(`Error checking WOL for ${iface.device}:`, e);
+        }
+
+        // Pobierz PRĘDKOŚĆ interfejsu
+        let speed = 'unknown';
+        let duplex = 'unknown';
+        try {
+          const { stdout: ethtoolOut } = await execAsync(`ethtool ${iface.device}`);
+          const speedMatch = ethtoolOut.match(/Speed:\s*(\d+)\s*Mb\/s/);
+          const duplexMatch = ethtoolOut.match(/Duplex:\s*(\w+)/);
+          
+          if (speedMatch) speed = `${speedMatch[1]} Mbps`;
+          if (duplexMatch) duplex = duplexMatch[1].toLowerCase();
+        } catch (e) {
+          //console.error(`Error getting speed for ${iface.device}:`, e);
+        }
+
+        return { 
+          ...iface, 
+          address, 
+          netmask, 
+          gateway, 
+          method, 
+          wol,
+          speed,
+          duplex 
+        };
+      } catch (error) {
+        //console.error(`Error getting details for ${iface.device}:`, error);
+        return iface;
+      }
+    }));
+
+    res.json(results);
+  } catch (error) {
+    //console.error('Network interfaces API error:', error);
+    res.status(500).json({ error: 'Failed to get network interfaces' });
+  }
+});
 
   // Pobierz szczegóły interfejsu
   app.get('/network/interfaces/details/:interface', requireAuth, async (req, res) => {
@@ -220,67 +243,227 @@ module.exports = function(app, requireAuth) {
   });
 
   // Test prędkości z iperf3
-const SPEEDTEST_TIMEOUT = 30000; // 10 seconds timeout
+const SPEEDTEST_TIMEOUT = 30000; // 30 seconds timeout
 const IPERF_SERVERS = [
-  { host: 'iperf.he.net', port: 5201, label: 'Primary' },
-  { host: 'speedtest.serverius.net', port: 5002, label: 'Serverius' },
-  { host: 'iperf.astra.in.ua', port: 5201, label: 'Astra UA' }
+  // Najbardziej niezawodne serwery
+  { host: 'iperf.he.net', port: 5201, label: 'Hurricane Electric (USA)' },
+  { host: 'speedtest.serverius.net', port: 5002, label: 'Serverius (Netherlands)' },
+  { host: 'iperf.biznetnetworks.com', port: 5201, label: 'BizNet (Indonesia)' },
+  
+  // Sprawdzone serwery europejskie
+  { host: 'iperf.worldstream.nl', port: 5201, label: 'WorldStream (Netherlands)' },
+  { host: 'iperf3.velocityonline.net', port: 5201, label: 'Velocity Online (USA)' },
+  { host: 'iperf3.weininger.at', port: 5201, label: 'Weininger (Austria)' },
+  
+  // Serwery z dobrą dostępnością
+  { host: 'iperf.fly.io', port: 5201, label: 'Fly.io (Global CDN)' },
+  { host: 'iperf.scottlinux.com', port: 5201, label: 'ScottLinux (USA)' },
+  { host: 'iperf.scaleway.com', port: 5201, label: 'Scaleway (France)' },
+  
+  // Backup serwery
+  { host: 'iperf3.blazingfast.io', port: 5201, label: 'BlazingFast (Slovenia)' },
+  { host: 'speedtest.wtnet.de', port: 5201, label: 'WTnet (Germany)' },
+  { host: 'iperf3.lynxbroker.com', port: 5201, label: 'LynxBroker (Finland)' },
+  
+  // Publiczne serwery iperf3
+  { host: 'iperf3.nsw.bigpond.net.au', port: 5201, label: 'Telstra (Australia)' },
+  { host: 'iperf.paris.fr', port: 5201, label: 'Paris (France)' },
+  { host: 'iperf3.moscow.vps.com', port: 5201, label: 'Moscow (Russia)' }
 ];
 
-async function runIperfTest(host, port, reverse = false) {
-  const command = `iperf3 -c ${host} -p ${port} ${reverse ? '-R' : ''} -J --connect-timeout 5000`;
+// Poprawiona funkcja testowania dostępności serwera
+async function testServerAvailability(host, port, timeout = 3000) {
   try {
-    const { stdout } = await execAsync(command, { timeout: SPEEDTEST_TIMEOUT });
-    return JSON.parse(stdout);
+    const { exec } = require('child_process');
+    const util = require('util');
+    const execAsync = util.promisify(exec);
+    
+    // Użyj curl do testowania HTTP lub nc dla czystego TCP
+    const testCmd = `timeout 2 bash -c "echo '' | nc -w 1 -z ${host} ${port} 2>/dev/null && echo 'OK' || echo 'FAIL'"`;
+    
+    const { stdout } = await execAsync(testCmd, { timeout });
+    return stdout.includes('OK');
   } catch (error) {
+    return false;
+  }
+}
+
+
+// Poprawiona funkcja uruchamiania testu iperf3
+async function runIperfTest(host, port, reverse = false) {
+  const command = `iperf3 -c ${host} -p ${port} ${reverse ? '-R' : ''} -J --connect-timeout 3000 --timeout 8000`;
+  
+  try {
+    const { stdout, stderr } = await execAsync(command, { 
+      timeout: SPEEDTEST_TIMEOUT,
+      maxBuffer: 1024 * 1024 // 1MB buffer
+    });
+    
+    // Sprawdź czy stdout zawiera poprawny JSON
+    if (!stdout.trim().startsWith('{')) {
+      throw new Error('Invalid response from server');
+    }
+    
+    const result = JSON.parse(stdout);
+    
+    // Sprawdź czy test zakończył się sukcesem
+    if (result.error) {
+      throw new Error(result.error);
+    }
+    
+    // Walidacja struktury wyniku
+    if (!result.end || (!result.end.sum_received && !result.end.sum_sent)) {
+      throw new Error('Incomplete test results');
+    }
+    
+    return result;
+    
+  } catch (error) {
+    //console.log(`Server ${host}:${port} failed: ${error.message}`);
     throw error;
   }
 }
 
+// Poprawiony endpoint testu prędkości
 app.post('/network/interfaces/details/:interface/speedtest', requireAuth, async (req, res) => {
   try {
     const { interface: iface } = req.params;
-    let lastError = null;
     let testResults = null;
+    let workingServers = [];
+    let failedServers = [];
 
-    // Try each server until we get a successful result
+    // Najpierw przetestuj dostępność serwerów
     for (const server of IPERF_SERVERS) {
       try {
-        // Run download test
+        const isAvailable = await testServerAvailability(server.host, server.port);
+        if (isAvailable) {
+          workingServers.push(server);
+          //console.log(`✓ ${server.host}:${server.port} is available`);
+        } else {
+          failedServers.push(`${server.host}:${server.port}`);
+          //console.log(`✗ ${server.host}:${server.port} is not available`);
+        }
+      } catch (error) {
+        failedServers.push(`${server.host}:${server.port} (error: ${error.message})`);
+      }
+    }
+
+    // Jeśli nie ma dostępnych serwerów
+    if (workingServers.length === 0) {
+      return res.status(500).json({
+        success: false,
+        error: 'No speed test servers available',
+        details: 'All test servers are currently unreachable',
+        failedServers: failedServers,
+        solution: 'Please check your internet connection and firewall settings'
+      });
+    }
+
+    //console.log(`Found ${workingServers.length} available servers, starting tests...`);
+
+    // Przetestuj dostępne serwery w kolejności
+    for (const server of workingServers) {
+      try {
+        //console.log(`Testing download with ${server.host}...`);
         const downloadData = await runIperfTest(server.host, server.port, true);
         
-        // Run upload test
+        //console.log(`Testing upload with ${server.host}...`);
         const uploadData = await runIperfTest(server.host, server.port);
         
         testResults = {
           download: (downloadData.end.sum_received.bits_per_second / 1e6).toFixed(2),
           upload: (uploadData.end.sum_sent.bits_per_second / 1e6).toFixed(2),
-          ping: downloadData.start.tcp_mss_default,
+          ping: downloadData.start.tcp_mss_default || uploadData.start.tcp_mss_default || 0,
+          jitter: downloadData.end.sum_received.jitter_ms || uploadData.end.sum_sent.jitter_ms || 0,
           interface: iface,
           timestamp: new Date().toISOString(),
-          server: server.label
+          server: server.label,
+          serverHost: server.host,
+          serverPort: server.port
         };
-        break; // Exit loop if successful
+
+        //console.log(`Success with ${server.host}: ${testResults.download}↓ ${testResults.upload}↑ Mbps`);
+        break; // Zatrzymaj po pierwszym udanym teście
+        
       } catch (error) {
-        lastError = error;
-        continue; // Try next server
+        //console.log(`Test failed on ${server.host}: ${error.message}`);
+        failedServers.push(`${server.host}:${server.port} - ${error.message}`);
+        continue;
       }
     }
 
     if (!testResults) {
-      throw lastError || new Error('All speed test servers failed');
+      return res.status(500).json({
+        success: false,
+        error: 'All speed tests failed',
+        details: 'Tests completed but no valid results were obtained',
+        failedServers: failedServers,
+        workingServers: workingServers.map(s => `${s.host}:${s.port}`)
+      });
     }
 
     res.json({
       success: true,
-      data: testResults
+      data: testResults,
+      metadata: {
+        testedServers: workingServers.length,
+        failedServers: failedServers.length
+      }
     });
+
   } catch (error) {
+    //console.error('Speed test completely failed:', error);
     res.status(500).json({
       success: false,
       error: 'Speed test failed',
-      details: error.stderr || error.message,
+      details: error.message,
       solution: 'Please check your internet connection and try again later'
+    });
+  }
+});
+
+// Endpoint do testowania dostępności serwerów
+app.get('/network/speedtest/servers', requireAuth, async (req, res) => {
+  try {
+    const serverStatus = [];
+    
+    for (const server of IPERF_SERVERS) {
+      try {
+        const isAvailable = await testServerAvailability(server.host, server.port);
+        serverStatus.push({
+          host: server.host,
+          port: server.port,
+          label: server.label,
+          available: isAvailable,
+          lastChecked: new Date().toISOString()
+        });
+        
+        // Małe opóźnienie między testami
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+      } catch (error) {
+        serverStatus.push({
+          host: server.host,
+          port: server.port,
+          label: server.label,
+          available: false,
+          error: error.message,
+          lastChecked: new Date().toISOString()
+        });
+      }
+    }
+    
+    res.json({
+      success: true,
+      data: serverStatus,
+      total: serverStatus.length,
+      available: serverStatus.filter(s => s.available).length
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to test servers'
     });
   }
 });
