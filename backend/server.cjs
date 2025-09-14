@@ -53,6 +53,7 @@ const initializeDynamicOrigins = async () => {
   try {
     const localIps = getLocalIps(); // np. ['192.168.1.20', '192.168.1.54']
     const publicIp = await publicIpv4().catch(() => null);
+    const hostname = os.hostname(); // Pobierz nazwę hosta systemu
 
     const newOrigins = [];
 
@@ -70,6 +71,19 @@ const initializeDynamicOrigins = async () => {
       newOrigins.push(`http://${publicIp}`);
     }
 
+    // Dodaj hostname systemu
+    newOrigins.push(`http://${hostname}`);
+    newOrigins.push(`http://${hostname}:5173`);
+    newOrigins.push(`http://${hostname}:8080`);
+
+    // Dodaj localhost i typowe adresy
+    newOrigins.push('http://localhost:5173');
+    newOrigins.push('http://localhost:8080');
+    newOrigins.push('http://localhost');
+    newOrigins.push('http://127.0.0.1:5173');
+    newOrigins.push('http://127.0.0.1:8080');
+    newOrigins.push('http://127.0.0.1');
+
     // Dodaj tylko unikalne originy
     newOrigins.forEach(origin => {
       if (!allowedOrigins.includes(origin)) {
@@ -81,6 +95,19 @@ const initializeDynamicOrigins = async () => {
   } catch (error) {
     console.error('Błąd inicjalizacji originów:', error);
   }
+};
+
+// Funkcja middleware do dynamicznego dodawania originów
+const dynamicOriginMiddleware = (req, res, next) => {
+  const origin = req.headers.origin;
+  
+  if (origin && !allowedOrigins.includes(origin)) {
+    allowedOrigins.push(origin);
+    console.log('Dodano nowy origin:', origin);
+    console.log('Aktualna lista originów:', allowedOrigins);
+  }
+  
+  next();
 };
 
 initializeDynamicOrigins();
@@ -117,6 +144,22 @@ app.locals.requireAuth = (req, res, next) => {
   console.log('Auth check');
   next();
 };
+
+app.use(dynamicOriginMiddleware);
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Zezwól na żądania bez origin (np. z Postmana, curl)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Origin nie jest dozwolony przez CORS'));
+    }
+  },
+  credentials: true
+}));
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;

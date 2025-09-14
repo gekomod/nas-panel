@@ -63,14 +63,12 @@ const response = {
   experimental: config['experimental'] || false,
   debug: config['debug'] !== undefined ? config['debug'] : true,
   liveRestore: config['live-restore'] !== undefined ? config['live-restore'] : true,
-  iptables: config['iptables'] !== undefined ? config['iptables'] : true, // Zmienione - domyślnie true
+  iptables: config['iptables'] || false,
   ip6tables: config['ip6tables'] || false,
-  ipForward: config['ip-forward'] !== undefined ? config['ip-forward'] : true, // Zmienione - domyślnie true
-  ipMasq: config['ip-masq'] !== undefined ? config['ip-masq'] : true, // Zmienione - domyślnie true
-  dns: config['dns'] || ["8.8.8.8", "8.8.4.4"], // Dodane
-  dnsSearch: config['dns-search'] || ["localdomain"], // Dodane (używamy dns-search zamiast dnsSearch)
-  tls: config['tls'] || false,
-  defaultAddressPools: config['default-address-pools'] || [
+  ipForward: config['ip-forward'] || false, // Dodane
+  ipMasq: config['ip-masq'] || false, // Dodane
+  tls: config['tls'] || false, // Dodane
+  defaultAddressPools: config['default-address-pools'] || [ // Dodane
     {
       base: '172.30.0.0/16',
       size: 24
@@ -80,7 +78,7 @@ const response = {
       size: 24
     }
   ],
-  logOpts: config['log-opts'] || {
+  logOpts: config['log-opts'] || { // Dodane
     'cache-disabled': 'false',
     'cache-max-file': '5',
     'cache-max-size': '20m',
@@ -116,14 +114,12 @@ app.post('/services/docker/config', requireAuth, async (req, res) => {
       'experimental': req.body.experimental,
       'debug': req.body.debug,
       'live-restore': req.body.liveRestore,
-      'iptables': req.body.iptables !== undefined ? req.body.iptables : true, // Zmienione - domyślnie true
+      'iptables': req.body.iptables,
       'ip6tables': req.body.ip6tables,
-      'ip-forward': req.body.ipForward !== undefined ? req.body.ipForward : true, // Zmienione - domyślnie true
-      'ip-masq': req.body.ipMasq !== undefined ? req.body.ipMasq : true, // Zmienione - domyślnie true
-      'dns': req.body.dns || ["8.8.8.8", "8.8.4.4"], // Dodane
-      'dns-search': req.body.dnsSearch || ["localdomain"], // Dodane (używamy dns-search zamiast dnsSearch)
-      'tls': req.body.tls || false,
-      'default-address-pools': req.body.defaultAddressPools || [
+      'ip-forward': req.body.ipForward, // Dodane nowe pole
+      'ip-masq': req.body.ipMasq || false, // Dodane z domyślną wartością
+      'tls': req.body.tls || false, // Dodane z domyślną wartością
+      'default-address-pools': req.body.defaultAddressPools || [ // Dodane z domyślną wartością
         {
           'base': '172.30.0.0/16',
           'size': 24
@@ -133,7 +129,7 @@ app.post('/services/docker/config', requireAuth, async (req, res) => {
           'size': 24
         }
       ],
-      'log-opts': req.body.logOpts || {
+      'log-opts': req.body.logOpts || { // Dodane z domyślną wartością
         'cache-disabled': 'false',
         'cache-max-file': '5',
         'cache-max-size': '20m',

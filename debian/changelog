@@ -1,3 +1,9 @@
+nas-panel (1.1.2) unstable; urgency=medium
+
+  * Fix Api Errors
+
+ -- gekomod <zaba141@o2.pl>  Sat, 11 Aug 2025 23:19:24 +0200
+
 nas-panel (1.1.1) unstable; urgency=medium
 
   * Fix Errors
