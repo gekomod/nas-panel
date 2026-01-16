@@ -1,17 +1,18 @@
 const path = require('path');
 const fs = require('fs').promises;
 const fsa = require('fs');
+const { spawn } = require('child_process');
 const { exec } = require('child_process');
 const { promisify } = require('util');
 const os = require('os');
 const cron = require('node-cron');
 const cronParser = require('cron-parser');
+const WebSocket = require('ws');
 
 const util = require('util');
 const execPromise = util.promisify(exec);
 const YAML = require('yaml');
 const Docker = require('dockerode');
-const WebSocket = require('ws');
 
 var docker = new Docker();
 
@@ -25,9 +26,134 @@ const cronJobs = new Map();
 const multer = require('multer');
 const fileUpload = require('express-fileupload');
 
+// Cache
+const containerCache = new Map();
+const statsCache = new Map();
+const MAX_STATS_HISTORY = 100;
+const CACHE_TTL = 5000; // 5 sekund
+
+// Kolejka komend Docker - zapobiega przeciążeniu
+const commandQueue = [];
+let processingQueue = false;
+let isBackupRunning = false;
+const backupQueue = [];
+
 module.exports = function(app, requireAuth) {
 
 app.use(fileUpload());
+
+// Helper z timeoutem i zabiciem procesu
+const safeExec = (command, timeout = 10000) => {
+  return new Promise((resolve, reject) => {
+    console.log(`Executing: ${command.substring(0, 100)}...`);
+    
+    const child = spawn('bash', ['-c', command], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: timeout
+    });
+    
+    let stdout = '';
+    let stderr = '';
+    
+    child.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+    
+    child.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+    
+    child.on('close', (code, signal) => {
+      if (signal === 'SIGTERM' || signal === 'SIGKILL') {
+        reject(new Error(`Command timed out after ${timeout}ms`));
+      } else if (code === 0) {
+        resolve(stdout.trim());
+      } else {
+        // Niektóre komendy mogą zwracać non-zero exit code ale mieć użyteczny output
+        if (stdout.trim()) {
+          resolve(stdout.trim());
+        } else {
+          reject(new Error(stderr || `Command failed with code ${code}`));
+        }
+      }
+    });
+    
+    child.on('error', (error) => {
+      reject(new Error(`Failed to execute command: ${error.message}`));
+    });
+  });
+};
+
+/**
+ * Kolejkowanie komend Docker - max 1 komenda na raz
+ */
+const executeDockerCommand = (command, timeout = 10000) => {
+  return new Promise((resolve, reject) => {
+    commandQueue.push({ command, timeout, resolve, reject });
+    processCommandQueue();
+  });
+};
+
+const processCommandQueue = async () => {
+  if (processingQueue || commandQueue.length === 0) return;
+  
+  processingQueue = true;
+  
+  while (commandQueue.length > 0) {
+    const task = commandQueue.shift();
+    
+    try {
+      const result = await safeExec(task.command, task.timeout);
+      task.resolve(result);
+      
+      // Opóźnienie między komendami (50ms)
+      await new Promise(resolve => setTimeout(resolve, 50));
+    } catch (error) {
+      task.reject(error);
+    }
+  }
+  
+  processingQueue = false;
+};
+
+/**
+ * Health check Dockera
+ */
+const healthCheck = async () => {
+  try {
+    await executeDockerCommand('docker info', 3000);
+    const containers = await executeDockerCommand('docker ps --format "{{.ID}}"', 3000);
+    
+    return {
+      healthy: true,
+      containersCount: containers.split('\n').filter(Boolean).length,
+      timestamp: Date.now()
+    };
+  } catch (error) {
+    console.error('Docker health check failed:', error.message);
+    
+    // Auto-recovery
+    try {
+      console.log('Attempting Docker recovery...');
+      await safeExec('sudo systemctl restart docker', 15000);
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      await executeDockerCommand('docker ps', 5000);
+      
+      return {
+        healthy: true,
+        recovered: true,
+        timestamp: Date.now()
+      };
+    } catch (recoveryError) {
+      return {
+        healthy: false,
+        error: recoveryError.message,
+        timestamp: Date.now()
+      };
+    }
+  }
+};
 
 const manageDockerService = async (action) => {
   return new Promise((resolve, reject) => {
@@ -50,6 +176,27 @@ const manageDockerService = async (action) => {
     });
   });
 };
+
+// Health check endpoint
+app.get('/services/docker/health', async (req, res) => {
+  try {
+    const health = await healthCheck();
+    res.json(health);
+  } catch (error) {
+    res.status(500).json({
+      healthy: false,
+      error: error.message
+    });
+  }
+});
+
+// Regularne sprawdzanie co 30 sekund
+setInterval(async () => {
+  const health = await healthCheck();
+  if (!health.healthy) {
+    console.error('Docker health issue detected:', health);
+  }
+}, 30000);
 
 // Uruchom Docker
 app.post('/services/docker/stop', requireAuth, async (req, res) => {
@@ -198,44 +345,86 @@ app.post('/services/docker/restart', requireAuth, async (req, res) => {
 });
 
 
-  // Check if Docker is installed
-  app.get('/services/docker/status', requireAuth, async (req, res) => {
+// Status Dockera
+app.get('/services/docker/status', requireAuth, async (req, res) => {
   try {
-    const { stdout } = await execAsync('which docker || echo ""');
-    const dockerInstalled = stdout.trim().length > 0;
+    // Sprawdź czy docker jest zainstalowany
+    const dockerCheck = await safeExec('which docker', 3000);
+    const dockerInstalled = dockerCheck && dockerCheck.trim().length > 0;
     
     if (!dockerInstalled) {
       return res.json({
         installed: false,
         version: null,
-        status: 'not-installed'
+        status: 'not-installed',
+        info: 'Docker not found in PATH'
       });
     }
 
-    // Get Docker version
-    const { stdout: versionOut } = await execAsync('docker --version');
-    const versionMatch = versionOut.match(/Docker version (.+?),/);
-    
-    // Get Docker service status
+    // Pobierz wersję Dockera
+    let version = 'unknown';
+    let info = '';
+    try {
+      const versionOut = await executeDockerCommand('docker --version', 5000);
+      const versionMatch = versionOut.match(/Docker version (.+?),/);
+      version = versionMatch ? versionMatch[1] : 'unknown';
+      info = versionOut || '';
+    } catch (versionError) {
+      console.warn('Could not get docker version:', versionError.message);
+    }
+
+    // Sprawdź status usługi
     let serviceStatus = 'unknown';
     try {
-      const { stdout: serviceOut } = await execAsync('systemctl is-active docker');
-      serviceStatus = serviceOut.trim();
-    } catch (e) {
-      serviceStatus = 'inactive';
+      const serviceOut = await safeExec('systemctl is-active docker 2>/dev/null || echo "inactive"', 3000);
+      serviceStatus = (serviceOut && serviceOut.trim()) || 'inactive';
+    } catch (serviceError) {
+      console.warn('Could not get service status:', serviceError.message);
+      serviceStatus = 'error';
+    }
+
+    // Sprawdź czy Docker socket działa
+    let socketWorking = false;
+    try {
+      await executeDockerCommand('docker ps --format "{{.ID}}" | head -1', 5000);
+      socketWorking = true;
+    } catch (socketError) {
+      console.warn('Docker socket not working:', socketError.message);
     }
 
     res.json({
       installed: true,
-      version: versionMatch ? versionMatch[1] : 'unknown',
+      version: version,
       status: serviceStatus,
-      info: versionOut.trim()
+      socketWorking: socketWorking,
+      info: info.trim() || 'Docker installed but not responding',
+      checkedAt: new Date().toISOString()
     });
+    
   } catch (error) {
-    res.status(500).json({
-      installed: false,
-      error: error.message
-    });
+    console.error('Error checking Docker status:', error);
+    
+    // Sprawdź czy docker jest chociaż zainstalowany
+    try {
+      const dockerCheck = await safeExec('which docker', 3000);
+      const dockerInstalled = dockerCheck && dockerCheck.trim().length > 0;
+      
+      res.json({
+        installed: dockerInstalled,
+        version: null,
+        status: 'error',
+        error: error.message,
+        info: 'Error checking Docker status'
+      });
+    } catch (checkError) {
+      res.status(500).json({
+        installed: false,
+        version: null,
+        status: 'error',
+        error: error.message,
+        info: 'Could not determine Docker status'
+      });
+    }
   }
 });
 
@@ -323,94 +512,179 @@ app.post('/services/docker/install', requireAuth, async (req, res) => {
 });
 
   // Get Docker containers
-  app.get('/services/docker/containers', requireAuth, async (req, res) => {
-    try {
-      const { all = false } = req.query;
-      const { stdout } = await execAsync(`docker ps ${all ? '-a' : ''} --format '{{json .}}' | jq -s .`);
-      res.json({
-        success: true,
-        containers: JSON.parse(stdout)
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: 'Failed to get containers',
-        details: error.message
-      });
+  
+// Kontenery - OPTYMALIZOWANE
+app.get('/services/docker/containers', requireAuth, async (req, res) => {
+  try {
+    const { all = false } = req.query;
+    const cacheKey = `containers_${all}`;
+    
+    // Sprawdź cache (3 sekundy)
+    const cached = containerCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp) < 3000) {
+      return res.json(cached.data);
     }
-  });
+    
+    const cmd = `docker ps ${all ? '-a' : ''} --format '{"ID":"{{.ID}}","Names":"{{.Names}}","Image":"{{.Image}}","Status":"{{.Status}}","Ports":"{{.Ports}}","CreatedAt":"{{.CreatedAt}}","RunningFor":"{{.RunningFor}}"}'`;
+    
+    const stdout = await executeDockerCommand(cmd, 10000);
+    
+    const containers = stdout.split('\n')
+      .filter(line => line.trim())
+      .map(line => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+    
+    // Pobierz dodatkowe info tylko dla widocznych kontenerów
+    const limitedContainers = containers.slice(0, 50); // Limit do 50
+    
+    for (let container of limitedContainers) {
+      try {
+        const inspect = await executeDockerCommand(`docker inspect ${container.ID} --format '{{json .}}'`, 3000);
+        const data = JSON.parse(inspect);
+        container.Config = data.Config || {};
+        container.HostConfig = data.HostConfig || {};
+        container.SizeRw = data.SizeRw || 0;
+        container.SizeRootFs = data.SizeRootFs || 0;
+      } catch {
+        // Ignoruj błędy dla pojedynczych kontenerów
+      }
+    }
+    
+    const response = {
+      success: true,
+      containers,
+      count: containers.length,
+      timestamp: Date.now()
+    };
+    
+    // Cache'uj odpowiedź
+    containerCache.set(cacheKey, {
+      data: response,
+      timestamp: Date.now()
+    });
+    
+    res.json(response);
+    
+  } catch (error) {
+    console.error('Error fetching containers:', error);
+    
+    // Spróbuj zwrócić cache'owaną odpowiedź
+    const cached = containerCache.get(`containers_${req.query.all}`);
+    if (cached) {
+      return res.json(cached.data);
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get containers',
+      details: error.message
+    });
+  }
+});
 
+// Logi kontenera z limitem
 app.get('/services/docker/container/logs/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const { tail = 100 } = req.query;
     
-    // Upewnij się, że ID kontenera jest bezpieczne
+    // Walidacja ID
     if (!/^[a-zA-Z0-9]+$/.test(id)) {
       return res.status(400).json({
         success: false,
         error: 'Invalid container ID'
       });
     }
-
-    const { stdout } = await execAsync(`docker logs --tail ${tail} ${id} 2>&1 || echo "No logs available"`);
+    
+    const logs = await executeDockerCommand(`docker logs --tail ${tail} ${id} 2>&1 || echo "No logs available"`);
     
     res.json({
       success: true,
-      logs: stdout
+      logs: logs || 'No logs available'
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: 'Failed to get container logs',
+      error: 'Failed to get container logs'
+    });
+  }
+});
+
+// Zarządzanie kontenerem
+app.post('/services/docker/container/:id/:action', requireAuth, async (req, res) => {
+  try {
+    const { id, action } = req.params;
+    const validActions = ['start', 'stop', 'restart', 'pause', 'unpause'];
+    
+    if (!validActions.includes(action)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid action'
+      });
+    }
+    
+    await executeDockerCommand(`docker ${action} ${id}`, 30000);
+    
+    // Wyczyść cache dla tego kontenera
+    const containers = await executeDockerCommand(`docker ps -a --filter "id=${id}" --format "{{.Names}}"`);
+    if (containers) {
+      const name = containers.split('\n')[0];
+      containerCache.delete(`status_${name}`);
+    }
+    
+    res.json({
+      success: true,
+      message: `Container ${action}ed successfully`
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: `Failed to ${action} container`,
       details: error.message
     });
   }
 });
 
-  // Start/Stop/Restart container
-  app.post('/services/docker/container/:id/:action', requireAuth, async (req, res) => {
-    try {
-      const { id, action } = req.params;
-      const validActions = ['start', 'stop', 'restart', 'pause', 'unpause'];
-      
-      if (!validActions.includes(action)) {
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid action'
-        });
-      }
-
-      await execAsync(`docker ${action} ${id}`);
-      res.json({
-        success: true,
-        message: `Container ${action}ed successfully`
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: `Failed to ${action} container`,
-        details: error.message
-      });
+// Obrazy Docker
+app.get('/services/docker/images', requireAuth, async (req, res) => {
+  try {
+    const cacheKey = 'docker_images';
+    const cached = containerCache.get(cacheKey);
+    
+    if (cached && (Date.now() - cached.timestamp) < 10000) {
+      return res.json(cached.data);
     }
-  });
-
-  // Get Docker images
-  app.get('/services/docker/images', requireAuth, async (req, res) => {
-    try {
-      const { stdout } = await execAsync('docker images --format "{{json .}}" | jq -s .');
-      res.json({
-        success: true,
-        images: JSON.parse(stdout)
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: 'Failed to get images',
-        details: error.message
-      });
-    }
-  });
+    
+    const stdout = await executeDockerCommand('docker images --format "{{json .}}"', 10000);
+    
+    const images = stdout.split('\n')
+      .filter(line => line.trim())
+      .map(line => JSON.parse(line));
+    
+    const response = {
+      success: true,
+      images
+    };
+    
+    containerCache.set(cacheKey, {
+      data: response,
+      timestamp: Date.now()
+    });
+    
+    res.json(response);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get images'
+    });
+  }
+});
 
   // Pull Docker image
   app.post('/services/docker/images/pull', requireAuth, async (req, res) => {
@@ -492,23 +766,23 @@ app.get('/services/docker/container/logs/:id', requireAuth, async (req, res) => 
     }
   });
 
-  // Get Docker compose files
-  app.get('/services/docker/compose', requireAuth, async (req, res) => {
-    try {
-      await fs.mkdir(DOCKER_COMPOSE_DIR, { recursive: true });
-      const files = await fs.readdir(DOCKER_COMPOSE_DIR);
-      res.json({
-        success: true,
-        files: files.filter(f => f.endsWith('.yml') || f.endsWith('.yaml'))
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: 'Failed to get compose files',
-        details: error.message
-      });
-    }
-  });
+// Docker Compose files
+app.get('/services/docker/compose', requireAuth, async (req, res) => {
+  try {
+    await fs.mkdir(DOCKER_COMPOSE_DIR, { recursive: true });
+    const files = await fs.readdir(DOCKER_COMPOSE_DIR);
+    
+    res.json({
+      success: true,
+      files: files.filter(f => f.endsWith('.yml') || f.endsWith('.yaml'))
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get compose files'
+    });
+  }
+});
 
   // Deploy Docker compose file
   app.post('/services/docker/compose/deploy', requireAuth, async (req, res) => {
@@ -723,6 +997,79 @@ function validateContainerId(req, res, next) {
   next();
 }
 
+// Endpoint dla batch statystyk
+app.get('/services/docker/stats/batch', requireAuth, async (req, res) => {
+  try {
+    const { ids } = req.query; // ids=id1,id2,id3
+    
+    if (!ids) {
+      return res.json({ success: true, stats: {} });
+    }
+    
+    const containerIds = ids.split(',');
+    const stats = {};
+    const currentTime = Date.now();
+    
+    // Sprawdź cache
+    for (const id of containerIds) {
+      const cached = statsCache.get(id);
+      if (cached && (currentTime - cached.timestamp < 2000)) {
+        stats[id] = cached.data;
+      }
+    }
+    
+    // Pobierz brakujące statystyki
+    const missingIds = containerIds.filter(id => !stats[id]);
+    
+    if (missingIds.length > 0) {
+      // Użyj jednego polecenia docker stats dla wielu kontenerów
+      const statsCmd = `docker stats ${missingIds.join(' ')} --no-stream --format "{{.ID}},{{.CPUPerc}},{{.MemPerc}},{{.MemUsage}},{{.NetIO}},{{.BlockIO}}" 2>/dev/null || true`;
+      
+      try {
+        const statsOutput = await executeDockerCommand(statsCmd, 3000);
+        
+        const lines = statsOutput.trim().split('\n');
+        for (const line of lines) {
+          const [id, cpuPerc, memPerc, memUsage, netIO, blockIO] = line.split(',');
+          if (id && missingIds.includes(id)) {
+            const statData = {
+              cpu_percent: parseFloat(cpuPerc?.replace('%', '')) || 0,
+              memory_percent: parseFloat(memPerc?.replace('%', '')) || 0,
+              memory_usage: memUsage || '0B / 0B',
+              network_io: netIO || '0B / 0B',
+              block_io: blockIO || '0B / 0B',
+              timestamp: currentTime
+            };
+            
+            stats[id] = statData;
+            statsCache.set(id, {
+              data: statData,
+              timestamp: currentTime
+            });
+          }
+        }
+      } catch (error) {
+        console.warn('Batch stats failed:', error.message);
+      }
+    }
+    
+    res.json({
+      success: true,
+      stats,
+      timestamp: currentTime
+    });
+    
+  } catch (error) {
+    console.error('Batch stats error:', error);
+    res.json({
+      success: true,
+      stats: {},
+      error: error.message
+    });
+  }
+});
+
+// Statystyki kontenera z cache'owaniem
 app.get('/services/docker/stats/container/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1157,6 +1504,7 @@ app.get('/services/docker/images/inspect/:imageId', requireAuth, async (req, res
   }
 });
 
+// Deploy compose z WebSocket streamingiem
 app.get('/services/docker/composer/deploy-stream', requireAuth, async (req, res) => {
   const { file } = req.query;
   
@@ -1166,48 +1514,95 @@ app.get('/services/docker/composer/deploy-stream', requireAuth, async (req, res)
 
   const filePath = path.join(DOCKER_COMPOSE_DIR, file);
   
-  // Ustaw nagłówki dla strumieniowania SSE
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
-  // Uruchom proces docker compose
-  const child = exec(`docker compose -f ${filePath} up -d`);
+  const child = spawn('docker', ['compose', '-f', filePath, 'up', '-d']);
 
-  // Funkcja do wysyłania danych w formacie SSE
   const sendEvent = (data) => {
-    // Normalizuj znaki nowej linii i dodaj znacznik czasu
-    const normalizedData = data
-      .replace(/\r?\n/g, '\r\n') // Zamień wszystkie rodzaje nowych linii na \r\n
-      .replace(/\r\n/g, '\n')    // Tymczasowo na \n
-      .replace(/\n/g, '\r\n');   // Potem na \r\n (dla spójności)
-
-    res.write(`data: ${JSON.stringify({ 
-      message: normalizedData,
-      timestamp: new Date().toISOString()
-    })}\n\n`);
+    const lines = data.toString().split('\n');
+    lines.forEach(line => {
+      if (line.trim()) {
+        res.write(`data: ${JSON.stringify({ 
+          message: line,
+          timestamp: new Date().toISOString()
+        })}\n\n`);
+      }
+    });
   };
 
-  child.stdout.on('data', (data) => {
-    sendEvent(data.toString());
-  });
-
-  child.stderr.on('data', (data) => {
-    sendEvent(data.toString());
-  });
+  child.stdout.on('data', sendEvent);
+  child.stderr.on('data', sendEvent);
 
   child.on('close', (code) => {
-    sendEvent(`\nProcess exited with code ${code}\n`);
+    sendEvent(`\nProcess completed with code ${code}`);
     res.end();
   });
 
-  // Obsługa zamknięcia połączenia przez klienta
   req.on('close', () => {
     child.kill();
-    res.end();
   });
 });
+
+const runBackupJob = async (jobConfig) => {
+  if (isBackupRunning) {
+    console.log('Backup already running, queuing job...');
+    backupQueue.push(jobConfig);
+    return;
+  }
+  
+  isBackupRunning = true;
+  const startTime = Date.now();
+  
+  try {
+    console.log(`Starting backup: ${jobConfig.name}`);
+    
+    // Utwórz katalog backupu
+    await fs.mkdir(jobConfig.location, { recursive: true });
+    
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupDir = path.join(jobConfig.location, `backup-${timestamp}`);
+    await fs.mkdir(backupDir, { recursive: true });
+    
+    // Backup compose files
+    if (jobConfig.includes.includes('compose')) {
+      await executeDockerCommand(`tar -czf ${backupDir}/compose.tar.gz -C ${DOCKER_COMPOSE_DIR} .`);
+    }
+    
+    // Backup listy kontenerów
+    const containers = await executeDockerCommand('docker ps -a --format "{{json .}}"');
+    await fs.writeFile(
+      path.join(backupDir, 'containers.json'),
+      containers.split('\n').filter(Boolean).map(l => JSON.parse(l))
+    );
+    
+    const duration = Date.now() - startTime;
+    
+    return {
+      success: true,
+      duration,
+      backupDir,
+      message: 'Backup completed successfully'
+    };
+    
+  } catch (error) {
+    console.error('Backup failed:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  } finally {
+    isBackupRunning = false;
+    
+    // Sprawdź kolejne zadania
+    if (backupQueue.length > 0) {
+      const nextJob = backupQueue.shift();
+      setTimeout(() => runBackupJob(nextJob), 5000);
+    }
+  }
+};
 
 // Backup endpoints
 app.post('/services/docker/backup', requireAuth, async (req, res) => {
@@ -1440,9 +1835,15 @@ function loadCronJobs() {
     const data = fsa.readFileSync(CRON_JOBS_FILE, 'utf8');
     const jobs = JSON.parse(data);
     
-    // Inicjalizacja zadań przy starcie
     jobs.forEach(job => {
-      scheduleJob(job);
+      if (cron.validate(job.schedule)) {
+        const task = cron.schedule(job.schedule, () => {
+          console.log(`Executing cron job: ${job.name}`);
+          runBackupJob(job);
+        });
+        
+        cronJobs.set(job.id, { ...job, task });
+      }
     });
     
     return jobs;
@@ -1656,54 +2057,54 @@ app.delete('/services/docker/backup/schedule/:jobId', requireAuth, (req, res) =>
   }
 });
 
+// Status konkretnego kontenera
 app.get('/services/docker/container/status/:name', async (req, res) => {
+  const { name } = req.params;
+  const cacheKey = `status_${name}`;
+  
   try {
-    const { name } = req.params;
-    const { stdout } = await execPromise(
-      `sudo docker ps -a --filter "name=${name}" --format '{{.ID}}|{{.Names}}|{{.Status}}|{{.Image}}'`
-    );
-
-    if (!stdout.trim()) {
-      return res.json({ 
-        status: 'not_found',
-        message: 'Container not found'
-      });
+    // Sprawdź cache (5 sekund)
+    const cached = containerCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp) < 5000) {
+      return res.json(cached.data);
     }
-
-    // Przetwarzanie wyniku
-    const containers = stdout.trim().split('\n')
-      .map(line => {
-        const [id, names, status, image] = line.split('|');
-        return { id, names, status, image };
-      });
-
-    // Znajdź kontener którego szukamy (może być wiele gdy używamy compose)
-    const container = containers.find(c => 
-      c.names.includes(name) || 
-      c.names.includes(`docker-compose-${name}-`)
+    
+    const containerInfo = await executeDockerCommand(
+      `docker ps -a --filter "name=${name}" --format '{"ID":"{{.ID}}","Name":"{{.Names}}","Status":"{{.Status}}","Image":"{{.Image}}"}'`,
+      5000
     );
-
-    if (!container) {
-      return res.json({ status: 'not_found' });
+    
+    if (!containerInfo.trim()) {
+      const response = { status: 'not_found' };
+      containerCache.set(cacheKey, { 
+        data: response, 
+        timestamp: Date.now() 
+      });
+      return res.json(response);
     }
-
-    // Uproszczona logika statusu
-    const normalizedStatus = container.status.toLowerCase().includes('up') 
-      ? 'running' 
-      : 'stopped';
-
-    res.json({
-      status: normalizedStatus,
-      rawStatus: container.status,
-      containerName: container.names,
-      image: container.image
+    
+    const data = JSON.parse(containerInfo);
+    const status = data.Status.toLowerCase().includes('up') ? 'running' : 'stopped';
+    
+    const response = {
+      status,
+      id: data.ID,
+      name: data.Name,
+      image: data.Image
+    };
+    
+    containerCache.set(cacheKey, { 
+      data: response, 
+      timestamp: Date.now() 
     });
-
+    
+    res.json(response);
+    
   } catch (error) {
-    console.error('Error checking container status:', error);
+    console.error('Error checking container:', error);
     res.status(500).json({ 
       error: 'Failed to check container status',
-      details: error.message
+      details: error.message 
     });
   }
 });
@@ -2092,50 +2493,54 @@ async function getBuildLogs(buildId) {
 const wss = new WebSocket.Server({ port: 1111 });
 
 wss.on('connection', (ws) => {
-  let container = null;
-  let exec = null;
-  let stream = null;
-
+  let childProcess = null;
+  
   ws.on('message', async (message) => {
-    const msg = JSON.parse(message);
-    
-    if (msg.type === 'init') {
-      try {
-        container = docker.getContainer(msg.containerId);
+    try {
+      const msg = JSON.parse(message);
+      
+      if (msg.type === 'exec') {
+        if (childProcess) {
+          childProcess.kill();
+        }
         
-        exec = await container.exec({
-          Cmd: ['/bin/sh'],
-          AttachStdin: true,
-          AttachStdout: true,
-          AttachStderr: true,
-          Tty: true
+        childProcess = spawn('docker', ['exec', '-it', msg.containerId, msg.command || '/bin/sh'], {
+          stdio: ['pipe', 'pipe', 'pipe']
         });
-
-        stream = await exec.start({ hijack: true, stdin: true });
         
-        stream.on('data', (data) => {
+        childProcess.stdout.on('data', (data) => {
           ws.send(JSON.stringify({ type: 'stdout', data: data.toString() }));
         });
-
-        stream.on('end', () => {
-          ws.close();
+        
+        childProcess.stderr.on('data', (data) => {
+          ws.send(JSON.stringify({ type: 'stderr', data: data.toString() }));
         });
-
-      } catch (err) {
-        ws.send(JSON.stringify({ type: 'stderr', data: err.message }));
-        ws.close();
+        
+        childProcess.on('close', () => {
+          ws.send(JSON.stringify({ type: 'closed' }));
+        });
       }
-    }
-    
-    if (msg.type === 'stdin' && stream) {
-      stream.write(msg.data);
+      
+      if (msg.type === 'stdin' && childProcess) {
+        childProcess.stdin.write(msg.data);
+      }
+      
+      if (msg.type === 'resize' && childProcess) {
+        childProcess.stdin.write(`\x1b[8;${msg.rows};${msg.cols}t`);
+      }
+      
+    } catch (error) {
+      ws.send(JSON.stringify({ type: 'error', data: error.message }));
     }
   });
-
+  
   ws.on('close', () => {
-    if (stream) stream.end();
+    if (childProcess) {
+      childProcess.kill();
+    }
   });
 });
+console.log('Docker WebSocket server listening on port 1111');
 
 // Inicjalizacja przy starcie
 loadCronJobs();

@@ -100,6 +100,8 @@
         </div>
       </div>
     </el-card>
+    
+    <DockerHealth />
 
     <!-- Zachowane el-tabs -->
     <el-tabs v-if="status.installed" v-model="activeTab" class="docker-tabs">
@@ -167,6 +169,7 @@ import ContainerStats from './ContainerStats.vue';
 import DockerSettings from './DockerSettings.vue';
 import DockerBackup from './DockerBackup.vue';
 import DockerBuilder from './DockerBuilder.vue';
+import DockerHealth from './DockerHealth.vue';
 
 const status = ref({
   installed: false,

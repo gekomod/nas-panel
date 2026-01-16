@@ -114,9 +114,15 @@ const fetchContainers = async () => {
     containers.value = containersData.map(container => ({
       id: container.ID || container.containerID,
       names: container.Names || container.containerNames,
-      state: container.State || container.status,
-      loading: false
+      // POPRAWKA: Normalizuj status kontenera
+      state: normalizeContainerState(container.State || container.status || container.Status),
+      loading: false,
+      // Dodaj oryginalny status dla debugowania
+      _originalStatus: container.Status || container.status || container.State
     }))
+    
+    // Debug: wyświetl kontenery w konsoli
+    console.log('Containers loaded:', containers.value)
     
   } catch (error) {
     console.error('Błąd pobierania kontenerów:', error)
@@ -124,6 +130,25 @@ const fetchContainers = async () => {
     containers.value = []
   } finally {
     loading.value = false
+  }
+}
+
+// Funkcja pomocnicza do normalizacji statusu kontenera
+const normalizeContainerState = (status) => {
+  if (!status) return 'unknown'
+  
+  const statusStr = status.toLowerCase()
+  
+  if (statusStr.includes('up') || statusStr.includes('running')) {
+    return 'running'
+  } else if (statusStr.includes('exited') || statusStr.includes('stopped')) {
+    return 'exited'
+  } else if (statusStr.includes('paused')) {
+    return 'paused'
+  } else if (statusStr.includes('created')) {
+    return 'created'
+  } else {
+    return statusStr
   }
 }
 
