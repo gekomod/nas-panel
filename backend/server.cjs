@@ -986,105 +986,157 @@ app.get('/api/storage/filesystems', requireAuth, async (req, res) => {
     const util = require('util');
     const execAsync = util.promisify(exec);
 
-    // 1. Pobierz podstawowe dane przez df (zawsze dostępne)
+    // Użyj angielskiej lokalizacji aby uniknąć problemów z przecinkami
     const { stdout: dfStdout } = await execAsync(
-      'df -h --output=source,fstype,size,used,avail,pcent,target | awk \'NR>1{print}\''
+      'LC_ALL=C df -hT 2>/dev/null | tail -n +2'
     );
 
     if (!dfStdout.trim()) {
       return res.json({ success: true, data: [] });
     }
 
-    // 2. Parsowanie wyniku df
-    const filesystems = dfStdout.split('\n').map(line => {
-      const [device, type, size, used, avail, pcent, mounted] = line.trim().split(/\s+/);
-      return {
+    const lines = dfStdout.trim().split('\n');
+    const filesystems = [];
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      
+      // Przykład linii: /dev/sda1      ext4       458G  457G     0 100% /srv/dysk4
+      // Dzielimy na części, ale mount point może mieć spacje
+      const parts = line.trim().split(/\s+/);
+      if (parts.length < 7) continue;
+      
+      const device = parts[0];
+      const type = parts[1];
+      
+      // Konwersja human-readable (1K, 1M, 1G, 1T) na bajty
+      // Uwaga: LC_ALL=C daje kropki zamiast przecinków
+      const size = humanToBytes(parts[2]);
+      const used = humanToBytes(parts[3]);
+      const available = humanToBytes(parts[4]);
+      
+      const pcentStr = parts[5];
+      const mounted = parts.slice(6).join(' '); // reszta to mount point
+      
+      const usedPercent = parseInt(pcentStr.replace('%', '')) || 0;
+
+      // Filtruj niechciane systemy - ZWIĘKSZONA FILTRACJA
+      const deviceLower = device.toLowerCase();
+      const typeLower = type.toLowerCase();
+      const mountedLower = mounted.toLowerCase();
+
+      const isOverlay = deviceLower.includes('overlay') || 
+                       typeLower.includes('overlay') ||
+                       mountedLower.includes('overlay') ||
+                       mountedLower.includes('docker') ||
+                       deviceLower.includes('docker') ||
+                       typeLower.includes('tmpfs') ||
+                       deviceLower.includes('tmpfs') ||
+                       typeLower.includes('devtmpfs') ||
+                       typeLower.includes('efivarfs') ||
+                       mountedLower.includes('docker_data') ||
+                       mountedLower.includes('/run/') ||
+                       mountedLower.includes('/tmp') ||
+                       mountedLower.includes('/dev/shm');
+
+      const isSystem = mountedLower === '/' ||
+                       mountedLower.startsWith('/boot') ||
+                       mountedLower.startsWith('/efi') ||
+                       mountedLower.startsWith('/run') ||
+                       mountedLower.startsWith('/sys') ||
+                       mountedLower.startsWith('/proc') ||
+                       mountedLower.startsWith('/dev') ||
+                       mountedLower.includes('/var/lib/docker') ||
+                       mountedLower.includes('/home/docker_data') ||
+                       mountedLower.includes('credentials');
+
+      if (isOverlay || isSystem) {
+        console.log('Filtered out:', { device, type, mounted });
+        continue;
+      }
+
+      // Dodatkowe sprawdzenie - tylko fizyczne dyski i LVM
+      const isPhysicalDisk = deviceLower.startsWith('/dev/sd') ||
+                            deviceLower.startsWith('/dev/nvme') ||
+                            deviceLower.startsWith('/dev/mapper/') ||
+                            deviceLower.startsWith('/dev/md');
+
+      if (!isPhysicalDisk) continue;
+
+      filesystems.push({
         device,
         type,
         size,
         used,
-        available: avail,
-        usedPercent: parseInt(pcent),
-        mounted
-      };
-    }).filter(fs => {
-      // FILTRUJ OVERLAY I DOCKER - kluczowa zmiana!
-      if (!fs.device) return false;
-      
-      const device = fs.device.toLowerCase();
-      const type = (fs.type || '').toLowerCase();
-      const mounted = (fs.mounted || '').toLowerCase();
-
-      const isOverlay = device.includes('overlay') || 
-                       type.includes('overlay') ||
-                       mounted.includes('overlay') ||
-                       mounted.includes('docker') ||
-                       device.includes('docker') ||
-                       type.includes('tmpfs') || // często używane przez docker
-                       device.includes('tmpfs');
-
-      const isSystem = mounted.startsWith('/boot') ||
-                       mounted.startsWith('/efi') ||
-                       mounted.startsWith('/run') ||
-                       mounted.startsWith('/sys') ||
-                       mounted.startsWith('/proc') ||
-                       mounted.startsWith('/dev');
-
-      return !isOverlay && !isSystem;
-    });
-
-    // 3. Pobierz UUID tylko dla istniejących urządzeń
-    const uuidMapping = {};
-    try {
-      const { stdout: blkidStdout } = await execAsync(
-        'blkid -o export 2>/dev/null || echo ""'
-      );
-      
-      blkidStdout.split('\n\n').forEach(block => {
-        const device = block.match(/DEVICE=([^\n]+)/)?.[1];
-        const uuid = block.match(/UUID=([^\n]+)/)?.[1];
-        if (device && uuid) {
-          uuidMapping[device] = uuid;
-        }
+        available,
+        usedPercent,
+        mounted,
+        reference: device,
+        status: 'active'
       });
-    } catch (e) {
-      console.error('UUID mapping error:', e.message);
     }
 
-    // 4. Przygotuj ostateczną odpowiedź
-    const result = filesystems.map(fs => {
-      // Konwersja rozmiarów do bajtów
-      const units = { 'K': 1024, 'M': 1024**2, 'G': 1024**3, 'T': 1024**4 };
-      const convert = (val) => {
-        const match = val.match(/^(\d+\.?\d*)([KMGT])?/i);
-        if (!match) return 0;
-        return parseFloat(match[1]) * (units[match[2]?.toUpperCase()] || 1);
-      };
+    // Pobierz UUID dla każdego urządzenia
+    for (const fs of filesystems) {
+      try {
+        const { stdout: uuidStdout } = await execAsync(
+          `blkid -o value -s UUID ${fs.device} 2>/dev/null || echo ""`
+        );
+        const uuid = uuidStdout.trim();
+        if (uuid) {
+          fs.reference = uuid;
+        }
+      } catch (e) {
+        // Ignoruj błędy
+      }
+    }
 
-      return {
-        device: fs.device,
-        type: fs.type || 'unknown',
-        size: convert(fs.size),
-        used: convert(fs.used),
-        available: convert(fs.available),
-        usedPercent: fs.usedPercent,
-        mounted: fs.mounted,
-        reference: uuidMapping[fs.device] || fs.device,
-        status: fs.mounted ? 'active' : 'inactive'
-      };
-    });
+    // Sortuj alfabetycznie po mount point
+    filesystems.sort((a, b) => a.mounted.localeCompare(b.mounted));
 
-    res.json({ success: true, data: result });
+    res.json({ success: true, data: filesystems });
 
   } catch (error) {
     console.error('Filesystems API error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to get filesystems data',
-      details: error.message
+      error: 'Failed to get filesystems data'
     });
   }
 });
+
+// Funkcja do konwersji human-readable (1K, 1M, 1G, 1T) na bajty
+function humanToBytes(value) {
+  if (!value || value === '-') return 0;
+  
+  // LC_ALL=C daje kropki, ale na wszelki wypadek usuń przecinki
+  const cleanValue = value.replace(',', '.');
+  
+  const units = {
+    'K': 1024,
+    'M': 1024 ** 2,
+    'G': 1024 ** 3,
+    'T': 1024 ** 4,
+    'P': 1024 ** 5
+  };
+  
+  // Rozpoznaj format: 1.8T, 956M, 458G, 6.3G
+  const match = cleanValue.match(/^([\d.]+)([KMGT])?$/i);
+  if (!match) {
+    console.warn('Could not parse size:', value);
+    return 0;
+  }
+  
+  const num = parseFloat(match[1]);
+  const unit = match[2]?.toUpperCase() || '';
+  
+  if (unit && units[unit]) {
+    return Math.round(num * units[unit]);
+  }
+  
+  // Jeśli nie ma jednostki, traktuj jako bajty
+  return Math.round(num);
+}
 
 async function getFilesystems() {
   try {

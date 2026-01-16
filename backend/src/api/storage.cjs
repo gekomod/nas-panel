@@ -426,11 +426,19 @@ app.get('/api/storage/smart/details/:device', requireAuth, async (req, res) => {
 // Zmodyfikowana funkcja do pobierania urządzeń
 app.get('/api/storage/devices', requireAuth, async (req, res) => {
   try {
-    const { stdout } = await execAsync('lsblk -o NAME,SIZE,TYPE,MODEL,SERIAL,PATH,FSTYPE,MOUNTPOINT,LABEL -n -J');
+    // Użyj -b dla bajtów zamiast human-readable
+    const { stdout } = await execAsync('lsblk -o NAME,SIZE,TYPE,MODEL,SERIAL,PATH,FSTYPE,MOUNTPOINT,LABEL -n -b -J');
     const lsblkData = JSON.parse(stdout);
     
+    // Funkcja do parsowania rozmiaru (już w bajtach dzięki -b)
+    const parseSize = (sizeStr) => {
+      if (!sizeStr) return 0;
+      // -b daje rozmiar w bajtach jako liczbę
+      return parseInt(sizeStr) || 0;
+    };
+
     const filterDevice = (device) => {
-      // TYLKO filtruj overlay i docker - nie wszystko inne!
+      // TYLKO filtruj overlay i docker
       const ignorePatterns = [
         'overlay', 
         'docker', 
@@ -442,7 +450,6 @@ app.get('/api/storage/devices', requireAuth, async (req, res) => {
       const deviceMount = device.mountpoint?.toLowerCase() || '';
       const deviceFsType = device.fstype?.toLowerCase() || '';
 
-      // Sprawdź czy urządzenie jest overlay/docker
       const isOverlay = ignorePatterns.some(pattern => {
         return deviceName.includes(pattern) ||
                deviceModel.includes(pattern) ||
@@ -450,8 +457,10 @@ app.get('/api/storage/devices', requireAuth, async (req, res) => {
                deviceFsType.includes(pattern);
       });
 
-      // NIE filtruj małych urządzeń ani wirtualnych - mogą to być dyski użytkownika
-      return !isOverlay;
+      // Dodatkowo odfiltruj loop devices (chyba że potrzebne)
+      const isLoop = deviceName.startsWith('loop');
+      
+      return !isOverlay && !isLoop;
     };
 
     const filterPartition = (partition) => {
@@ -460,11 +469,15 @@ app.get('/api/storage/devices', requireAuth, async (req, res) => {
       const partMount = partition.mountpoint?.toLowerCase() || '';
       const partFsType = partition.fstype?.toLowerCase() || '';
 
-      return !ignorePatterns.some(pattern => 
+      const isOverlay = ignorePatterns.some(pattern => 
         partName.includes(pattern) ||
         partMount.includes(pattern) ||
         partFsType.includes(pattern)
       );
+      
+      const isLoop = partName.startsWith('loop');
+      
+      return !isOverlay && !isLoop;
     };
 
     const devices = lsblkData.blockdevices
@@ -474,7 +487,7 @@ app.get('/api/storage/devices', requireAuth, async (req, res) => {
         model: dev.model || 'Unknown',
         serial: dev.serial || 'Unknown',
         type: dev.type,
-        size: dev.size ? parseInt(dev.size) : 0,
+        size: parseSize(dev.size),
         fstype: dev.fstype || '',
         mountpoint: dev.mountpoint || '',
         label: dev.label || '',
@@ -484,11 +497,71 @@ app.get('/api/storage/devices', requireAuth, async (req, res) => {
             path: `/dev/${part.name}`,
             fstype: part.fstype || '',
             mountpoint: part.mountpoint || '',
-            size: part.size,
+            size: parseSize(part.size),
             type: part.type,
             label: part.label || ''
           })) : []
       }));
+
+    // Alternatywnie, jeśli -b nie działa, użyj human-readable i skonwertuj
+    if (devices.some(dev => dev.size < 1024 * 1024 * 1024)) { // jeśli jakiś dysk ma mniej niż 1GB
+      // Pobierz dane jeszcze raz z human-readable i skonwertuj
+      const { stdout: humanStdout } = await execAsync('lsblk -o NAME,SIZE,TYPE,MODEL,SERIAL,PATH,FSTYPE,MOUNTPOINT,LABEL -n -J');
+      const humanData = JSON.parse(humanStdout);
+      
+      // Funkcja konwersji human-readable na bajty
+      const humanToBytes = (sizeStr) => {
+        if (!sizeStr) return 0;
+        
+        const units = {
+          'B': 1,
+          'K': 1024,
+          'M': 1024 ** 2,
+          'G': 1024 ** 3,
+          'T': 1024 ** 4,
+          'P': 1024 ** 5
+        };
+        
+        const match = sizeStr.match(/^([\d.]+)([BKMGTP])?$/i);
+        if (!match) return 0;
+        
+        const num = parseFloat(match[1]);
+        const unit = match[2]?.toUpperCase() || 'B';
+        
+        return Math.round(num * (units[unit] || 1));
+      };
+      
+      // Aktualizuj rozmiary
+      const updateDeviceSizes = (blockdevices) => {
+        return blockdevices
+          .filter(filterDevice)
+          .map(dev => ({
+            path: `/dev/${dev.name}`,
+            model: dev.model || 'Unknown',
+            serial: dev.serial || 'Unknown',
+            type: dev.type,
+            size: humanToBytes(dev.size),
+            fstype: dev.fstype || '',
+            mountpoint: dev.mountpoint || '',
+            label: dev.label || '',
+            partitions: dev.children ? dev.children
+              .filter(filterPartition)
+              .map(part => ({
+                path: `/dev/${part.name}`,
+                fstype: part.fstype || '',
+                mountpoint: part.mountpoint || '',
+                size: humanToBytes(part.size),
+                type: part.type,
+                label: part.label || ''
+              })) : []
+          }));
+      };
+      
+      return res.json({
+        success: true,
+        data: updateDeviceSizes(humanData.blockdevices)
+      });
+    }
 
     res.json({
       success: true,
@@ -503,23 +576,52 @@ app.get('/api/storage/devices', requireAuth, async (req, res) => {
   }
 });
 
-
 // Endpoint do debugowania - pokazuje WSZYSTKIE urządzenia
 app.get('/api/storage/debug-devices', requireAuth, async (req, res) => {
   try {
-    const { stdout } = await execAsync('lsblk -o NAME,SIZE,TYPE,MODEL,SERIAL,PATH,FSTYPE,MOUNTPOINT,LABEL -n -J');
+    // Dla debugowania użyj -b (bajty) ale zachowaj dane RAW
+    const { stdout } = await execAsync('lsblk -b -o NAME,SIZE,TYPE,MODEL,SERIAL,PATH,FSTYPE,MOUNTPOINT,LABEL -n -J 2>/dev/null || lsblk --bytes --output NAME,SIZE,TYPE,MODEL,SERIAL,PATH,FSTYPE,MOUNTPOINT,LABEL --json 2>/dev/null');
     const lsblkData = JSON.parse(stdout);
+    
+    // Dodaj przeliczone rozmiary dla wygody
+    const enrichWithSizeBytes = (device) => {
+      const sizeStr = device.size;
+      let sizeBytes = 0;
+      
+      if (sizeStr && !isNaN(parseInt(sizeStr))) {
+        // Jeśli to już liczba (dzięki -b)
+        sizeBytes = parseInt(sizeStr);
+      } else if (sizeStr) {
+        // Konwersja human-readable
+        const units = { 'B': 1, 'K': 1024, 'M': 1024**2, 'G': 1024**3, 'T': 1024**4 };
+        const match = String(sizeStr).match(/^([\d.]+)([BKMGTP])?$/i);
+        if (match) {
+          const num = parseFloat(match[1]);
+          const unit = match[2]?.toUpperCase() || 'B';
+          sizeBytes = Math.round(num * (units[unit] || 1));
+        }
+      }
+      
+      return {
+        ...device,
+        size_raw: sizeStr,
+        size_bytes: sizeBytes,
+        children: device.children ? device.children.map(enrichWithSizeBytes) : undefined
+      };
+    };
+    
+    const enrichedDevices = lsblkData.blockdevices.map(enrichWithSizeBytes);
     
     res.json({
       success: true,
-      data: lsblkData.blockdevices,
+      data: enrichedDevices,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
+    console.error('Debug devices API error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to list debug devices',
-      details: error.message
+      error: 'Failed to list debug devices'
     });
   }
 });
