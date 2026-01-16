@@ -1,50 +1,60 @@
 <template>
-  <el-card class="widget-card" v-loading="loading" shadow="hover">
+  <el-card class="ram-widget" shadow="hover">
     <template #header>
       <div class="widget-header">
-        <el-icon class="header-icon"><Monitor /></el-icon>
-        <span class="header-title">{{ t('ram.title') }}</span>
-        <el-tag class="status-tag" size="small" :type="ramStatusType">{{ ramStatusText }}</el-tag>
+        <Icon icon="mdi:memory" />
+        <span>RAM</span>
+        <span class="status-badge" :class="getStatusClass(usagePercentage)">
+          {{ usagePercentage }}%
+        </span>
       </div>
     </template>
-    
-    <div class="widget-body">
-      <el-progress 
-        :percentage="ramUsagePercentage" 
-        :color="customColors"
-        :format="formatRamText"
-        :stroke-width="6"
-        class="ram-progress"
-      />
-      
-      <div class="metrics-grid">
-        <div class="metric">
-          <span class="metric__label">{{ t('ram.used') }}</span>
-          <span class="metric__value">
-            {{ formatBytes(ramData.used) }}
-            <span class="metric__total">/ {{ formatBytes(ramData.total) }}</span>
-          </span>
+
+    <div class="widget-content">
+      <!-- Pasek progresu -->
+      <div class="usage-progress">
+        <div class="progress-bar">
+          <div 
+            class="progress-fill" 
+            :style="{ width: `${usagePercentage}%` }"
+            :class="getStatusClass(usagePercentage)"
+          ></div>
         </div>
-        
-        <div class="metric">
-          <span class="metric__label">{{ t('ram.available') }}</span>
-          <span class="metric__value">{{ formatBytes(ramData.available) }}</span>
-        </div>
-        
-        <div class="metric">
-          <span class="metric__label">{{ t('ram.buffers') }}</span>
-          <span class="metric__value">{{ formatBytes(ramData.buffers) }}</span>
-        </div>
-        
-        <div class="metric">
-          <span class="metric__label">{{ t('ram.cached') }}</span>
-          <span class="metric__value">{{ formatBytes(ramData.cached) }}</span>
+        <div class="progress-labels">
+          <span>0%</span>
+          <span>50%</span>
+          <span>100%</span>
         </div>
       </div>
-      
-      <div class="update-info">
-        <span class="update-info__label">{{ t('ram.lastUpdate') }}:</span>
-        <span class="update-info__time">{{ lastUpdate }}</span>
+
+      <!-- Statystyki główne -->
+      <div class="main-stats">
+        <div class="stat-row">
+          <span class="stat-label">Użyte:</span>
+          <span class="stat-value">{{ formatBytes(ramData.used) }}</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Dostępne:</span>
+          <span class="stat-value">{{ formatBytes(ramData.available) }}</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Całkowita:</span>
+          <span class="stat-value">{{ formatBytes(ramData.total) }}</span>
+        </div>
+      </div>
+
+      <!-- Cache i Buffers -->
+      <div class="cache-stats">
+        <div class="cache-item">
+          <Icon icon="mdi:database" />
+          <span class="cache-label">Cache:</span>
+          <span class="cache-value">{{ formatBytes(ramData.cached) }}</span>
+        </div>
+        <div class="cache-item">
+          <Icon icon="mdi:buffer" />
+          <span class="cache-label">Buffers:</span>
+          <span class="cache-value">{{ formatBytes(ramData.buffers) }}</span>
+        </div>
       </div>
     </div>
   </el-card>
@@ -53,231 +63,232 @@
 <script>
 export default {
   name: 'RamWidget',
-  displayName: 'Informacje RAM'
+  displayName: 'RAM'
 }
 </script>
 
 <script setup>
-import { useI18n } from 'vue-i18n'
-const { t } = useI18n()
-import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
-import { Monitor } from '@element-plus/icons-vue'
+import { Icon } from '@iconify/vue'
 
-// Dane
 const ramData = ref({
   total: 0,
   used: 0,
   free: 0,
   available: 0,
   buffers: 0,
-  cached: 0,
-  active: 0
+  cached: 0
 })
 
-const customColors = [
-  { color: '#67C23A', percentage: 50 },
-  { color: '#E6A23C', percentage: 75 },
-  { color: '#F56C6C', percentage: 90 }
-]
-
-const lastUpdate = ref('')
-const loading = ref(true)
-const error = ref(null)
-let intervalId = null
-
-// Oblicz procent użycia RAM
-const ramUsagePercentage = computed(() => {
+const usagePercentage = computed(() => {
   if (ramData.value.total === 0) return 0
-  return Math.round(((ramData.value.total - ramData.value.available) / ramData.value.total) * 100)
+  const used = ramData.value.total - ramData.value.available
+  return Math.round((used / ramData.value.total) * 100)
 })
 
-// Status RAM
-const ramStatusType = computed(() => {
-  if (error.value) return 'danger'
-  if (ramUsagePercentage.value > 90) return 'warning'
-  return 'success'
-})
-
-const ramStatusText = computed(() => {
-  if (error.value) return t('ram.status.error')
-  if (ramUsagePercentage.value > 90) return t('ram.status.critical')
-  if (ramUsagePercentage.value > 75) return t('ram.status.high')
-  return t('ram.status.normal')
-})
-
-// Formatowanie tekstu
-const formatRamText = () => {
-  return `RAM: ${ramUsagePercentage.value}%`
+const getStatusClass = (percent) => {
+  if (percent >= 90) return 'critical'
+  if (percent >= 75) return 'warning'
+  return 'normal'
 }
 
-// Formatowanie bajtów
-const formatBytes = (bytes, decimals = 2) => {
-  if (bytes === 0) return '0 Bytes'
-  const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i]
+const formatBytes = (bytes) => {
+  if (bytes === 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let value = bytes
+  let unitIndex = 0
+  
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex++
+  }
+  
+  return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
 }
 
-// Pobieranie danych z API
 const fetchRamData = async () => {
   try {
-    loading.value = true
     const response = await axios.get('/api/ram')
-    
     const data = response.data
+    
     ramData.value = {
-      total: data.total,
-      used: data.used,
-      free: data.free,
-      available: data.available || (data.free + data.buffers + data.cached),
+      total: data.total || 0,
+      used: data.used || 0,
+      free: data.free || 0,
+      available: data.available || 0,
       buffers: data.buffers || 0,
-      cached: data.cached || 0,
-      active: data.active || data.used
+      cached: data.cached || 0
     }
-    lastUpdate.value = new Date().toLocaleTimeString()
-    error.value = null
+    
   } catch (err) {
-    console.error('Błąd pobierania danych RAM:', err)
-    error.value = err.message
-    // Fallback - generuj losowe dane jeśli API nie działa
-    const total = 8 * 1024 * 1024 * 1024 // 8GB
-    const available = Math.floor(Math.random() * 6 * 1024 * 1024 * 1024) // 0-6GB
+    console.error('Błąd RAM:', err)
+    // Fallback data
     ramData.value = {
-      total,
-      used: total - available,
-      free: available,
-      available,
-      buffers: 0,
-      cached: 0,
-      active: total - available
+      total: 8 * 1024 * 1024 * 1024, // 8GB
+      used: 5.2 * 1024 * 1024 * 1024,
+      free: 2.8 * 1024 * 1024 * 1024,
+      available: 3.1 * 1024 * 1024 * 1024,
+      buffers: 256 * 1024 * 1024,
+      cached: 1.5 * 1024 * 1024 * 1024
     }
-  } finally {
-    loading.value = false
   }
 }
 
-// Uruchom odświeżanie co 5 sekund
 onMounted(() => {
   fetchRamData()
-  intervalId = setInterval(fetchRamData, 5000)
-})
-
-// Sprzątanie
-onBeforeUnmount(() => {
-  if (intervalId) clearInterval(intervalId)
+  setInterval(fetchRamData, 3000)
 })
 </script>
 
-<style lang="scss" scoped>
-.widget-card {
+<style scoped>
+.ram-widget {
   height: 100%;
-  display: flex;
-  flex-direction: column;
-  
-  :deep(.el-card__header) {
-    padding: 8px 12px;
-  }
-  
-  :deep(.el-card__body) {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    padding: 8px 12px 10px;
-  }
+  border-radius: 8px;
+}
+
+.ram-widget :deep(.el-card__header) {
+  padding: 8px 12px;
+}
+
+.ram-widget :deep(.el-card__body) {
+  padding: 10px 12px;
 }
 
 .widget-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  
-  .header-icon {
-    font-size: 14px;
-    color: var(--el-text-color-secondary);
-  }
-  
-  .header-title {
-    font-size: 14px;
-    font-weight: 500;
-    flex: 1;
-  }
-  
-  .status-tag {
-    font-size: 12px;
-    padding: 0 6px;
-    height: 20px;
-    line-height: 20px;
-  }
+  font-size: 13px;
+  font-weight: 500;
 }
 
-.ram-progress {
-  margin: 4px 0 8px;
-  
-  :deep(.el-progress-bar) {
-    padding-right: 0;
-    margin-right: 0;
-  }
-  
-  :deep(.el-progress__text) {
-    font-size: 12px !important;
-    margin-left: 8px;
-  }
+.widget-header .iconify {
+  font-size: 14px;
+  color: var(--el-color-primary);
 }
 
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  margin-bottom: 8px;
+.status-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: auto;
+  font-family: monospace;
 }
 
-.metric {
-  &__label {
-    display: block;
-    font-size: 12px;
-    color: var(--el-text-color-secondary);
-    margin-bottom: 2px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  
-  &__value {
-    display: block;
-    font-size: 11px;
-    font-weight: 500;
-  }
-  
-  &__total {
-    font-size: 9px;
-    color: var(--el-text-color-secondary);
-    margin-left: 2px;
-  }
+.status-badge.normal {
+  background: var(--el-color-success-light-9);
+  color: var(--el-color-success);
 }
 
-.update-info {
-  margin-top: auto;
-  padding-top: 6px;
-  border-top: 1px solid var(--el-border-color-light);
-  text-align: right;
-  
-  &__label {
-    font-size: 9px;
-    color: var(--el-text-color-secondary);
-    margin-right: 4px;
-  }
-  
-  &__time {
-    font-size: 9px;
-    font-family: monospace;
-  }
+.status-badge.warning {
+  background: var(--el-color-warning-light-9);
+  color: var(--el-color-warning);
 }
 
-@media (max-width: 768px) {
-  .metrics-grid {
-    grid-template-columns: 1fr;
-  }
+.status-badge.critical {
+  background: var(--el-color-error-light-9);
+  color: var(--el-color-error);
+}
+
+.widget-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Pasek progresu */
+.usage-progress {
+  margin-top: 4px;
+}
+
+.progress-bar {
+  height: 6px;
+  background: var(--el-color-info-light-8);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.progress-fill.normal {
+  background: var(--el-color-success);
+}
+
+.progress-fill.warning {
+  background: var(--el-color-warning);
+}
+
+.progress-fill.critical {
+  background: var(--el-color-error);
+}
+
+.progress-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: var(--el-text-color-secondary);
+}
+
+/* Statystyki główne */
+.main-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0;
+  border-top: 1px solid var(--el-border-color-lighter);
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+}
+
+.stat-label {
+  color: var(--el-text-color-secondary);
+}
+
+.stat-value {
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+  font-family: monospace;
+}
+
+/* Cache i Buffers */
+.cache-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cache-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+}
+
+.cache-item .iconify {
+  font-size: 10px;
+  color: var(--el-color-info);
+}
+
+.cache-label {
+  color: var(--el-text-color-secondary);
+  flex: 1;
+}
+
+.cache-value {
+  color: var(--el-text-color-primary);
+  font-family: monospace;
 }
 </style>
