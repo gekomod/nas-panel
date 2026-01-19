@@ -2,7 +2,7 @@
   <div class="samba-status">
     <div class="status-header">
       <h3>
-        <Icon icon="mdi:server-network" width="20" />
+        <Icon icon="mdi:server-network" width="20" class="header-icon" />
         <span>{{ $t('samba.status.title') }}</span>
       </h3>
     </div>
@@ -17,7 +17,7 @@
           <div class="card-title">{{ getStatusTitle() }}</div>
           <div class="card-subtitle">{{ getStatusSubtitle() }}</div>
         </div>
-        <el-tag :type="getStatusTagType()" size="small" class="status-tag">
+        <el-tag :type="getStatusTagType()" size="small" class="status-tag" effect="dark">
           {{ getStatusText() }}
         </el-tag>
       </div>
@@ -51,6 +51,7 @@
         <div v-if="status.error" class="detail-row">
           <span class="detail-label">{{ $t('samba.status.error') }}</span>
           <span class="detail-value text-danger">
+            <Icon icon="mdi:alert-circle" width="16" />
             {{ status.error }}
           </span>
         </div>
@@ -58,6 +59,7 @@
         <div v-if="status.version" class="detail-row">
           <span class="detail-label">{{ $t('samba.status.version') }}</span>
           <span class="detail-value">
+            <Icon icon="mdi:tag" width="16" />
             {{ status.version }}
           </span>
         </div>
@@ -65,6 +67,7 @@
         <div v-if="status.lastCheck" class="detail-row">
           <span class="detail-label">{{ $t('samba.status.lastCheck') }}</span>
           <span class="detail-value">
+            <Icon icon="mdi:clock-outline" width="16" />
             {{ formatDate(status.lastCheck) }}
           </span>
         </div>
@@ -78,6 +81,7 @@
         @click="emit('status-changed')"
         size="small"
         class="refresh-btn"
+        plain
       >
         <Icon icon="mdi:refresh" width="16" />
         {{ $t('samba.status.refresh') }}
@@ -150,22 +154,30 @@ function formatDate(timestamp) {
   --spacing-sm: 12px;
   --spacing-md: 16px;
   --radius: 8px;
+  --card-bg: var(--el-bg-color);
+  --border-color: var(--el-border-color);
+  --text-primary: var(--el-text-color-primary);
+  --text-secondary: var(--el-text-color-secondary);
 }
 
 .status-header {
   margin-bottom: var(--spacing-md);
   padding-bottom: var(--spacing-sm);
   border-bottom: 1px solid var(--border-color);
+  
+  h3 {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
 }
 
-.status-header h3 {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  margin: 0;
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: var(--text-primary);
+.header-icon {
+  color: var(--el-color-primary);
 }
 
 .status-cards {
@@ -183,17 +195,28 @@ function formatDate(timestamp) {
   background: var(--card-bg);
   border: 1px solid var(--border-color);
   transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
   
-  &.status-success {
-    border-left: 4px solid #10b981;
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
   }
   
-  &.status-warning {
-    border-left: 4px solid #f59e0b;
+  &.status-success::before {
+    background-color: var(--el-color-success);
   }
   
-  &.status-error {
-    border-left: 4px solid #ef4444;
+  &.status-warning::before {
+    background-color: var(--el-color-warning);
+  }
+  
+  &.status-error::before {
+    background-color: var(--el-color-danger);
   }
 }
 
@@ -204,18 +227,21 @@ function formatDate(timestamp) {
   width: 48px;
   height: 48px;
   border-radius: var(--radius);
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(99, 102, 241, 0.05));
+  flex-shrink: 0;
   
   .status-success & {
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05));
+    background: linear-gradient(135deg, rgba(var(--el-color-success-rgb), 0.1), rgba(var(--el-color-success-rgb), 0.05));
+    color: var(--el-color-success);
   }
   
   .status-warning & {
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.05));
+    background: linear-gradient(135deg, rgba(var(--el-color-warning-rgb), 0.1), rgba(var(--el-color-warning-rgb), 0.05));
+    color: var(--el-color-warning);
   }
   
   .status-error & {
-    background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05));
+    background: linear-gradient(135deg, rgba(var(--el-color-danger-rgb), 0.1), rgba(var(--el-color-danger-rgb), 0.05));
+    color: var(--el-color-danger);
   }
 }
 
@@ -227,16 +253,19 @@ function formatDate(timestamp) {
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 4px;
+  font-size: 1rem;
 }
 
 .card-subtitle {
   font-size: 0.875rem;
   color: var(--text-secondary);
+  line-height: 1.4;
 }
 
 .status-tag {
   font-weight: 500;
   letter-spacing: 0.3px;
+  flex-shrink: 0;
 }
 
 .status-details {
@@ -273,11 +302,11 @@ function formatDate(timestamp) {
 }
 
 .text-success {
-  color: #10b981;
+  color: var(--el-color-success);
 }
 
 .text-danger {
-  color: #ef4444;
+  color: var(--el-color-danger);
 }
 
 .status-actions {

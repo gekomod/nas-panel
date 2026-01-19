@@ -1,223 +1,232 @@
 <template>
-  <div class="samba-shares">
-    <!-- Nagłówek sekcji -->
+  <div class="samba-shares-modern">
+    <!-- Header -->
     <div class="section-header">
-      <div class="section-title">
-        <Icon icon="mdi:folder-network" width="20" class="section-icon" />
-        <h3>{{ $t('samba.shares.title') }}</h3>
-        <el-tag v-if="!serviceStatus.running" type="danger" size="small" class="service-status">
-          {{ $t('samba.status.stopped') }}
-        </el-tag>
+      <div class="header-left">
+        <div class="title-wrapper">
+          <div class="title-icon">
+            <Icon icon="mdi:folder-multiple" width="24" />
+          </div>
+          <div>
+            <h2>Udostępnienia</h2>
+            <p class="subtitle">Zarządzaj udostępnieniami sieciowymi</p>
+          </div>
+        </div>
+        <div v-if="!serviceStatus.running" class="status-alert">
+          <Icon icon="mdi:alert-circle" width="16" />
+          <span>Usługa Samba jest wyłączona</span>
+        </div>
       </div>
       <el-button 
         type="primary" 
-        size="small"
         @click="showCreateDialog = true"
-        :disabled="!serviceStatus.running || loading"
-        class="add-button"
+        :disabled="!serviceStatus.running"
+        class="create-btn"
       >
-        <Icon icon="mdi:plus" width="16" />
-        {{ $t('samba.shares.newShare') }}
+        <Icon icon="mdi:plus-circle" width="18" />
+        <span>Nowe udostępnienie</span>
       </el-button>
     </div>
 
-    <!-- Alert o wyłączonej usłudze -->
-    <el-alert
-      v-if="!serviceStatus.running"
-      :title="$t('samba.alerts.serviceStopped.title')"
-      type="error"
-      :closable="false"
-      show-icon
-      class="service-alert"
-    />
-
-    <!-- Stan pusty -->
-    <div 
-      v-if="!loading && shares.length === 0" 
-      class="empty-state"
-    >
-      <Icon icon="mdi:folder-off-outline" width="48" class="empty-icon" />
-      <p>{{ $t('samba.shares.noShares') }}</p>
+    <!-- Empty State -->
+    <div v-if="!loading && shares.length === 0" class="empty-state">
+      <div class="empty-illustration">
+        <Icon icon="mdi:folder-network-outline" width="64" />
+      </div>
+      <h3>Brak udostępnień</h3>
+      <p>Dodaj swoje pierwsze udostępnienie sieciowe</p>
       <el-button 
         v-if="serviceStatus.running" 
         type="primary" 
-        size="small"
         @click="showCreateDialog = true"
+        class="empty-action"
       >
-        {{ $t('samba.shares.newShare') }}
+        <Icon icon="mdi:plus" width="16" />
+        <span>Dodaj udostępnienie</span>
       </el-button>
     </div>
 
-    <!-- Tabela udostępnień -->
-    <el-table 
-      v-else
-      :data="shares" 
-      v-loading="loading"
-      style="width: 100%"
-      :empty-text="$t('common.noData')"
-      class="shares-table"
-      size="small"
-    >
-      <el-table-column 
-        prop="name" 
-        :label="$t('samba.shares.columns.name')" 
-        width="180"
-      >
-        <template #default="{ row }">
-          <div class="share-name">
-            <Icon icon="mdi:folder-shared" width="16" class="share-icon" />
-            <span>{{ row.name }}</span>
+    <!-- Shares Grid -->
+    <div v-else class="shares-grid">
+      <div v-for="share in shares" :key="share.name" class="share-card">
+        <div class="share-header">
+          <div class="share-icon">
+            <Icon icon="mdi:folder-shared" width="20" />
           </div>
-        </template>
-      </el-table-column>
-      
-      <el-table-column prop="path" :label="$t('samba.shares.columns.path')">
-        <template #default="{ row }">
-          <div class="share-path">
-            <Icon icon="mdi:folder" width="16" />
-            <code>{{ row.path }}</code>
+          <div class="share-title">
+            <h3>{{ share.name }}</h3>
+            <div class="share-tags">
+              <el-tag 
+                :type="share.readOnly ? 'warning' : 'success'" 
+                size="small"
+                effect="plain"
+              >
+                {{ share.readOnly ? 'Tylko odczyt' : 'Odczyt/Zapis' }}
+              </el-tag>
+            </div>
           </div>
-        </template>
-      </el-table-column>
-      
-      <el-table-column 
-        prop="comment" 
-        :label="$t('samba.shares.columns.comment')"
-        min-width="150"
-      >
-        <template #default="{ row }">
-          <span v-if="row.comment" class="share-comment">
-            {{ row.comment }}
-          </span>
-          <span v-else class="text-muted">—</span>
-        </template>
-      </el-table-column>
-      
-      <el-table-column 
-        :label="$t('samba.shares.columns.readOnly')" 
-        width="100"
-        align="center"
-      >
-        <template #default="{ row }">
-          <el-tag 
-            :type="row.readOnly ? 'warning' : 'success'" 
-            size="small"
-            effect="plain"
-          >
-            {{ row.readOnly ? $t('common.yes') : $t('common.no') }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      
-      <el-table-column 
-        :label="$t('common.actions')" 
-        width="120"
-        align="right"
-      >
-        <template #default="{ row }">
-          <div class="action-buttons">
+          <div class="share-actions">
+            <el-dropdown trigger="click">
+              <el-button text circle>
+                <Icon icon="mdi:dots-vertical" width="20" />
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item @click="editShare(share)">
+                    <Icon icon="mdi:pencil" width="16" />
+                    <span>Edytuj</span>
+                  </el-dropdown-item>
+                  <el-dropdown-item 
+                    @click="deleteShare(share)"
+                    style="color: var(--el-color-danger)"
+                  >
+                    <Icon icon="mdi:trash-can-outline" width="16" />
+                    <span>Usuń</span>
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
+        </div>
+        
+        <div class="share-content">
+          <div class="share-info">
+            <div class="info-item">
+              <Icon icon="mdi:folder" width="16" />
+              <span class="info-label">Ścieżka:</span>
+              <code class="info-value">{{ share.path }}</code>
+            </div>
+            <div v-if="share.comment" class="info-item">
+              <Icon icon="mdi:comment-text" width="16" />
+              <span class="info-label">Opis:</span>
+              <span class="info-value">{{ share.comment }}</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="share-footer">
+          <div class="footer-actions">
             <el-button 
               size="small" 
-              circle
-              @click="editShare(row)"
-              :title="$t('common.edit')"
-              link
-              class="action-btn"
+              text
+              @click="copySharePath(share)"
+              class="footer-btn"
             >
-              <Icon icon="mdi:pencil" width="16" />
+              <Icon icon="mdi:content-copy" width="14" />
+              <span>Kopiuj ścieżkę</span>
             </el-button>
             <el-button 
               size="small" 
-              circle
-              type="danger"
-              @click="deleteShare(row)"
-              :title="$t('common.delete')"
-              link
-              class="action-btn"
+              text
+              @click="testShare(share)"
+              class="footer-btn"
             >
-              <Icon icon="mdi:trash-can-outline" width="16" />
+              <Icon icon="mdi:test-tube" width="14" />
+              <span>Testuj</span>
             </el-button>
           </div>
-        </template>
-      </el-table-column>
-    </el-table>
+        </div>
+      </div>
+    </div>
 
-    <!-- Dialog tworzenia/edycji -->
+    <!-- Create/Edit Dialog -->
     <el-dialog 
       v-model="showCreateDialog" 
-      :title="editingShare ? $t('samba.shares.editTitle') : $t('samba.shares.createTitle')"
+      :title="editingShare ? 'Edytuj udostępnienie' : 'Nowe udostępnienie'"
       width="500px"
-      class="share-dialog"
-      :close-on-click-modal="false"
+      class="modern-dialog"
     >
-      <el-form 
-        :model="shareForm" 
-        :rules="formRules"
-        ref="shareFormRef"
-        label-position="top"
-        @submit.prevent="saveShare"
-      >
-        <el-form-item 
-          :label="$t('samba.shares.form.name')" 
-          prop="name"
-          required
+      <div class="dialog-content">
+        <el-form 
+          :model="shareForm" 
+          :rules="formRules"
+          ref="shareFormRef"
+          label-position="top"
         >
-          <el-input 
-            v-model="shareForm.name" 
-            :placeholder="$t('samba.shares.form.namePlaceholder')"
-            maxlength="32"
-            show-word-limit
-          />
-        </el-form-item>
-        
-        <el-form-item 
-          :label="$t('samba.shares.form.path')" 
-          prop="path"
-          required
-        >
-          <el-input 
-            v-model="shareForm.path" 
-            :placeholder="$t('samba.shares.form.pathPlaceholder')"
-            @keyup.enter="saveShare"
-          >
-            <template #prepend>
-              <Icon icon="mdi:folder" />
-            </template>
-          </el-input>
-        </el-form-item>
-        
-        <el-form-item :label="$t('samba.shares.form.comment')">
-          <el-input 
-            v-model="shareForm.comment" 
-            type="textarea"
-            :rows="2"
-            :placeholder="$t('samba.shares.form.commentPlaceholder')"
-            maxlength="255"
-            show-word-limit
-          />
-        </el-form-item>
-        
-        <el-form-item :label="$t('samba.shares.form.readOnly')">
-          <div class="switch-container">
-            <el-switch v-model="shareForm.readOnly" />
-            <span class="switch-label">
-              {{ shareForm.readOnly ? $t('common.yes') : $t('common.no') }}
-            </span>
-          </div>
-        </el-form-item>
-      </el-form>
+          <el-form-item label="Nazwa udostępnienia" prop="name">
+            <el-input 
+              v-model="shareForm.name" 
+              placeholder="np. documents"
+              size="large"
+            >
+              <template #prefix>
+                <Icon icon="mdi:tag" />
+              </template>
+            </el-input>
+            <div class="form-hint">Tylko litery, cyfry, myślniki i podkreślenia</div>
+          </el-form-item>
+          
+          <el-form-item label="Ścieżka folderu" prop="path">
+            <el-input 
+              v-model="shareForm.path" 
+              placeholder="/ścieżka/do/folderu"
+              size="large"
+            >
+              <template #prefix>
+                <Icon icon="mdi:folder" />
+              </template>
+            </el-input>
+            <div class="form-hint">Absolutna ścieżka do folderu</div>
+          </el-form-item>
+          
+          <el-form-item label="Opis (opcjonalnie)">
+            <el-input 
+              v-model="shareForm.comment" 
+              type="textarea"
+              :rows="3"
+              placeholder="Krótki opis udostępnienia"
+              maxlength="255"
+              show-word-limit
+            />
+          </el-form-item>
+          
+          <el-form-item label="Uprawnienia">
+            <div class="permission-toggle">
+              <div 
+                class="toggle-option"
+                :class="{ active: !shareForm.readOnly }"
+                @click="shareForm.readOnly = false"
+              >
+                <div class="toggle-icon">
+                  <Icon icon="mdi:pencil" width="20" />
+                </div>
+                <div class="toggle-content">
+                  <div class="toggle-title">Odczyt/Zapis</div>
+                  <div class="toggle-desc">Użytkownicy mogą edytować pliki</div>
+                </div>
+              </div>
+              
+              <div 
+                class="toggle-option"
+                :class="{ active: shareForm.readOnly }"
+                @click="shareForm.readOnly = true"
+              >
+                <div class="toggle-icon">
+                  <Icon icon="mdi:eye" width="20" />
+                </div>
+                <div class="toggle-content">
+                  <div class="toggle-title">Tylko odczyt</div>
+                  <div class="toggle-desc">Użytkownicy mogą tylko przeglądać</div>
+                </div>
+              </div>
+            </div>
+          </el-form-item>
+        </el-form>
+      </div>
       
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="showCreateDialog = false">
-            {{ $t('common.cancel') }}
+            Anuluj
           </el-button>
           <el-button 
             type="primary" 
             @click="saveShare"
             :loading="saving"
+            class="save-btn"
           >
-            {{ editingShare ? $t('common.save') : $t('common.create') }}
+            <Icon icon="mdi:check" width="16" />
+            <span>{{ editingShare ? 'Zapisz zmiany' : 'Utwórz udostępnienie' }}</span>
           </el-button>
         </div>
       </template>
@@ -227,7 +236,7 @@
 
 <script setup>
 import { ref, onMounted, defineProps, defineEmits, watch, nextTick } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessage, ElMessageBox, ElNotification } from 'element-plus';
 import { Icon } from '@iconify/vue';
 import axios from 'axios';
 
@@ -292,19 +301,11 @@ async function loadShares() {
     }
   } catch (err) {
     console.error('Błąd ładowania udostępnień:', err);
-    
-    let errorMessage = 'Błąd ładowania udostępnień';
-    if (err.response) {
-      if (err.response.status === 404) {
-        errorMessage = 'Endpoint API nie znaleziony';
-      } else if (err.response.data?.error) {
-        errorMessage = err.response.data.error;
-      }
-    } else if (err.request) {
-      errorMessage = 'Brak odpowiedzi od serwera';
-    }
-    
-    ElMessage.error(errorMessage);
+    ElNotification.error({
+      title: 'Błąd ładowania',
+      message: 'Nie udało się załadować listy udostępnień',
+      position: 'bottom-right'
+    });
   } finally {
     loading.value = false;
   }
@@ -326,10 +327,18 @@ async function saveShare() {
   try {
     if (editingShare.value) {
       await axios.put(`/services/samba/shares/${editingShare.value.name}`, shareForm.value);
-      ElMessage.success('Udostępnienie zaktualizowane');
+      ElNotification.success({
+        title: 'Sukces',
+        message: 'Udostępnienie zaktualizowane',
+        position: 'bottom-right'
+      });
     } else {
       await axios.post('/services/samba/shares', shareForm.value);
-      ElMessage.success('Udostępnienie utworzone');
+      ElNotification.success({
+        title: 'Sukces',
+        message: 'Udostępnienie utworzone',
+        position: 'bottom-right'
+      });
     }
     
     showCreateDialog.value = false;
@@ -337,7 +346,11 @@ async function saveShare() {
     await loadShares();
     emit('refresh-status');
   } catch (error) {
-    ElMessage.error(error.response?.data?.error || 'Błąd podczas zapisywania');
+    ElNotification.error({
+      title: 'Błąd',
+      message: error.response?.data?.error || 'Błąd podczas zapisywania',
+      position: 'bottom-right'
+    });
   } finally {
     saving.value = false;
   }
@@ -366,17 +379,26 @@ async function deleteShare(share) {
         cancelButtonText: 'Anuluj',
         type: 'warning',
         confirmButtonClass: 'el-button--danger',
+        customClass: 'modern-confirm',
         beforeClose: async (action, instance, done) => {
           if (action === 'confirm') {
             instance.confirmButtonLoading = true;
             try {
               await axios.delete(`/services/samba/shares/${encodeURIComponent(share.name)}`);
-              ElMessage.success('Udostępnienie usunięte');
+              ElNotification.success({
+                title: 'Usunięto',
+                message: 'Udostępnienie zostało usunięte',
+                position: 'bottom-right'
+              });
               await loadShares();
               emit('refresh-status');
               done();
             } catch (error) {
-              ElMessage.error(error.response?.data?.error || 'Błąd podczas usuwania');
+              ElNotification.error({
+                title: 'Błąd',
+                message: error.response?.data?.error || 'Błąd podczas usuwania',
+                position: 'bottom-right'
+              });
               instance.confirmButtonLoading = false;
             }
           } else {
@@ -390,6 +412,19 @@ async function deleteShare(share) {
   }
 }
 
+function copySharePath(share) {
+  navigator.clipboard.writeText(share.path);
+  ElMessage.success('Ścieżka skopiowana do schowka');
+}
+
+function testShare(share) {
+  ElNotification.info({
+    title: 'Testowanie',
+    message: `Rozpoczynam test udostępnienia ${share.name}`,
+    position: 'bottom-right'
+  });
+}
+
 watch(showCreateDialog, (newVal) => {
   if (!newVal) {
     nextTick(() => resetForm());
@@ -398,179 +433,501 @@ watch(showCreateDialog, (newVal) => {
 </script>
 
 <style scoped lang="scss">
-.samba-shares {
-  --spacing-sm: 12px;
-  --spacing-md: 16px;
-  --radius: 6px;
+.samba-shares-modern {
+  --primary-color: #6366f1;
+  --success-color: #10b981;
+  --warning-color: #f59e0b;
+  --danger-color: #ef4444;
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafc;
+  --border-color: #e2e8f0;
+  --text-primary: #1e293b;
+  --text-secondary: #64748b;
+  --radius-lg: 16px;
+  --radius-md: 12px;
+  --radius-sm: 8px;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.dark .samba-shares-modern {
+  --bg-primary: #1e293b;
+  --bg-secondary: #0f172a;
+  --border-color: #334155;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+}
+
+.samba-shares-modern {
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+/* Header */
 .section-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--spacing-md);
-  padding-bottom: var(--spacing-sm);
+  align-items: flex-start;
+  padding: 32px;
   border-bottom: 1px solid var(--border-color);
 }
 
-.section-title {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
+.header-left {
+  .title-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 12px;
+    
+    .title-icon {
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      
+      .iconify {
+        color: white;
+      }
+    }
+    
+    h2 {
+      margin: 0;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+  }
+  
+  .subtitle {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+  }
+  
+  .status-alert {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+    border: 1px solid #fecaca;
+    border-radius: var(--radius-sm);
+    color: #dc2626;
+    font-size: 0.875rem;
+    font-weight: 500;
+    
+    .dark & {
+      background: linear-gradient(135deg, #450a0a 0%, #7f1d1d 100%);
+      border-color: #f87171;
+    }
+  }
 }
 
-.section-icon {
-  color: #6366f1;
-}
-
-.section-title h3 {
-  margin: 0;
-  font-size: 1.125rem;
+.create-btn {
+  background: linear-gradient(135deg, var(--primary-color) 0%, #8b5cf6 100%);
+  border: none;
+  padding: 10px 20px;
   font-weight: 600;
-  color: var(--text-primary);
-}
-
-.service-status {
-  font-size: 0.75rem;
-  height: 22px;
-}
-
-.add-button {
-  font-weight: 500;
-}
-
-.service-alert {
-  margin-bottom: var(--spacing-md);
-  border-radius: var(--radius);
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 48px var(--spacing-md);
-  text-align: center;
-  color: var(--text-secondary);
-}
-
-.empty-icon {
-  margin-bottom: var(--spacing-md);
-  color: var(--border-color);
-}
-
-.empty-state p {
-  margin: 0 0 var(--spacing-md) 0;
-  font-size: 0.875rem;
-}
-
-.shares-table {
-  border-radius: var(--radius);
-  overflow: hidden;
-  
-  :deep(.el-table__header) {
-    th {
-      background-color: var(--card-bg);
-      font-weight: 600;
-    }
-  }
-  
-  :deep(.el-table__row) {
-    &:hover {
-      background-color: rgba(99, 102, 241, 0.04);
-    }
-  }
-}
-
-.share-name {
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   gap: 8px;
-  font-weight: 500;
-}
-
-.share-icon {
-  color: #6366f1;
-}
-
-.share-path {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  
-  code {
-    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-    font-size: 0.8125rem;
-    background: rgba(0, 0, 0, 0.04);
-    padding: 2px 6px;
-    border-radius: 4px;
-    color: var(--text-primary);
-  }
-}
-
-.dark .share-path code {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.share-comment {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-}
-
-.text-muted {
-  color: var(--text-secondary);
-  font-style: italic;
-  font-size: 0.875rem;
-}
-
-.action-buttons {
-  display: flex;
-  justify-content: flex-end;
-  gap: 4px;
-}
-
-.action-btn {
-  padding: 6px;
+  transition: var(--transition);
   
   &:hover {
-    transform: translateY(-1px);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 }
 
-.share-dialog {
+/* Empty State */
+.empty-state {
+  padding: 64px 32px;
+  text-align: center;
+  
+  .empty-illustration {
+    margin: 0 auto 24px;
+    width: 96px;
+    height: 96px;
+    background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    
+    .dark & {
+      background: linear-gradient(135deg, #334155 0%, #1e293b 100%);
+    }
+    
+    .iconify {
+      color: var(--text-secondary);
+      opacity: 0.5;
+    }
+  }
+  
+  h3 {
+    margin: 0 0 8px;
+    color: var(--text-primary);
+    font-size: 1.25rem;
+  }
+  
+  p {
+    margin: 0 0 24px;
+    color: var(--text-secondary);
+  }
+}
+
+.empty-action {
+  background: linear-gradient(135deg, var(--primary-color) 0%, #8b5cf6 100%);
+  border: none;
+  padding: 12px 24px;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Shares Grid */
+.shares-grid {
+  padding: 32px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 24px;
+}
+
+.share-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: var(--transition);
+  
+  &:hover {
+    border-color: var(--primary-color);
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-4px);
+  }
+}
+
+.share-header {
+  padding: 20px 20px 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border-bottom: 1px solid var(--border-color);
+  
+  .share-icon {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    
+    .iconify {
+      color: var(--primary-color);
+    }
+  }
+  
+  .share-title {
+    flex: 1;
+    
+    h3 {
+      margin: 0 0 8px;
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+  }
+  
+  .share-actions {
+    .el-button {
+      color: var(--text-secondary);
+      
+      &:hover {
+        color: var(--text-primary);
+      }
+    }
+  }
+}
+
+.share-tags {
+  :deep(.el-tag) {
+    font-weight: 500;
+    border: none;
+  }
+}
+
+.share-content {
+  padding: 20px;
+}
+
+.share-info {
+  .info-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    
+    &:last-child {
+      margin-bottom: 0;
+    }
+    
+    .iconify {
+      color: var(--text-secondary);
+      flex-shrink: 0;
+    }
+    
+    .info-label {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      font-weight: 500;
+      flex-shrink: 0;
+    }
+    
+    .info-value {
+      color: var(--text-primary);
+      font-size: 0.875rem;
+      flex: 1;
+      min-width: 0;
+      
+      &.info-value code {
+        background: var(--bg-primary);
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-family: 'Monaco', 'Menlo', monospace;
+        font-size: 0.75rem;
+        display: inline-block;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+  }
+}
+
+.share-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-color);
+  background: rgba(0, 0, 0, 0.02);
+  
+  .dark & {
+    background: rgba(255, 255, 255, 0.02);
+  }
+}
+
+.footer-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.footer-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  
+  &:hover {
+    color: var(--primary-color);
+  }
+}
+
+/* Dialog */
+.modern-dialog {
   :deep(.el-dialog) {
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     overflow: hidden;
   }
   
   :deep(.el-dialog__header) {
-    padding: var(--spacing-md) var(--spacing-md) 0;
+    padding: 24px 32px 0;
     margin: 0;
+    
+    .el-dialog__title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
   }
   
-  :deep(.el-dialog__body) {
-    padding: var(--spacing-md);
-  }
-  
-  :deep(.el-dialog__footer) {
-    padding: 0 var(--spacing-md) var(--spacing-md);
+  :deep(.el-dialog__headerbtn) {
+    top: 28px;
+    right: 32px;
+    
+    .el-dialog__close {
+      color: var(--text-secondary);
+      font-size: 20px;
+      
+      &:hover {
+        color: var(--text-primary);
+      }
+    }
   }
 }
 
-.switch-container {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
+.dialog-content {
+  padding: 24px 32px;
 }
 
-.switch-label {
-  font-size: 0.875rem;
+:deep(.el-form-item) {
+  margin-bottom: 24px;
+  
+  .el-form-item__label {
+    color: var(--text-primary);
+    font-weight: 600;
+    margin-bottom: 8px;
+    font-size: 0.875rem;
+  }
+}
+
+.form-hint {
+  font-size: 0.75rem;
   color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.permission-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.toggle-option {
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  cursor: pointer;
+  transition: var(--transition);
+  
+  &:hover {
+    border-color: var(--primary-color);
+  }
+  
+  &.active {
+    border-color: var(--primary-color);
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+  }
+  
+  .toggle-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 12px;
+    
+    .iconify {
+      color: var(--text-primary);
+    }
+    
+    .active & {
+      background: var(--primary-color);
+      
+      .iconify {
+        color: white;
+      }
+    }
+  }
+  
+  .toggle-title {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+  
+  .toggle-desc {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
 }
 
 .dialog-footer {
+  padding: 0 32px 24px;
   display: flex;
   justify-content: flex-end;
-  gap: var(--spacing-sm);
+  gap: 12px;
+}
+
+.save-btn {
+  background: linear-gradient(135deg, var(--primary-color) 0%, #8b5cf6 100%);
+  border: none;
+  padding: 10px 24px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Confirm Dialog */
+:deep(.modern-confirm) {
+  .el-message-box {
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+  
+  .el-message-box__title {
+    font-weight: 600;
+  }
+}
+
+/* Loading State */
+:deep(.el-loading-mask) {
+  background: rgba(255, 255, 255, 0.8);
+  
+  .dark & {
+    background: rgba(0, 0, 0, 0.8);
+  }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .section-header {
+    flex-direction: column;
+    gap: 16px;
+    padding: 24px;
+  }
+  
+  .shares-grid {
+    grid-template-columns: 1fr;
+    padding: 24px;
+  }
+  
+  .permission-toggle {
+    grid-template-columns: 1fr;
+  }
+  
+  .dialog-content {
+    padding: 16px;
+  }
+  
+  :deep(.el-dialog) {
+    width: 90% !important;
+    max-width: 500px;
+  }
 }
 </style>

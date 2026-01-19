@@ -145,14 +145,13 @@ app.delete('/services/samba/shares/:name', requireAuth, async (req, res) => {
     const { name } = req.params;
     
     // Odczytaj cały plik
-    let content = await fs.readFile(SAMBA_CONFIG_PATH, 'utf8');
+    const content = await fs.readFile(SAMBA_CONFIG_PATH, 'utf8');
     const lines = content.split('\n');
     
     // Znajdź sekcję do usunięcia
     let startIndex = -1;
     let endIndex = -1;
     let inTargetSection = false;
-    let found = false;
     
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
@@ -161,11 +160,10 @@ app.delete('/services/samba/shares/:name', requireAuth, async (req, res) => {
       if (line === `[${name}]`) {
         startIndex = i;
         inTargetSection = true;
-        found = true;
         continue;
       }
       
-      // Koniec sekcji
+      // Koniec sekcji (następna sekcja lub koniec pliku)
       if (inTargetSection) {
         if (line.startsWith('[') && line.endsWith(']')) {
           endIndex = i - 1;
@@ -179,7 +177,7 @@ app.delete('/services/samba/shares/:name', requireAuth, async (req, res) => {
     }
     
     // Jeśli nie znaleziono sekcji
-    if (!found) {
+    if (startIndex === -1) {
       return res.status(404).json({ 
         success: false, 
         error: 'Share not found' 
@@ -187,30 +185,19 @@ app.delete('/services/samba/shares/:name', requireAuth, async (req, res) => {
     }
     
     // Usuń sekcję
-    const newLines = [];
-    for (let i = 0; i < lines.length; i++) {
-      if (i < startIndex || i > endIndex) {
-        newLines.push(lines[i]);
-      }
-    }
-    
-    // Usuń nadmiarowe puste linie
-    let cleanedContent = newLines.join('\n');
-    cleanedContent = cleanedContent.replace(/\n{3,}/g, '\n\n').trim();
-    
-    // Dodaj nową linię na końcu jeśli potrzeba
-    if (!cleanedContent.endsWith('\n')) {
-      cleanedContent += '\n';
-    }
+    const updatedLines = [
+      ...lines.slice(0, startIndex),
+      ...lines.slice(endIndex + 1)
+    ];
     
     // Zapisz zaktualizowany plik
-    await fs.writeFile(SAMBA_CONFIG_PATH, cleanedContent);
+    await fs.writeFile(SAMBA_CONFIG_PATH, updatedLines.join('\n'));
     
-    // Restartuj usługę
+    // Przeładuj konfigurację Samby
     try {
-      await execAsync('systemctl restart smbd');
+      await execAsync('sudo systemctl restart smbd');
     } catch (serviceError) {
-      console.warn('Warning: Could not restart Samba service:', serviceError.message);
+      console.error('Error restarting Samba:', serviceError);
     }
     
     res.json({ 
@@ -218,7 +205,6 @@ app.delete('/services/samba/shares/:name', requireAuth, async (req, res) => {
       message: 'Share deleted successfully' 
     });
   } catch (error) {
-    console.error('Error deleting share:', error);
     res.status(500).json({ 
       success: false, 
       error: 'Failed to delete share',
