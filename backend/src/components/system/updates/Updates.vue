@@ -1,60 +1,188 @@
 <template>
-  <el-card class="updates-widget">
+  <el-container class="updates-container">
+  <el-card class="updates-widget glassmorphic" :body-style="{ padding: 0 }">
     <template #header>
       <div class="widget-header">
-        <Icon icon="mdi:update" width="20" height="20" />
-        <span>{{ t('systemUpdates.title') }}</span>
+        <div class="header-left">
+          <Icon icon="mdi:package-variant-closed" width="24" height="24" class="header-icon" />
+          <div>
+            <h3>{{ t('systemUpdates.title') }}</h3>
+            <p class="subtitle">{{ t('systemUpdates.subtitle') }}</p>
+          </div>
+        </div>
         <div class="header-actions">
-          <el-tooltip :content="t('systemUpdates.refresh')">
-            <el-button 
-              size="small" 
-              @click="checkUpdates(true)" 
-              :loading="isChecking"
-              text
-            >
-              <Icon icon="mdi:refresh" width="16" height="16" :class="{ 'spin': isChecking }" />
+          <el-button 
+            type="primary" 
+            :loading="isChecking" 
+            @click="checkUpdates(true)"
+            class="check-updates-btn"
+            :disabled="isInstallingAll"
+          >
+            <template #icon>
+              <Icon icon="mdi:refresh" width="16" :class="{ 'spin': isChecking }" />
+            </template>
+            {{ t('systemUpdates.checkNow') }}
+          </el-button>
+          
+          <!-- DODAJ TEN PRZYCISK -->
+          <el-button 
+            v-if="hasUpdates"
+            type="success" 
+            @click="installUpdates"
+            :loading="isInstallingAll"
+            :disabled="isChecking"
+            class="install-all-btn"
+          >
+            <template #icon>
+              <Icon icon="mdi:download" width="16" />
+            </template>
+            {{ t('systemUpdates.installAll') }}
+          </el-button>
+          
+          <el-dropdown @command="handleQuickActions">
+            <el-button type="info" :disabled="isInstallingAll || isChecking">
+              <template #icon>
+                <Icon icon="mdi:dots-vertical" width="16" />
+              </template>
             </el-button>
-          </el-tooltip>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="install-security">
+                  <Icon icon="mdi:shield-check" width="16" />
+                  {{ t('systemUpdates.installSecurity') }}
+                </el-dropdown-item>
+                <el-dropdown-item command="clear-cache">
+                  <Icon icon="mdi:trash-can-outline" width="16" />
+                  {{ t('systemUpdates.clearCache') }}
+                </el-dropdown-item>
+                <el-dropdown-item divided command="settings">
+                  <Icon icon="mdi:cog" width="16" />
+                  {{ t('systemUpdates.settings') }}
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+      </div>
+      
+      <!-- Progress bar dla masowej instalacji -->
+      <div v-if="isInstallingAll" class="bulk-progress">
+        <div class="progress-header">
+          <span>{{ t('systemUpdates.installingAll') }}</span>
+          <span>{{ bulkProgress }}%</span>
+        </div>
+        <el-progress 
+          :percentage="bulkProgress" 
+          :stroke-width="8" 
+          striped 
+          striped-flow 
+          :duration="10"
+        />
+        <div class="progress-stats">
+          <span>{{ installedCount }} / {{ updates.length }} {{ t('systemUpdates.packages') }}</span>
+          <el-button 
+            size="small" 
+            type="danger" 
+            text 
+            @click="cancelAllInstallations"
+          >
+            {{ t('common.cancel') }}
+          </el-button>
         </div>
       </div>
     </template>
 
-    <el-alert v-if="error" :title="error" type="error" show-icon style="margin: 0 16px 16px;" />
-    
-    <div class="table-container">
+    <!-- Status bar -->
+    <div class="status-bar">
+      <div class="status-item">
+        <Icon icon="mdi:package" width="16" />
+        <span class="label">{{ t('systemUpdates.available') }}:</span>
+        <span class="value highlight">{{ updates.length }}</span>
+      </div>
+      <div class="status-item">
+        <Icon icon="mdi:security" width="16" />
+        <span class="label">{{ t('systemUpdates.security') }}:</span>
+        <span class="value warning">{{ securityUpdatesCount }}</span>
+      </div>
+      <div v-if="lastChecked" class="status-item">
+        <Icon icon="mdi:clock-outline" width="16" />
+        <span class="label">{{ t('systemUpdates.lastChecked') }}:</span>
+        <span class="value">{{ lastCheckedFormatted }}</span>
+      </div>
+      <div v-if="updatesSize" class="status-item">
+        <Icon icon="mdi:harddisk" width="16" />
+        <span class="label">{{ t('systemUpdates.totalSize') }}:</span>
+        <span class="value">{{ updatesSize }}</span>
+      </div>
+    </div>
+
+    <!-- Error message -->
+    <el-alert 
+      v-if="error" 
+      :title="error" 
+      type="error" 
+      show-icon 
+      closable 
+      @close="error = ''"
+      class="error-alert"
+    />
+
+    <!-- Updates table -->
+    <div class="table-container" v-loading="isChecking">
       <el-table 
-        :data="updates"
+        :data="filteredUpdates"
         style="width: 100%"
-        v-loading="isChecking"
         :empty-text="t('systemUpdates.noUpdates')"
-        class="full-width-table"
-        :layout="tableLayout"
+        class="modern-table"
+        row-class-name="hover-row"
+        @selection-change="handleSelectionChange"
+        v-if="updates.length > 0"
       >
+        <el-table-column type="selection" width="55" />
+        
         <el-table-column 
           prop="name" 
           :label="t('systemUpdates.package')" 
           width="220"
-          min-width="180"
           fixed="left"
         >
           <template #default="{ row }">
-            <div class="package-name">
-              <Icon icon="mdi:package-variant" width="16" />
-              <span>{{ row.name }}</span>
+            <div class="package-cell">
+              <div class="package-icon">
+                <Icon 
+                  :icon="getPackageIcon(row.name)" 
+                  width="20" 
+                  height="20" 
+                  class="package-type-icon"
+                />
+              </div>
+              <div class="package-info">
+                <div class="package-name">{{ row.name }}</div>
+                <div class="package-repo">
+                  <el-tag size="small" effect="plain" class="repo-tag">
+                    {{ getRepoFromName(row.name) }}
+                  </el-tag>
+                </div>
+              </div>
             </div>
           </template>
         </el-table-column>
         
         <el-table-column 
           :label="t('systemUpdates.version')" 
-          width="330"
-          min-width="160"
+          width="180"
         >
           <template #default="{ row }">
-            <div class="version-container">
-              <el-tag size="small" effect="plain">{{ row.current_version }}</el-tag>
-              <Icon icon="mdi:arrow-right" width="16" />
-              <el-tag size="small" type="success" effect="dark">{{ row.new_version }}</el-tag>
+            <div class="version-cell">
+              <div class="version-current">
+                <Icon icon="mdi:tag-outline" width="12" />
+                <span class="version-text">{{ row.current_version }}</span>
+              </div>
+              <Icon icon="mdi:arrow-right-thin" width="16" class="arrow-icon" />
+              <div class="version-new">
+                <Icon icon="mdi:tag" width="12" />
+                <span class="version-text highlight">{{ row.new_version }}</span>
+              </div>
             </div>
           </template>
         </el-table-column>
@@ -65,31 +193,48 @@
           min-width="300"
         >
           <template #default="{ row }">
-            <div class="package-description">
+            <div class="description-cell">
               <div class="description-text" v-if="row.description">
-                {{ truncateDescription(row.description) }}
+                {{ row.description }}
               </div>
-              <div class="no-description" v-else>
+              <div v-else class="no-description">
                 <el-tag size="small" type="info">{{ t('systemUpdates.noDescription') }}</el-tag>
+              </div>
+              <div v-if="row.changelog" class="changelog-link">
+                <el-link type="primary" @click="showChangelog(row)">
+                  <Icon icon="mdi:text-box-outline" width="12" />
+                  {{ t('systemUpdates.viewChangelog') }}
+                </el-link>
               </div>
             </div>
           </template>
         </el-table-column>
         
         <el-table-column 
-          :label="t('systemUpdates.status')" 
-          width="220"
-          min-width="180"
+          :label="t('systemUpdates.priority')" 
+          width="120"
+          align="center"
         >
           <template #default="{ row }">
-            <UpdateStatus :status="getStatusForPackage(row.name)" />
+            <PriorityBadge :priority="getPriority(row)" />
+          </template>
+        </el-table-column>
+        
+        <el-table-column 
+          :label="t('systemUpdates.status')" 
+          width="180"
+        >
+          <template #default="{ row }">
+            <UpdateStatus 
+              :status="getStatusForPackage(row.name)" 
+              @retry="retryInstallation(row.name)"
+            />
           </template>
         </el-table-column>
         
         <el-table-column 
           :label="t('systemUpdates.actions')" 
-          width="180"
-          min-width="150"
+          width="150"
           fixed="right"
           align="center"
         >
@@ -98,11 +243,11 @@
               <el-tooltip :content="t('systemUpdates.details')" placement="top">
                 <el-button 
                   size="small" 
-                  type="info" 
+                  text 
                   @click="showUpdateDetails(row)"
-                  circle
+                  class="action-btn info"
                 >
-                  <icon icon="mdi:information-outline" width="16" />
+                  <Icon icon="mdi:information-outline" width="16" />
                 </el-button>
               </el-tooltip>
               
@@ -112,168 +257,303 @@
                   type="success" 
                   @click="installSingleUpdate(row)"
                   :loading="installationStatus[row.name]?.progress > 0"
-                  circle
+                  :disabled="isInstallingAll"
+                  class="action-btn install"
                 >
-                  <icon icon="mdi:package-down" width="16" />
+                  <Icon icon="mdi:package-down" width="16" />
                 </el-button>
               </el-tooltip>
             </div>
           </template>
         </el-table-column>
       </el-table>
+      
+      <!-- Empty state -->
+      <div v-else class="empty-state">
+        <Icon icon="mdi:check-circle-outline" width="64" class="empty-icon" />
+        <h3>{{ t('systemUpdates.systemUpToDate') }}</h3>
+        <p>{{ t('systemUpdates.noUpdatesAvailable') }}</p>
+        <el-button type="primary" @click="checkUpdates(true)">
+          {{ t('systemUpdates.checkAgain') }}
+        </el-button>
+      </div>
     </div>
 
-    <div v-if="updates.length > 0" class="update-actions">
-      <el-button 
-        type="primary" 
-        @click="installUpdates"
-        :loading="isInstallingAll"
-        :disabled="isInstalling || updates.length === 0"
-        class="install-all-btn"
-      >
-        <el-icon class="el-icon--left"><Download /></el-icon>
-        {{ t('systemUpdates.installAll', { count: updates.length }) }}
-      </el-button>
-      <el-button 
-        type="info" 
-        @click="showAutomaticUpdatesDialog"
-        plain
-      >
-        <el-icon class="el-icon--left"><Timer /></el-icon>
-        {{ t('systemUpdates.automaticUpdates') }}
-      </el-button>
+    <!-- Bulk actions footer -->
+    <div v-if="selectedUpdates.length > 0" class="bulk-actions">
+      <div class="bulk-info">
+        <span>{{ t('systemUpdates.selectedCount', { count: selectedUpdates.length }) }}</span>
+        <span class="total-size">• {{ selectedUpdatesSize }}</span>
+      </div>
+      <div class="bulk-buttons">
+        <el-button @click="clearSelection">
+          {{ t('common.clear') }}
+        </el-button>
+        <el-button 
+          type="primary" 
+          @click="installSelectedUpdates"
+          :loading="isInstallingSelected"
+          class="install-selected-btn"
+        >
+          <template #icon>
+            <Icon icon="mdi:download" width="16" />
+          </template>
+          {{ t('systemUpdates.installSelected') }}
+        </el-button>
+      </div>
     </div>
 
-    <el-dialog
-  v-model="detailsDialogVisible"
-  :title="t('systemUpdates.updateDetails')"
-  width="50%"
->
-  <div v-if="selectedUpdate" class="update-details">
-    <h3>{{ selectedUpdate.name }}</h3>
-    
-    <div class="version-display">
-      <el-tag size="medium" effect="plain">{{ selectedUpdate.current_version }}</el-tag>
-      <Icon icon="mdi:arrow-right" width="20" />
-      <el-tag size="medium" type="success" effect="dark">{{ selectedUpdate.new_version }}</el-tag>
-    </div>
-    
-    <el-divider />
-    
-    <h4>{{ t('systemUpdates.description') }}</h4>
-    <div class="description-content">
-      {{ selectedUpdate.fullDescription || t('systemUpdates.noDescription') }}
-    </div>
-  </div>
-  
-  <template #footer>
-    <el-button @click="detailsDialogVisible = false">
-      {{ t('common.close') }}
-    </el-button>
-  </template>
-</el-dialog>
+    <!-- Update details dialog -->
+    <UpdateDetailsDialog 
+      v-model="detailsDialogVisible"
+      :update="selectedUpdate"
+      @install="installSingleUpdate(selectedUpdate)"
+    />
 
+    <!-- Automatic updates settings dialog -->
+    <AutomaticUpdatesDialog 
+      v-model="settingsDialogVisible"
+      :settings="updateSettings"
+      @save="saveAutomaticUpdatesSettings"
+    />
   </el-card>
-
+ </el-container>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { Download, Timer, Clock, CircleCheck, Warning, Loading } from '@element-plus/icons-vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { Icon } from '@iconify/vue'
 import axios from 'axios'
 import { useI18n } from 'vue-i18n'
-
-const tableLayout = ref('fixed')
 import UpdateStatus from './UpdateStatus.vue'
+import UpdateDetailsDialog from './UpdateDetailsDialog.vue'
+import AutomaticUpdatesDialog from './AutomaticUpdatesDialog.vue'
+import PriorityBadge from './PriorityBadge.vue'
 
-// Import tłumaczeń
-import enLocales from './locales/en'
-import plLocales from './locales/pl'
+const { t } = useI18n()
 
-const { t, mergeLocaleMessage } = useI18n()
-
-// Dodaj tłumaczenia do i18n
-mergeLocaleMessage('en', enLocales)
-mergeLocaleMessage('pl', plLocales)
+// API konfiguracja
+const api = axios.create({
+  baseURL: `${window.location.protocol}//${window.location.hostname}:${import.meta.env.VITE_API_PORT || 3001}`,
+  timeout: 45000,
+  headers: {
+    'X-Requested-With': 'XMLHttpRequest'
+  }
+})
 
 // Reactive state
 const updates = ref([])
 const isChecking = ref(false)
-const isInstalling = ref(false)
 const isInstallingAll = ref(false)
-const lastChecked = ref('')
+const isInstallingSelected = ref(false)
+const lastChecked = ref(null)
 const error = ref('')
 const detailsDialogVisible = ref(false)
+const settingsDialogVisible = ref(false)
 const selectedUpdate = ref(null)
-const automaticUpdatesDialogVisible = ref(false)
+const selectedUpdates = ref([])
 const installationStatus = ref({})
 const eventSources = ref({})
-
-// Automatic updates settings
-const automaticUpdatesEnabled = ref(false)
-const updateSchedule = ref('daily')
-const updateType = ref('security')
-const rebootAfterUpdate = ref(false)
-
 const updateSettings = ref({
   autoUpdate: false,
   autoInstall: false,
-  schedule: '0 0 * * *', // Domyślnie codziennie o północy
-  updateCommand: 'sudo apt-get update && sudo apt-get upgrade -y',
-  notifyOnUpdates: true
-});
-
-const scheduleOptions = [
-  { value: 'daily', label: t('systemUpdates.daily') },
-  { value: 'weekly', label: t('systemUpdates.weekly') },
-  { value: 'monthly', label: t('systemUpdates.monthly') }
-]
-
-const api = axios.create({
-  baseURL: `${window.location.protocol}//${window.location.hostname}:${import.meta.env.VITE_API_PORT}`,
-  timeout: 30000
+  schedule: '0 2 * * *', // 2:00 AM
+  securityOnly: false,
+  notifyOnUpdates: true,
+  rebootAfterUpdate: false
 })
 
-const truncateDescription = (desc) => {
-  if (!desc) return ''
-  return desc.length > 100 
-    ? `${desc.substring(0, 100)}...` 
-    : desc
-}
-
-// Computed
+// Computed properties
 const hasUpdates = computed(() => updates.value.length > 0)
-const lastCheckedFormatted = computed(() => lastChecked.value ? new Date(lastChecked.value).toLocaleString() : '')
+const lastCheckedFormatted = computed(() => {
+  if (!lastChecked.value) return ''
+  const date = new Date(lastChecked.value)
+  return date.toLocaleString()
+})
+const securityUpdatesCount = computed(() => {
+  return updates.value.filter(pkg => 
+    pkg.name.includes('security') || 
+    pkg.description?.toLowerCase().includes('security')
+  ).length
+})
+const updatesSize = computed(() => {
+  const totalSize = updates.value.reduce((sum, pkg) => sum + (pkg.size || 0), 0)
+  if (totalSize < 1024) return `${totalSize} KB`
+  return `${(totalSize / 1024).toFixed(1)} MB`
+})
+const selectedUpdatesSize = computed(() => {
+  const totalSize = selectedUpdates.value.reduce((sum, pkg) => sum + (pkg.size || 0), 0)
+  if (totalSize < 1024) return `${totalSize} KB`
+  return `${(totalSize / 1024).toFixed(1)} MB`
+})
+const bulkProgress = computed(() => {
+  const total = updates.value.length
+  const installed = Object.values(installationStatus.value)
+    .filter(status => status.progress === 100).length
+  return Math.round((installed / total) * 100)
+})
+const installedCount = computed(() => {
+  return Object.values(installationStatus.value)
+    .filter(status => status.progress === 100).length
+})
+const filteredUpdates = computed(() => {
+  return updates.value
+})
 
 // Methods
+const getPackageIcon = (packageName) => {
+  const icons = {
+    'kernel': 'mdi:chip',
+    'firefox': 'mdi:firefox',
+    'chrome': 'mdi:google-chrome',
+    'docker': 'mdi:docker',
+    'nginx': 'mdi:nginx',
+    'apache': 'mdi:apache',
+    'python': 'mdi:language-python',
+    'php': 'mdi:language-php',
+    'node': 'mdi:nodejs',
+    'mysql': 'mdi:database',
+    'postgresql': 'mdi:database',
+    'redis': 'mdi:database',
+    'vim': 'mdi:code-tags',
+    'git': 'mdi:git',
+    'ssh': 'mdi:lock',
+    'ssl': 'mdi:security',
+    'curl': 'mdi:download',
+    'wget': 'mdi:download'
+  }
+  
+  for (const [key, icon] of Object.entries(icons)) {
+    if (packageName.includes(key)) return icon
+  }
+  
+  return 'mdi:package-variant'
+}
+
+const getRepoFromName = (packageName) => {
+  if (packageName.includes('-security')) return 'security'
+  if (packageName.includes('-backports')) return 'backports'
+  if (packageName.includes('-updates')) return 'updates'
+  return 'main'
+}
+
+const getPriority = (pkg) => {
+  if (pkg.name.includes('security')) return 'critical'
+  if (pkg.name.includes('kernel')) return 'high'
+  if (pkg.description?.toLowerCase().includes('bug')) return 'medium'
+  return 'low'
+}
+
 const checkUpdates = async (force = false) => {
-  isChecking.value = true;
-  error.value = '';
+  isChecking.value = true
+  error.value = ''
   
   try {
-    const response = await api.get(`/system/updates/check?force=${force}`);
-    updates.value = response.data.updates || [];
-    lastChecked.value = new Date().toISOString();
+    const response = await api.get(`/system/updates/check?force=${force}`)
+    updates.value = response.data.updates || []
+    lastChecked.value = new Date().toISOString()
+    
+    // Pobierz dodatkowe informacje o pakietach
+    if (updates.value.length > 0) {
+      await fetchPackageDetails()
+    }
     
     if (!hasUpdates.value && force) {
-      ElMessage.success(t('systemUpdates.systemUpToDate'));
+      ElNotification.success({
+        title: t('systemUpdates.systemUpToDate'),
+        message: t('systemUpdates.noUpdatesFound'),
+        position: 'bottom-right'
+      })
+    } else if (hasUpdates.value) {
+      ElNotification.info({
+        title: t('systemUpdates.updatesFound'),
+        message: t('systemUpdates.updatesCount', { count: updates.value.length }),
+        position: 'bottom-right'
+      })
     }
   } catch (err) {
     error.value = t('systemUpdates.checkFailed', { 
       error: err.response?.data?.message || err.message 
-    });
-    console.error('Update check error:', err);
+    })
+    console.error('Update check error:', err)
   } finally {
-    isChecking.value = false;
+    isChecking.value = false
   }
-};
+}
 
-const installUpdates = async () => {
+const fetchPackageDetails = async () => {
+  const packageNames = updates.value.map(pkg => pkg.name)
+  try {
+    const response = await api.post('/system/updates/details', {
+      packages: packageNames
+    })
+    
+    // Zaktualizuj pakiety z dodatkowymi danymi
+    updates.value = updates.value.map(pkg => ({
+      ...pkg,
+      ...response.data[pkg.name],
+      size: response.data[pkg.name]?.size || 0
+    }))
+  } catch (err) {
+    console.warn('Failed to fetch package details:', err)
+  }
+}
+
+const installSingleUpdate = async (pkg) => {
+  if (!pkg || isInstallingAll.value) return
+  
+  try {
+    // Sprawdź zależności
+    const deps = await api.get(`/system/updates/check-deps/${pkg.name}`)
+    
+    await ElMessageBox.confirm(
+      t('systemUpdates.confirmInstallSingle', { 
+        name: pkg.name, 
+        version: pkg.new_version,
+        size: deps.data.totalSize
+      }),
+      t('systemUpdates.confirmTitle'),
+      {
+        confirmButtonText: t('systemUpdates.install'),
+        cancelButtonText: t('common.cancel'),
+        type: 'info',
+        dangerouslyUseHTMLString: true
+      }
+    )
+
+    startInstallation(pkg.name)
+    
+    const response = await api.post('/system/updates/install', {
+      packages: [pkg.name],
+      no_confirm: true
+    })
+
+    setupProgressTracking(pkg.name, response.data.processId)
+    
+  } catch (err) {
+    if (err !== 'cancel') {
+      updateInstallationStatus(pkg.name, {
+        progress: 0,
+        status: 'exception',
+        message: err.response?.data?.message || err.message
+      })
+      ElMessage.error(t('systemUpdates.installFailed', { 
+        error: err.response?.data?.message || err.message 
+      }))
+    }
+  }
+}
+
+const installSelectedUpdates = async () => {
+  if (selectedUpdates.value.length === 0 || isInstallingAll.value) return
+  
   try {
     await ElMessageBox.confirm(
-      t('systemUpdates.confirmInstallAll', { count: updates.value.length }),
+      t('systemUpdates.confirmInstallSelected', { 
+        count: selectedUpdates.value.length,
+        size: selectedUpdatesSize.value
+      }),
       t('systemUpdates.confirmTitle'),
       {
         confirmButtonText: t('systemUpdates.install'),
@@ -282,135 +562,127 @@ const installUpdates = async () => {
       }
     )
     
-    isInstallingAll.value = true
-    const packageNames = updates.value.map(update => update.name)
+    isInstallingSelected.value = true
+    const packageNames = selectedUpdates.value.map(pkg => pkg.name)
     
-    // Initialize installation status for all packages
-    updates.value.forEach(update => {
-      startInstallation(update.name)
-    })
-
-    // Start installation
-    await api.post('/system/updates/install', {
+    // Inicjalizuj statusy instalacji
+    packageNames.forEach(name => startInstallation(name))
+    
+    const response = await api.post('/system/updates/install', {
       packages: packageNames,
       no_confirm: true
     })
+    
+    setupProgressTracking('_selected', response.data.processId, packageNames)
+    
+  } catch (err) {
+    if (err !== 'cancel') {
+      ElMessage.error(t('systemUpdates.installFailed', { error: err.message }))
+    }
+  } finally {
+    isInstallingSelected.value = false
+  }
+}
 
-    // Track progress via SSE
-    const eventSource = new EventSource(`${api.defaults.baseURL}/system/updates/progress/_all`)
-    eventSources.value['_all'] = eventSource
+const installUpdates = async () => {
+  if (updates.value.length === 0) return
+  
+  try {
+    await ElMessageBox.confirm(
+      t('systemUpdates.confirmInstallAll', { 
+        count: updates.value.length,
+        size: updatesSize.value
+      }),
+      t('systemUpdates.confirmTitle'),
+      {
+        confirmButtonText: t('systemUpdates.installAll'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning'
+      }
+    )
+    
+    isInstallingAll.value = true
+    const packageNames = updates.value.map(pkg => pkg.name)
+    
+    // Inicjalizuj statusy instalacji
+    packageNames.forEach(name => startInstallation(name))
+    
+    const response = await api.post('/system/updates/install', {
+      packages: packageNames,
+      no_confirm: true
+    })
+    
+    setupProgressTracking('_all', response.data.processId, packageNames)
+    
+  } catch (err) {
+    if (err !== 'cancel') {
+      ElMessage.error(t('systemUpdates.installFailed', { error: err.message }))
+    }
+    isInstallingAll.value = false
+  }
+}
 
-    eventSource.onmessage = (event) => {
+const setupProgressTracking = (key, processId, packages = []) => {
+  const eventSource = new EventSource(`${api.defaults.baseURL}/system/updates/progress/${processId}`)
+  eventSources.value[key] = eventSource
+
+  eventSource.onmessage = (event) => {
+    try {
       const data = JSON.parse(event.data)
       
-      updates.value.forEach(update => {
-        updateInstallationStatus(update.name, {
-          progress: data.progress,
+      // Aktualizuj status dla wszystkich pakietów w grupie
+      const targetPackages = key === '_all' ? updates.value.map(p => p.name) : 
+                           key === '_selected' ? packages : [packages[0]]
+      
+      targetPackages.forEach(pkgName => {
+        updateInstallationStatus(pkgName, {
+          progress: data.progress || 0,
           status: data.status || '',
           message: data.message || t('systemUpdates.installing'),
-          indeterminate: data.progress < 30
+          indeterminate: data.progress < 30,
+          details: data.details
         })
       })
 
       if (data.progress === 100) {
         setTimeout(() => {
           eventSource.close()
-          delete eventSources.value['_all']
-          checkUpdates() // Refresh list after completion
-        }, 1500)
+          delete eventSources.value[key]
+          
+          // Odśwież listę po zakończeniu
+          if (key === '_all' || key === '_selected') {
+            checkUpdates(true)
+          }
+        }, 2000)
       }
+    } catch (e) {
+      console.error('Error parsing SSE data:', e)
     }
+  }
 
-    eventSource.onerror = (err) => {
-      console.error('SSE Error:', err)
-      updates.value.forEach(update => {
-        updateInstallationStatus(update.name, {
-          progress: 0,
-          status: 'exception',
-          message: t('systemUpdates.connectionError')
-        })
-      })
-      eventSource.close()
-      delete eventSources.value['_all']
-    }
-
-  } catch (err) {
-    if (err !== 'cancel') {
-      ElMessage.error(t('systemUpdates.installFailed', { error: err.response?.data?.message || err.message }))
-    }
-  } finally {
-    isInstallingAll.value = false
+  eventSource.onerror = (err) => {
+    console.error('SSE Error:', err)
+    eventSource.close()
+    delete eventSources.value[key]
   }
 }
 
-const installSingleUpdate = async (pkg) => {
-  if (!pkg) return
-  
-  try {
-    await ElMessageBox.confirm(
-      t('systemUpdates.confirmInstallSingle', { name: pkg.name, version: pkg.new_version }),
-      t('systemUpdates.confirmTitle'),
-      {
-        confirmButtonText: t('systemUpdates.install'),
-        cancelButtonText: t('common.cancel'),
-        type: 'info'
-      }
-    )
+const startInstallation = (pkgName) => {
+  installationStatus.value[pkgName] = {
+    progress: 0,
+    status: '',
+    message: t('systemUpdates.startingInstallation'),
+    time: new Date().toLocaleTimeString(),
+    indeterminate: true,
+    details: null
+  }
+}
 
-    startInstallation(pkg.name)
-    isInstalling.value = true
-
-    await api.post('/system/updates/install', {
-      packages: [pkg.name],
-      no_confirm: true
-    })
-
-    const eventSource = new EventSource(`${api.defaults.baseURL}/system/updates/progress/${pkg.name}`)
-    eventSources.value[pkg.name] = eventSource
-
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data)
-        updateInstallationStatus(pkg.name, {
-          progress: data.progress,
-          status: data.status || '',
-          message: data.message || t('systemUpdates.installing'),
-          indeterminate: data.progress < 30
-        })
-
-        if (data.progress === 100) {
-          setTimeout(() => {
-            eventSource.close()
-            delete eventSources.value[pkg.name]
-            checkUpdates() // Refresh list after completion
-          }, 1500)
-        }
-      } catch (e) {
-        console.error('Error parsing SSE data:', e)
-      }
-    }
-
-    eventSource.onerror = (err) => {
-      console.error('SSE Error:', err)
-      updateInstallationStatus(pkg.name, {
-        progress: 0,
-        status: 'exception',
-        message: t('systemUpdates.connectionError')
-      })
-      eventSource.close()
-      delete eventSources.value[pkg.name]
-    }
-
-  } catch (err) {
-    if (err !== 'cancel') {
-      updateInstallationStatus(pkg.name, {
-        progress: 0,
-        status: 'exception',
-        message: err.response?.data?.message || err.message
-      })
-    }
-  } finally {
-    isInstalling.value = false
+const updateInstallationStatus = (pkgName, data) => {
+  installationStatus.value[pkgName] = {
+    ...(installationStatus.value[pkgName] || {}),
+    ...data,
+    time: new Date().toLocaleTimeString()
   }
 }
 
@@ -423,48 +695,140 @@ const getStatusForPackage = (pkgName) => {
   }
 }
 
-const startInstallation = (pkgName) => {
-  installationStatus.value[pkgName] = {
-    progress: 0,
-    status: '',
-    message: t('systemUpdates.startingInstallation'),
-    time: new Date().toLocaleTimeString(),
-    indeterminate: true
-  }
-}
-
-const updateInstallationStatus = (pkgName, data) => {
-  installationStatus.value[pkgName] = {
-    ...(installationStatus.value[pkgName] || {}),
-    ...data,
-    time: new Date().toLocaleTimeString(),
-    indeterminate: data.progress === 0 && data.message.includes('Downloading')
+const retryInstallation = (pkgName) => {
+  const pkg = updates.value.find(p => p.name === pkgName)
+  if (pkg) {
+    installSingleUpdate(pkg)
   }
 }
 
 const showUpdateDetails = (pkg) => {
-  selectedUpdate.value = {
-    ...pkg,
-    fullDescription: pkg.description // Zachowaj pełny opis
-  };
-  detailsDialogVisible.value = true;
-};
-
-const showAutomaticUpdatesDialog = () => {
-  automaticUpdatesDialogVisible.value = true
+  selectedUpdate.value = pkg
+  detailsDialogVisible.value = true
 }
 
-const saveAutomaticUpdatesSettings = async () => {
+const showChangelog = async (pkg) => {
   try {
-    await api.post('/system/updates/settings', {
-      enabled: automaticUpdatesEnabled.value,
-      schedule: updateSchedule.value,
-      type: updateType.value,
-      reboot: rebootAfterUpdate.value
+    const response = await api.get(`/system/updates/changelog/${pkg.name}`)
+    ElMessageBox.alert(response.data.changelog, `Changelog: ${pkg.name}`, {
+      confirmButtonText: t('common.close'),
+      customClass: 'changelog-dialog',
+      dangerouslyUseHTMLString: true,
+      width: '800px', // ZWIĘKSZ OKNO
+      style: 'max-height: 80vh;' // DODAJ MAKSYMALNĄ WYSOKOŚĆ
+    })
+  } catch (err) {
+    ElMessage.warning(t('systemUpdates.noChangelog'))
+  }
+}
+
+const handleSelectionChange = (selection) => {
+  selectedUpdates.value = selection
+}
+
+const clearSelection = () => {
+  selectedUpdates.value = []
+}
+
+const cancelAllInstallations = () => {
+  ElMessageBox.confirm(
+    t('systemUpdates.confirmCancelAll'),
+    t('common.warning'),
+    {
+      confirmButtonText: t('common.confirm'),
+      cancelButtonText: t('common.cancel'),
+      type: 'warning'
+    }
+  ).then(async () => {
+    try {
+      await api.delete('/system/updates/cancel/_all')
+      Object.keys(installationStatus.value).forEach(key => {
+        updateInstallationStatus(key, {
+          progress: 0,
+          status: 'exception',
+          message: t('systemUpdates.cancelled')
+        })
+      })
+      isInstallingAll.value = false
+      isInstallingSelected.value = false
+    } catch (err) {
+      ElMessage.error(t('systemUpdates.cancelFailed'))
+    }
+  })
+}
+
+const handleQuickActions = (command) => {
+  switch (command) {
+    case 'install-security':
+      installSecurityUpdates()
+      break
+    case 'clear-cache':
+      clearUpdateCache()
+      break
+    case 'settings':
+      showSettingsDialog()
+      break
+  }
+}
+
+const installSecurityUpdates = async () => {
+  const securityUpdates = updates.value.filter(pkg => 
+    pkg.name.includes('security') || getPriority(pkg) === 'critical'
+  )
+  
+  if (securityUpdates.length === 0) {
+    ElMessage.info(t('systemUpdates.noSecurityUpdates'))
+    return
+  }
+  
+  try {
+    await ElMessageBox.confirm(
+      t('systemUpdates.confirmInstallSecurity', { count: securityUpdates.length }),
+      t('systemUpdates.securityUpdates'),
+      {
+        confirmButtonText: t('systemUpdates.install'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning'
+      }
+    )
+    
+    const packageNames = securityUpdates.map(pkg => pkg.name)
+    packageNames.forEach(name => startInstallation(name))
+    
+    const response = await api.post('/system/updates/install', {
+      packages: packageNames,
+      no_confirm: true
     })
     
+    setupProgressTracking('_security', response.data.processId, packageNames)
+    
+  } catch (err) {
+    if (err !== 'cancel') {
+      ElMessage.error(t('systemUpdates.installFailed', { error: err.message }))
+    }
+  }
+}
+
+const clearUpdateCache = async () => {
+  try {
+    await api.delete('/system/updates/cache')
+    ElMessage.success(t('systemUpdates.cacheCleared'))
+    checkUpdates(true)
+  } catch (err) {
+    ElMessage.error(t('systemUpdates.clearCacheFailed'))
+  }
+}
+
+const showSettingsDialog = () => {
+  settingsDialogVisible.value = true
+}
+
+const saveAutomaticUpdatesSettings = async (settings) => {
+  try {
+    await api.post('/system/updates/settings', settings)
+    updateSettings.value = settings
     ElMessage.success(t('systemUpdates.settingsSaved'))
-    automaticUpdatesDialogVisible.value = false
+    settingsDialogVisible.value = false
   } catch (err) {
     ElMessage.error(t('systemUpdates.saveFailed', { error: err.message }))
   }
@@ -472,19 +836,37 @@ const saveAutomaticUpdatesSettings = async () => {
 
 // Lifecycle hooks
 onMounted(() => {
-  checkUpdates(false);
-});
+  checkUpdates(false)
+  
+  // Automatyczne odświeżanie co 5 minut
+  const refreshInterval = setInterval(() => {
+    if (!isChecking.value && !isInstallingAll.value) {
+      checkUpdates(false)
+    }
+  }, 5 * 60 * 1000)
+})
 
 onBeforeUnmount(() => {
   Object.values(eventSources.value).forEach(source => source.close())
 })
 
+watch(updates, (newUpdates) => {
+  if (newUpdates.length === 0 && isInstallingAll.value) {
+    isInstallingAll.value = false
+  }
+}, { deep: true })
 </script>
 
 <style scoped>
+.updates-container {
+  height: 100%;
+  min-height: 600px;
+}
+
+
 .updates-widget {
   width: 100%;
-  max-width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   
@@ -492,73 +874,243 @@ onBeforeUnmount(() => {
     flex: 1;
     display: flex;
     flex-direction: column;
-    padding: 0;
+    overflow: hidden;
   }
+}
+
+.glassmorphic {
+  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.9);
 }
 
 .widget-header {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  flex-shrink: 0; /* Zapobiega kurczeniu się nagłówka */
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   
-  span {
+  h3 {
+    margin: 0;
+    font-size: 18px;
     font-weight: 600;
-    font-size: 16px;
+    color: var(--el-text-color-primary);
+  }
+  
+  .subtitle {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
   }
 }
 
+.header-icon {
+  color: var(--el-color-primary);
+}
+
 .header-actions {
-  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.check-updates-btn,
+.install-all-btn {
+  transition: all 0.3s ease;
+  
+  &:hover {
+    transform: translateY(-1px);
+  }
+}
+
+.bulk-progress {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--el-fill-color-light);
+  border-radius: 8px;
+  
+  .progress-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  
+  .progress-stats {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+  }
+}
+
+.status-bar {
+  display: flex;
+  gap: 24px;
+  padding: 16px 20px;
+  background: var(--el-fill-color-lighter);
+  border-bottom: 1px solid var(--el-border-color-light);
+  flex-shrink: 0;
+  
+  .status-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    
+    .label {
+      font-size: 13px;
+      color: var(--el-text-color-secondary);
+    }
+    
+    .value {
+      font-size: 14px;
+      font-weight: 600;
+      
+      &.highlight {
+        color: var(--el-color-primary);
+      }
+      
+      &.warning {
+        color: var(--el-color-warning);
+      }
+    }
+  }
+}
+
+.error-alert {
+  margin: 16px 20px 0;
+  border-radius: 8px;
 }
 
 .table-container {
   flex: 1;
-  padding: 16px;
-  width: 100%;
-  overflow-x: auto;
+  overflow: auto;
 }
 
-.full-width-table {
-  width: 100% !important;
+.modern-table {
+  border-radius: 8px;
+  overflow: hidden;
   
-  :deep(.el-table__header-wrapper),
+  :deep(.el-table) {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+  
   :deep(.el-table__body-wrapper) {
-    width: 100% !important;
+    flex: 1;
+    overflow: auto;
+  }
+  
+  :deep(.hover-row) {
+    transition: all 0.2s ease;
+    
+    &:hover {
+      background-color: var(--el-fill-color-light);
+      transform: translateX(2px);
+    }
+  }
+  
+  :deep(.el-table__header) {
+    th {
+      background: var(--el-fill-color-lighter);
+      font-weight: 600;
+      color: var(--el-text-color-primary);
+    }
   }
   
   :deep(.el-table__cell) {
-    padding: 12px 8px;
+    padding: 16px 8px;
   }
 }
 
-.package-name {
+.package-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  
+  .package-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: var(--el-color-primary-light-9);
+    border-radius: 8px;
+    
+    .package-type-icon {
+      color: var(--el-color-primary);
+    }
+  }
+  
+  .package-info {
+    flex: 1;
+    
+    .package-name {
+      font-weight: 500;
+      margin-bottom: 4px;
+      word-break: break-word;
+    }
+    
+    .repo-tag {
+      font-size: 10px;
+      padding: 0 6px;
+      height: 20px;
+    }
+  }
+}
+
+.version-cell {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-weight: 500;
   
-  svg {
-    color: var(--el-color-primary);
+  .version-current,
+  .version-new {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    
+    .version-text {
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      font-size: 12px;
+    }
+  }
+  
+  .version-current {
+    color: var(--el-text-color-secondary);
+  }
+  
+  .version-new .version-text {
+    color: var(--el-color-success);
+    font-weight: 600;
+  }
+  
+  .arrow-icon {
+    color: var(--el-text-color-placeholder);
   }
 }
 
-.version-container {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  
-  .el-tag {
-    font-family: monospace;
-    font-size: 0.9em;
-  }
-}
-
-.package-description {
-  line-height: 1.4;
-  
+.description-cell {
   .description-text {
-    white-space: normal;
-    word-break: break-word;
+    line-height: 1.5;
+    margin-bottom: 8px;
+    color: var(--el-text-color-regular);
+  }
+  
+  .changelog-link {
+    :deep(.el-link) {
+      font-size: 12px;
+    }
   }
   
   .no-description {
@@ -571,51 +1123,79 @@ onBeforeUnmount(() => {
   gap: 8px;
   justify-content: center;
   
-  .el-button.is-circle {
+  .action-btn {
     padding: 8px;
+    transition: all 0.2s ease;
+    
+    &.info:hover {
+      background: var(--el-color-info-light-9);
+      border-color: var(--el-color-info-light-7);
+    }
+    
+    &.install:hover {
+      background: var(--el-color-success-light-9);
+      border-color: var(--el-color-success-light-7);
+    }
   }
 }
 
-.update-actions {
-  padding: 16px;
-  border-top: 1px solid var(--el-border-color-light);
+.empty-state {
   display: flex;
-  gap: 12px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  flex: 1; /* Rozciąga się aby wypełnić przestrzeń */
+  min-height: 400px; /* Minimalna wysokość dla pustego stanu */
   
-  .install-all-btn {
-    margin-right: auto;
+  .empty-icon {
+    color: var(--el-color-success);
+    margin-bottom: 20px;
+    opacity: 0.8;
   }
-}
-
-.update-details {
-  padding: 0 20px;
   
   h3 {
-    margin-top: 0;
-    color: var(--el-color-primary);
+    margin: 0 0 8px;
+    color: var(--el-text-color-primary);
   }
   
-  .version-display {
+  p {
+    margin: 0 0 20px;
+    color: var(--el-text-color-secondary);
+  }
+}
+
+.bulk-actions {
+  position: sticky;
+  bottom: 0;
+  padding: 16px 20px;
+  background: var(--el-color-primary-light-9);
+  border-top: 1px solid var(--el-border-color-light);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+  
+  .bulk-info {
     display: flex;
     align-items: center;
     gap: 12px;
-    margin: 15px 0;
+    
+    .total-size {
+      font-size: 14px;
+      color: var(--el-text-color-secondary);
+    }
   }
   
-  .description-content {
-    white-space: pre-wrap;
-    line-height: 1.6;
-    max-height: 300px;
-    overflow-y: auto;
-    padding: 10px;
-    background-color: var(--el-fill-color-light);
-    border-radius: 4px;
+  .bulk-buttons {
+    display: flex;
+    gap: 12px;
   }
-}
-
-/* Animacje */
-.spin {
-  animation: spin 1s linear infinite;
+  
+  .install-selected-btn {
+    min-width: 140px;
+  }
 }
 
 @keyframes spin {
@@ -623,26 +1203,49 @@ onBeforeUnmount(() => {
   to { transform: rotate(360deg); }
 }
 
+.spin {
+  animation: spin 1s linear infinite;
+}
+
 /* Responsywność */
 @media (max-width: 1200px) {
-  .full-width-table {
-    :deep(.el-table__cell) {
-      padding: 10px 4px;
-    }
+  .status-bar {
+    flex-wrap: wrap;
+    gap: 16px;
   }
 }
 
 @media (max-width: 768px) {
-  .table-container {
-    padding: 8px;
+  .updates-widget {
+    min-height: 500px; /* Mniejsza minimalna wysokość na mobile */
+  }
+
+  .widget-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
   }
   
-  .update-actions {
+  .header-actions {
+    justify-content: flex-start;
+  }
+  
+  .status-bar {
     flex-direction: column;
+    gap: 12px;
+  }
+  
+  .bulk-actions {
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
     
-    .install-all-btn {
-      margin-right: 0;
+    .bulk-buttons {
       width: 100%;
+      
+      .el-button {
+        flex: 1;
+      }
     }
   }
 }

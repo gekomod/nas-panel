@@ -759,6 +759,7 @@ function extractDownloadSize(output) {
 
 // Cron jobs page
 
+
 function saveCronJobs() {
   try {
     const jobsToSave = Array.from(cronJobs.values())
@@ -767,17 +768,27 @@ function saveCronJobs() {
         name: job.name,
         schedule: job.schedule,
         command: job.command,
-        description: job.description || '',
-        isActive: job.isActive,
-        isSystemJob: job.isSystemJob || false,
-        lastRun: job.lastRun,
-        nextRun: job.nextRun
+        description: job.description
       }));
 
     fs.writeFileSync(CRON_JOBS_FILE, JSON.stringify(jobsToSave, null, 2));
+    
+    // Dodatkowo zapisz ustawienia systemowe
+    const settings = loadSettings();
+    if (cronJobs.has('system-auto-updates')) {
+      const updateJob = cronJobs.get('system-auto-updates');
+      settings.updates = {
+        autoUpdate: true,
+        schedule: updateJob.schedule,
+        updateCommand: updateJob.command
+      };
+    } else {
+      settings.updates.autoUpdate = false;
+    }
+    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2));
+    
     return true;
   } catch (error) {
-    console.error('Error saving cron jobs:', error);
     return false;
   }
 }
@@ -799,19 +810,21 @@ function loadCronJobs() {
 // Funkcja tworząca nowe zadanie cron
 async function createCronJob(job) {
   if (!isValidCronExpression(job.schedule)) {
-    throw new Error('Invalid cron expression');
+    return false;
   }
 
   try {
+    // Oblicz następne wykonanie
     const nextRun = calculateNextRun(job.schedule);
     
+    // Utwórz zadanie
     const task = cron.schedule(
       job.schedule,
       async () => {
         try {
-          console.log(`Executing cron job: ${job.name} (${job.id})`);
-          await execPromise(job.command, { timeout: 300000 }); // 5 min timeout
+          await execPromise(job.command);
           
+          // Aktualizuj daty po wykonaniu
           cronJobs.set(job.id, {
             ...cronJobs.get(job.id),
             lastRun: new Date(),
@@ -819,27 +832,25 @@ async function createCronJob(job) {
           });
           saveCronJobs();
         } catch (err) {
-          console.error(`Cron job execution error (${job.id}):`, err);
         }
       },
       {
-        scheduled: job.isActive !== false, // domyślnie aktywne
+        scheduled: true,
         timezone: 'Europe/Warsaw'
       }
     );
 
+    // Zapisz zadanie
     cronJobs.set(job.id, {
       ...job,
       task,
       nextRun,
-      lastRun: null,
-      isActive: job.isActive !== false
+      lastRun: null
     });
 
     saveCronJobs();
     return true;
   } catch (err) {
-    console.error(`Error creating cron job ${job.id}:`, err);
     return false;
   }
 }
@@ -855,45 +866,13 @@ function isValidCronExpression(expression) {
 
 function calculateNextRun(cronExpression) {
   try {
-    if (cronExpression.startsWith('@')) {
-      // Obsługa specjalnych wyrażeń
-      const now = new Date();
-      const nextRun = new Date(now);
-      
-      switch(cronExpression) {
-        case '@yearly':
-        case '@annually':
-          nextRun.setFullYear(nextRun.getFullYear() + 1);
-          break;
-        case '@monthly':
-          nextRun.setMonth(nextRun.getMonth() + 1);
-          break;
-        case '@weekly':
-          nextRun.setDate(nextRun.getDate() + 7);
-          break;
-        case '@daily':
-          nextRun.setDate(nextRun.getDate() + 1);
-          break;
-        case '@hourly':
-          nextRun.setHours(nextRun.getHours() + 1);
-          break;
-        case '@reboot':
-          return null; // Nie obliczamy dla reboot
-        default:
-          return new Date(now.getTime() + 3600000); // domyślnie za godzinę
-      }
-      return nextRun;
-    }
-    
-    // Dla normalnych wyrażeń cron
-    const now = new Date();
-    const interval = cronParser.CronExpression.parse(cronExpression, {
-      currentDate: now,
+    // Poprawne użycie CronExpressionParser
+    const interval = cronParser.CronExpressionParser.parse(cronExpression, {
+      currentDate: new Date(),
       tz: 'Europe/Warsaw'
     });
     return interval.next().toDate();
   } catch (err) {
-    console.error('Error calculating next run:', err);
     const nextRun = new Date();
     nextRun.setHours(nextRun.getHours() + 1);
     return nextRun;
@@ -911,8 +890,7 @@ function initCronJobs() {
         name: job.name,
         schedule: job.schedule,
         command: job.command,
-        description: job.description || '',
-        isActive: job.isActive !== false,
+        description: job.description,
         isSystemJob: job.isSystemJob || false
       });
     } catch (error) {
@@ -923,32 +901,7 @@ function initCronJobs() {
   // Inicjalizuj zadanie aktualizacji systemu
   const settings = loadSettings();
   if (settings.updates?.autoUpdate) {
-    try {
-      updateCronSchedule(settings.updates);
-    } catch (error) {
-      console.error('Error initializing system update job:', error);
-    }
-  }
-  
-  // Dodaj domyślne zadanie backupu systemowego jeśli nie istnieje
-  const SYSTEM_BACKUP_JOB_ID = 'system-scheduled-backup';
-  if (!cronJobs.has(SYSTEM_BACKUP_JOB_ID)) {
-    try {
-      const backupJob = {
-        id: SYSTEM_BACKUP_JOB_ID,
-        name: 'Zaplanowany backup systemu',
-        schedule: '0 2 * * *', // codziennie o 2:00
-        command: 'sudo /usr/local/bin/backup-system.sh',
-        description: 'Automatyczny backup systemu i danych',
-        isActive: false, // domyślnie wyłączone
-        isSystemJob: true
-      };
-      
-      createCronJob(backupJob);
-      console.log('Created system backup cron job');
-    } catch (error) {
-      console.error('Error creating system backup job:', error);
-    }
+    updateCronSchedule(settings.updates);
   }
 }
 
@@ -960,17 +913,17 @@ function isValidCronExpression(expression) {
 // Endpointy CRUD dla zadań cron
 app.get('/system/cron-jobs', requireAuth, (req, res) => {
   const jobs = Array.from(cronJobs.values()).map(job => {
-    const nextRun = job.isActive ? (job.nextRun || calculateNextRun(job.schedule)) : null;
+    const nextRun = job.nextRun || calculateNextRun(job.schedule);
     
     return {
       id: job.id,
       name: job.name,
       schedule: job.schedule,
       command: job.command,
-      description: job.description || '',
+      description: job.description,
       lastRun: job.lastRun?.toISOString(),
-      nextRun: nextRun?.toISOString(),
-      isActive: job.isActive !== false,
+      nextRun: nextRun.toISOString(),
+      isActive: !!job.task,
       isSystemJob: job.isSystemJob || false
     };
   });
@@ -1022,164 +975,11 @@ app.post('/system/cron-jobs/:id/run', requireAuth, async (req, res) => {
   }
 
   try {
-    console.log(`Manually running cron job: ${job.name} (${job.id})`);
-    
-    // Uruchom komendę z timeoutem
-    await execPromise(job.command, { timeout: 300000 });
-    
-    // Zaktualizuj daty
+    await execPromise(job.command);
     job.lastRun = new Date();
-    job.nextRun = calculateNextRun(job.schedule);
-    
-    // Zapisz zmiany
-    saveCronJobs();
-    
-    res.json({ 
-      success: true, 
-      message: 'Job executed successfully',
-      lastRun: job.lastRun,
-      nextRun: job.nextRun
-    });
+    res.json({ success: true });
   } catch (error) {
-    console.error(`Error running job ${job.id}:`, error);
-    
-    // Ustaw błąd ale nie aktualizuj dat
-    job.lastError = error.message;
-    
-    res.status(500).json({ 
-      error: 'Job execution failed',
-      message: error.message,
-      stdout: error.stdout,
-      stderr: error.stderr
-    });
-  }
-});
-
-app.patch('/system/cron-jobs/:id/status', requireAuth, (req, res) => {
-  const job = cronJobs.get(req.params.id);
-  if (!job) {
-    return res.status(404).json({ error: 'Job not found' });
-  }
-  
-  const { isActive } = req.body;
-  
-  if (typeof isActive !== 'boolean') {
-    return res.status(400).json({ error: 'isActive must be a boolean' });
-  }
-  
-  try {
-    if (isActive) {
-      job.task.start();
-    } else {
-      job.task.stop();
-    }
-    
-    job.isActive = isActive;
-    job.nextRun = isActive ? calculateNextRun(job.schedule) : null;
-    
-    // Zapisz zmiany
-    const jobs = loadCronJobs();
-    const jobIndex = jobs.findIndex(j => j.id === job.id);
-    if (jobIndex !== -1) {
-      jobs[jobIndex].isActive = isActive;
-      fs.writeFileSync(CRON_JOBS_FILE, JSON.stringify(jobs, null, 2));
-    }
-    
-    res.json({ 
-      success: true, 
-      isActive,
-      nextRun: job.nextRun
-    });
-  } catch (error) {
-    console.error(`Error toggling job ${job.id}:`, error);
-    res.status(500).json({ error: 'Failed to change job status' });
-  }
-});
-
-app.put('/system/cron-jobs/:id', requireAuth, async (req, res) => {
-  const job = cronJobs.get(req.params.id);
-  if (!job) {
-    return res.status(404).json({ error: 'Job not found' });
-  }
-  
-  if (job.isSystemJob) {
-    return res.status(400).json({ error: 'Cannot modify system jobs' });
-  }
-  
-  const { name, schedule, command, description } = req.body;
-  
-  // Walidacja
-  if (!cron.validate(schedule)) {
-    return res.status(400).json({ error: 'Invalid cron schedule' });
-  }
-  
-  if (!name || !command) {
-    return res.status(400).json({ error: 'Name and command are required' });
-  }
-  
-  try {
-    // Zatrzymaj stare zadanie
-    if (job.task) {
-      job.task.stop();
-    }
-    
-    // Utwórz nowe zadanie
-    const task = cron.schedule(
-      schedule,
-      async () => {
-        try {
-          await execPromise(command, { timeout: 300000 });
-          job.lastRun = new Date();
-          job.nextRun = calculateNextRun(schedule);
-          saveCronJobs();
-        } catch (err) {
-          console.error(`Cron job execution error (${job.id}):`, err);
-          job.lastError = err.message;
-        }
-      },
-      {
-        scheduled: job.isActive,
-        timezone: 'Europe/Warsaw'
-      }
-    );
-    
-    // Aktualizuj zadanie
-    job.name = name;
-    job.schedule = schedule;
-    job.command = command;
-    job.description = description || '';
-    job.task = task;
-    job.nextRun = job.isActive ? calculateNextRun(schedule) : null;
-    
-    // Zapisz zmiany
-    const jobs = loadCronJobs();
-    const jobIndex = jobs.findIndex(j => j.id === job.id);
-    if (jobIndex !== -1) {
-      jobs[jobIndex] = {
-        id: job.id,
-        name,
-        schedule,
-        command,
-        description: description || '',
-        isActive: job.isActive,
-        isSystemJob: false
-      };
-      fs.writeFileSync(CRON_JOBS_FILE, JSON.stringify(jobs, null, 2));
-    }
-    
-    res.json({
-      id: job.id,
-      name: job.name,
-      schedule: job.schedule,
-      command: job.command,
-      description: job.description,
-      isActive: job.isActive,
-      nextRun: job.nextRun,
-      lastRun: job.lastRun
-    });
-  } catch (error) {
-    console.error(`Error updating job ${req.params.id}:`, error);
-    res.status(500).json({ error: 'Failed to update cron job' });
+    res.status(500).json({ error: error.message });
   }
 });
 

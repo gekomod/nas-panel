@@ -1212,7 +1212,7 @@ const fetchContainerStats = async (containerId) => {
     
     apiErrors.value.push({
       type: 'stats',
-      containerId: shortId,
+      containerId: containerId ? containerId.substring(0, 12) : 'unknown',
       time: new Date().toISOString(),
       error: error.message,
       status: error.response?.status,
