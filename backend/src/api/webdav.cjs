@@ -142,43 +142,103 @@ module.exports = function(app, requireAuth) {
 
 app.get('/services/webdav/available-disks', requireAuth, async (req, res) => {
   try {
-    // Użyj tylko dostępnych kolumn
+    // Użyj rozszerzonego formatu z UUID i więcej informacji
     const { stdout } = await execAsync(
-      'lsblk -o NAME,TYPE,MOUNTPOINT,FSTYPE,SIZE,MODEL,ROTA -J -b'
+      'lsblk -o NAME,TYPE,MOUNTPOINT,FSTYPE,SIZE,MODEL,ROTA,LABEL,UUID -J -b'
     );
+    
     const lsblkData = JSON.parse(stdout);
     
     if (!lsblkData.blockdevices) {
       throw new Error('Nieprawidłowy format wyjścia lsblk');
     }
 
-    // Znajdź wszystkie dyski i ich partycje
-    const disks = lsblkData.blockdevices
+    // Funkcja rekurencyjna do znajdowania wszystkich zamontowanych urządzeń
+    const findMountedDevices = (devices) => {
+      const mounted = [];
+      
+      for (const device of devices) {
+        // Sprawdź czy to urządzenie ma punkt montowania
+        if (device.mountpoint && device.mountpoint !== '[SWAP]') {
+          mounted.push({
+            name: device.model || device.label || `Urządzenie ${device.name}`,
+            device: `/dev/${device.name}`,
+            mountpoint: device.mountpoint,
+            fstype: device.fstype || 'unknown',
+            size: parseInt(device.size) || 0,
+            model: device.model || 'Nieznany',
+            label: device.label || '',
+            uuid: device.uuid || '',
+            isSSD: device.rota === '0',
+            isSystem: device.mountpoint === '/',
+            type: device.type,
+            hasChildren: !!device.children && device.children.length > 0
+          });
+        }
+        
+        // Rekurencyjnie przeszukaj dzieci (partycje)
+        if (device.children && device.children.length > 0) {
+          mounted.push(...findMountedDevices(device.children));
+        }
+      }
+      
+      return mounted;
+    };
+
+    // Znajdź wszystkie zamontowane urządzenia
+    const mountedDevices = findMountedDevices(lsblkData.blockdevices);
+    
+    // Usuń duplikaty (czasem mogą się pojawić)
+    const uniqueDevices = mountedDevices.filter((device, index, self) =>
+      index === self.findIndex(d => d.mountpoint === device.mountpoint)
+    );
+
+    // Dodaj dyski fizyczne, nawet jeśli nie są zamontowane (ale mają partycje)
+    const allDisks = lsblkData.blockdevices
       .filter(dev => dev.type === 'disk' && !dev.name.startsWith('loop'))
       .map(disk => {
-        // Znajdź główną partycję (z punktem montowania)
-        const mountedPartition = disk.children?.find(
+        // Sprawdź czy któraś partycja jest zamontowana
+        const mountedPartitions = disk.children?.filter(
           part => part.mountpoint && part.mountpoint !== '[SWAP]'
-        );
-        
+        ) || [];
+
         return {
           name: disk.model || `Dysk ${disk.name}`,
           device: `/dev/${disk.name}`,
-          mountpoint: mountedPartition?.mountpoint || null,
-          fstype: mountedPartition?.fstype || null,
-          size: disk.size,
+          mountpoint: null, // Dysk fizyczny nie ma mountpoint
+          fstype: null,
+          size: parseInt(disk.size) || 0,
           model: disk.model || 'Nieznany',
+          label: disk.label || '',
           isSSD: disk.rota === '0',
-          isSystem: disk.mountpoint === '/' // Systemowy jeśli montowany w root
+          isSystem: false,
+          type: 'disk',
+          hasChildren: !!disk.children && disk.children.length > 0,
+          partitions: disk.children?.map(part => ({
+            name: part.name,
+            mountpoint: part.mountpoint,
+            fstype: part.fstype,
+            size: part.size,
+            label: part.label
+          })) || [],
+          mountedPartitions: mountedPartitions.length
         };
-      })
-      .filter(disk => disk.mountpoint); // Filtruj tylko zamontowane dyski
+      });
 
     res.json({ 
       success: true,
-      data: disks
+      data: {
+        // Wszystkie zamontowane urządzenia (partycje, LVM, etc.)
+        mountedDevices: uniqueDevices,
+        // Wszystkie dyski fizyczne
+        physicalDisks: allDisks,
+        // Dla kompatybilności - pokaż wszystkie zamontowane urządzenia
+        allAvailable: [...uniqueDevices, ...allDisks.filter(d => d.mountedPartitions > 0)]
+      }
     });
+    
   } catch (error) {
+    console.error('Błąd pobierania dysków:', error);
     res.status(500).json({ 
       success: false,
       error: 'Nie udało się pobrać listy dysków',

@@ -623,37 +623,53 @@ const installUpdates = async () => {
 }
 
 const setupProgressTracking = (key, processId, packages = []) => {
+  // Użyj processId zamiast nazwy pakietu
   const eventSource = new EventSource(`${api.defaults.baseURL}/system/updates/progress/${processId}`)
-  eventSources.value[key] = eventSource
+  eventSources.value[processId] = eventSource
 
   eventSource.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data)
       
-      // Aktualizuj status dla wszystkich pakietów w grupie
-      const targetPackages = key === '_all' ? updates.value.map(p => p.name) : 
-                           key === '_selected' ? packages : [packages[0]]
-      
-      targetPackages.forEach(pkgName => {
-        updateInstallationStatus(pkgName, {
-          progress: data.progress || 0,
-          status: data.status || '',
-          message: data.message || t('systemUpdates.installing'),
-          indeterminate: data.progress < 30,
-          details: data.details
+      // Dla masowej instalacji aktualizuj wszystkie pakiety
+      if (key === '_all') {
+        updates.value.forEach(pkg => {
+          updateInstallationStatus(pkg.name, data)
         })
-      })
+      } 
+      // Dla wybranych pakietów
+      else if (key === '_selected') {
+        packages.forEach(pkgName => {
+          updateInstallationStatus(pkgName, data)
+        })
+      }
+      // Dla pojedynczego pakietu
+      else {
+        updateInstallationStatus(packages[0], data)
+      }
 
+      // Po zakończeniu instalacji
       if (data.progress === 100) {
         setTimeout(() => {
           eventSource.close()
-          delete eventSources.value[key]
+          delete eventSources.value[processId]
           
-          // Odśwież listę po zakończeniu
-          if (key === '_all' || key === '_selected') {
+          // Odśwież listę aktualizacji
+          setTimeout(() => {
             checkUpdates(true)
+          }, 2000)
+          
+          // Wyświetl powiadomienie
+          if (data.status === 'success') {
+            ElNotification.success({
+              title: t('systemUpdates.installationComplete'),
+              message: key === '_all' 
+                ? t('systemUpdates.allPackagesInstalled')
+                : t('systemUpdates.packageInstalled'),
+              position: 'bottom-right'
+            })
           }
-        }, 2000)
+        }, 1000)
       }
     } catch (e) {
       console.error('Error parsing SSE data:', e)
@@ -663,7 +679,14 @@ const setupProgressTracking = (key, processId, packages = []) => {
   eventSource.onerror = (err) => {
     console.error('SSE Error:', err)
     eventSource.close()
-    delete eventSources.value[key]
+    delete eventSources.value[processId]
+    
+    // Wyświetl błąd
+    ElNotification.error({
+      title: t('systemUpdates.connectionError'),
+      message: t('systemUpdates.progressTrackingFailed'),
+      position: 'bottom-right'
+    })
   }
 }
 

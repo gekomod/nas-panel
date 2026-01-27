@@ -2,30 +2,38 @@
   <div class="ssh-settings-modern">
     <!-- Nagłówek panelu -->
     <div class="ssh-header-panel">
-      <el-card shadow="never" class="service-card">
+      <el-card shadow="hover" class="service-card">
         <div class="service-header">
           <div class="service-icon-container">
-            <el-icon size="36" class="service-icon">
+            <el-icon size="42" class="service-icon">
               <Icon icon="mdi:console-network" />
             </el-icon>
             <div class="service-status-badge">
-              <el-tag :type="serviceStatus.active ? 'success' : 'danger'" size="small">
-                <Icon :icon="serviceStatus.active ? 'mdi:play-circle' : 'mdi:stop-circle'" />
+              <el-tag 
+                :type="serviceStatus.active ? 'success' : 'danger'" 
+                size="small"
+                class="status-tag"
+              >
+                <Icon :icon="serviceStatus.active ? 'mdi:play-circle' : 'mdi:stop-circle'" width="12" />
                 {{ serviceStatus.active ? $t('sshSettings.running') : $t('sshSettings.stopped') }}
               </el-tag>
             </div>
           </div>
           
           <div class="service-info">
-            <h2>{{ $t('sshSettings.title') }}</h2>
+            <h2 class="service-title">{{ $t('sshSettings.title') }}</h2>
             <div class="service-meta">
               <span v-if="serviceStatus.version" class="version-info">
-                <Icon icon="mdi:tag" />
+                <Icon icon="mdi:tag" width="12" />
                 v{{ serviceStatus.version }}
               </span>
               <span class="port-info">
-                <Icon icon="mdi:network-port" />
-                Port: {{ settings.port || 22 }}
+                <Icon icon="mdi:network-port" width="12" />
+                {{ $t('sshSettings.port') }}: {{ settings.port || 22 }}
+              </span>
+              <span class="update-time">
+                <Icon icon="mdi:update" width="12" />
+                {{ $t('common.update') }}: {{ lastUpdate }}
               </span>
             </div>
           </div>
@@ -35,31 +43,32 @@
               <label class="toggle-label">{{ $t('sshSettings.serviceState') }}</label>
               <el-switch
                 v-model="serviceStatus.active"
-                :active-text="$t('sshSettings.enabled')"
-                :inactive-text="$t('sshSettings.disabled')"
                 @change="toggleService"
                 :loading="statusLoading"
-                active-color="#13ce66"
-                inactive-color="#ff4949"
+                :active-text="$t('sshSettings.enabled')"
+                :inactive-text="$t('sshSettings.disabled')"
+                inline-prompt
+                active-color="var(--el-color-success)"
+                inactive-color="var(--el-color-danger)"
               />
             </div>
             
-            <el-button-group>
+            <el-button-group class="service-buttons">
               <el-button
                 @click="loadServiceStatus"
                 :loading="statusLoading"
-                size="small"
                 circle
+                class="action-btn"
               >
-                <Icon icon="mdi:refresh" />
+                <Icon icon="mdi:refresh" width="14" />
               </el-button>
               <el-button
                 @click="openQuickConfig"
-                size="small"
                 circle
                 type="primary"
+                class="action-btn"
               >
-                <Icon icon="mdi:cog" />
+                <Icon icon="mdi:cog" width="14" />
               </el-button>
             </el-button-group>
           </div>
@@ -73,10 +82,13 @@
         <!-- Podstawowe ustawienia -->
         <el-tab-pane :label="$t('sshSettings.basicSettings')" name="basic">
           <div class="tab-content">
-            <el-card shadow="never" class="compact-card">
+            <el-card shadow="hover" class="compact-card">
               <div class="config-grid">
                 <div class="config-group">
-                  <h4>{{ $t('sshSettings.connectionSettings') }}</h4>
+                  <div class="config-group-header">
+                    <Icon icon="mdi:connection" width="16" />
+                    <h4>{{ $t('sshSettings.connectionSettings') }}</h4>
+                  </div>
                   
                   <div class="config-item">
                     <label class="config-label">{{ $t('sshSettings.port') }}</label>
@@ -87,77 +99,94 @@
                       controls-position="right"
                       class="compact-input"
                     />
+                    <div class="config-hint">{{ $t('sshSettings.portHint') }}</div>
                   </div>
                 </div>
 
                 <div class="config-group">
-                  <h4>{{ $t('sshSettings.authentication') }}</h4>
+                  <div class="config-group-header">
+                    <Icon icon="mdi:lock" width="16" />
+                    <h4>{{ $t('sshSettings.authentication') }}</h4>
+                  </div>
                   
                   <div class="config-item">
                     <label class="config-label">{{ $t('sshSettings.passwordAuth') }}</label>
-                    <el-switch
-                      v-model="settings.passwordAuthentication"
-                      :active-text="$t('sshSettings.enabled')"
-                      :inactive-text="$t('sshSettings.disabled')"
-                      inline-prompt
-                      active-color="#13ce66"
-                    />
+                    <div class="config-switch-wrapper">
+                      <el-switch
+                        v-model="settings.passwordAuthentication"
+                        inline-prompt
+                        :active-text="$t('sshSettings.enabled')"
+                        :inactive-text="$t('sshSettings.disabled')"
+                        active-color="var(--el-color-success)"
+                      />
+                    </div>
                     <div class="config-hint">{{ $t('sshSettings.passwordAuthHint') }}</div>
                   </div>
                   
                   <div class="config-item">
                     <label class="config-label">{{ $t('sshSettings.publicKeyAuth') }}</label>
-                    <el-switch
-                      v-model="settings.publicKeyAuthentication"
-                      :active-text="$t('sshSettings.enabled')"
-                      :inactive-text="$t('sshSettings.disabled')"
-                      inline-prompt
-                      active-color="#13ce66"
-                    />
+                    <div class="config-switch-wrapper">
+                      <el-switch
+                        v-model="settings.publicKeyAuthentication"
+                        inline-prompt
+                        :active-text="$t('sshSettings.enabled')"
+                        :inactive-text="$t('sshSettings.disabled')"
+                        active-color="var(--el-color-success)"
+                      />
+                    </div>
                     <div class="config-hint">{{ $t('sshSettings.publicKeyAuthHint') }}</div>
                   </div>
                   
                   <div class="config-item">
                     <label class="config-label">{{ $t('sshSettings.rootLogin') }}</label>
-                    <el-switch
-                      v-model="settings.allowRootLogin"
-                      :active-text="$t('sshSettings.enabled')"
-                      :inactive-text="$t('sshSettings.disabled')"
-                      inline-prompt
-                      active-color="#ff4949"
-                      inactive-color="#13ce66"
-                    />
+                    <div class="config-switch-wrapper">
+                      <el-switch
+                        v-model="settings.allowRootLogin"
+                        inline-prompt
+                        :active-text="$t('sshSettings.yes')"
+                        :inactive-text="$t('sshSettings.no')"
+                        active-color="var(--el-color-danger)"
+                        inactive-color="var(--el-color-success)"
+                      />
+                    </div>
                     <div class="config-hint warning-hint">
-                      <Icon icon="mdi:alert" />
+                      <Icon icon="mdi:alert-circle" width="12" />
                       {{ $t('sshSettings.rootLoginHint') }}
                     </div>
                   </div>
                 </div>
 
                 <div class="config-group">
-                  <h4>{{ $t('sshSettings.advancedSettings') }}</h4>
+                  <div class="config-group-header">
+                    <Icon icon="mdi:tune-variant" width="16" />
+                    <h4>{{ $t('sshSettings.advancedSettings') }}</h4>
+                  </div>
                   
                   <div class="config-item">
                     <label class="config-label">{{ $t('sshSettings.tcpForwarding') }}</label>
-                    <el-switch
-                      v-model="settings.tcpForwarding"
-                      :active-text="$t('sshSettings.enabled')"
-                      :inactive-text="$t('sshSettings.disabled')"
-                      inline-prompt
-                      active-color="#13ce66"
-                    />
+                    <div class="config-switch-wrapper">
+                      <el-switch
+                        v-model="settings.tcpForwarding"
+                        inline-prompt
+                        :active-text="$t('sshSettings.enabled')"
+                        :inactive-text="$t('sshSettings.disabled')"
+                        active-color="var(--el-color-success)"
+                      />
+                    </div>
                     <div class="config-hint">{{ $t('sshSettings.tcpForwardingHint') }}</div>
                   </div>
                   
                   <div class="config-item">
                     <label class="config-label">{{ $t('sshSettings.compression') }}</label>
-                    <el-switch
-                      v-model="settings.compression"
-                      :active-text="$t('sshSettings.enabled')"
-                      :inactive-text="$t('sshSettings.disabled')"
-                      inline-prompt
-                      active-color="#13ce66"
-                    />
+                    <div class="config-switch-wrapper">
+                      <el-switch
+                        v-model="settings.compression"
+                        inline-prompt
+                        :active-text="$t('sshSettings.enabled')"
+                        :inactive-text="$t('sshSettings.disabled')"
+                        active-color="var(--el-color-success)"
+                      />
+                    </div>
                     <div class="config-hint">{{ $t('sshSettings.compressionHint') }}</div>
                   </div>
                   
@@ -170,18 +199,23 @@
                       controls-position="right"
                       class="compact-input"
                     />
+                    <div class="config-hint">{{ $t('sshSettings.maxSessionsHint') }}</div>
                   </div>
                 </div>
               </div>
               
               <div class="advanced-options">
-                <h4>{{ $t('sshSettings.additionalOptions') }}</h4>
+                <div class="advanced-options-header">
+                  <Icon icon="mdi:code-braces" width="16" />
+                  <h4>{{ $t('sshSettings.additionalOptions') }}</h4>
+                </div>
                 <el-input
                   v-model="settings.additionalOptions"
                   type="textarea"
                   :rows="4"
                   :placeholder="$t('sshSettings.additionalOptionsPlaceholder')"
                   class="advanced-textarea"
+                  resize="none"
                 />
               </div>
               
@@ -193,14 +227,15 @@
                   size="large"
                   class="save-btn"
                 >
-                  <Icon icon="mdi:content-save" />
+                  <Icon icon="mdi:content-save" width="16" />
                   {{ $t('sshSettings.saveSettings') }}
                 </el-button>
                 <el-button
                   @click="resetSettings"
                   size="large"
+                  class="reset-btn"
                 >
-                  <Icon icon="mdi:restore" />
+                  <Icon icon="mdi:restore" width="16" />
                   {{ $t('sshSettings.reset') }}
                 </el-button>
               </div>
@@ -211,19 +246,19 @@
         <!-- Status usługi -->
         <el-tab-pane :label="$t('sshSettings.serviceStatus')" name="status">
           <div class="tab-content">
-            <el-card shadow="never" class="compact-card">
+            <el-card shadow="hover" class="compact-card">
               <div class="status-grid">
                 <div class="status-card">
                   <div class="status-header">
-                    <Icon icon="mdi:information" size="24" class="status-icon" />
+                    <Icon icon="mdi:information-outline" width="20" class="status-icon" />
                     <h4>{{ $t('sshSettings.serviceDetails') }}</h4>
                   </div>
                   
                   <div class="status-details">
                     <div class="status-item">
                       <label>{{ $t('sshSettings.status') }}</label>
-                      <el-tag :type="serviceStatus.active ? 'success' : 'danger'">
-                        <Icon :icon="serviceStatus.active ? 'mdi:check-circle' : 'mdi:close-circle'" />
+                      <el-tag :type="serviceStatus.active ? 'success' : 'danger'" class="status-value-tag">
+                        <Icon :icon="serviceStatus.active ? 'mdi:check-circle' : 'mdi:close-circle'" width="12" />
                         {{ serviceStatus.active ? $t('sshSettings.running') : $t('sshSettings.stopped') }}
                       </el-tag>
                     </div>
@@ -235,7 +270,7 @@
                     
                     <div class="status-item">
                       <label>{{ $t('sshSettings.installed') }}</label>
-                      <el-tag :type="serviceStatus.installed ? 'success' : 'warning'">
+                      <el-tag :type="serviceStatus.installed ? 'success' : 'warning'" class="status-value-tag">
                         {{ serviceStatus.installed ? $t('sshSettings.yes') : $t('sshSettings.no') }}
                       </el-tag>
                     </div>
@@ -254,7 +289,7 @@
                 
                 <div class="status-card logs-card">
                   <div class="status-header">
-                    <Icon icon="mdi:clipboard-text" size="24" class="status-icon" />
+                    <Icon icon="mdi:clipboard-text-outline" width="20" class="status-icon" />
                     <h4>{{ $t('sshSettings.statusOutput') }}</h4>
                   </div>
                   
@@ -266,16 +301,18 @@
                     <el-button
                       @click="copyStatusOutput"
                       size="small"
+                      class="log-action-btn"
                     >
-                      <Icon icon="mdi:content-copy" />
+                      <Icon icon="mdi:content-copy" width="12" />
                       {{ $t('sshSettings.copy') }}
                     </el-button>
                     <el-button
                       @click="loadServiceStatus"
                       :loading="statusLoading"
                       size="small"
+                      class="log-action-btn"
                     >
-                      <Icon icon="mdi:refresh" />
+                      <Icon icon="mdi:refresh" width="12" />
                       {{ $t('sshSettings.refresh') }}
                     </el-button>
                   </div>
@@ -288,11 +325,11 @@
         <!-- Aktywne połączenia -->
         <el-tab-pane :label="$t('sshSettings.activeConnections')" name="connections">
           <div class="tab-content">
-            <el-card shadow="never" class="compact-card">
+            <el-card shadow="hover" class="compact-card">
               <div class="connections-header">
                 <div class="connections-info">
                   <h4>{{ $t('sshSettings.currentConnections') }}</h4>
-                  <el-tag v-if="connections.length > 0" type="info" size="small">
+                  <el-tag v-if="connections.length > 0" type="info" size="small" class="connections-count">
                     {{ connections.length }} {{ $t('sshSettings.connections') }}
                   </el-tag>
                 </div>
@@ -302,16 +339,17 @@
                     @click="loadConnections"
                     :loading="connectionsLoading"
                     size="small"
+                    class="connection-action-btn"
                   >
-                    <Icon icon="mdi:refresh" />
+                    <Icon icon="mdi:refresh" width="12" />
                     {{ $t('sshSettings.refresh') }}
                   </el-button>
                   <el-button
                     @click="exportConnections"
                     size="small"
-                    plain
+                    class="connection-action-btn"
                   >
-                    <Icon icon="mdi:download" />
+                    <Icon icon="mdi:download" width="12" />
                     {{ $t('sshSettings.export') }}
                   </el-button>
                 </div>
@@ -323,12 +361,19 @@
               </div>
               
               <div v-else class="connections-grid">
-                <div v-for="conn in connections" :key="conn.pid" class="connection-card">
+                <div 
+                  v-for="conn in connections" 
+                  :key="conn.pid" 
+                  class="connection-card"
+                  :class="{ 'connection-card-system': conn.user === 'root' }"
+                >
                   <div class="connection-header">
-                    <Icon icon="mdi:account-network" size="20" class="conn-icon" />
+                    <div class="connection-icon">
+                      <Icon icon="mdi:account-network" width="20" />
+                    </div>
                     <div class="conn-user">
                       <span class="conn-username">{{ conn.user || 'unknown' }}</span>
-                      <el-tag :type="getConnectionStateType(conn.state)" size="small">
+                      <el-tag :type="getConnectionStateType(conn.state)" size="small" class="conn-state">
                         {{ conn.state || 'ESTABLISHED' }}
                       </el-tag>
                     </div>
@@ -349,26 +394,27 @@
                     
                     <div class="conn-meta">
                       <div class="meta-item">
-                        <Icon icon="mdi:clock-outline" />
+                        <Icon icon="mdi:clock-outline" width="12" />
                         <span>{{ conn.duration || 'N/A' }}</span>
                       </div>
                       <div class="meta-item">
-                        <Icon icon="mdi:memory" />
+                        <Icon icon="mdi:memory" width="12" />
                         <span>{{ conn.memory || 'N/A' }}</span>
                       </div>
                     </div>
                   </div>
                   
                   <div class="connection-actions">
-                    <el-tooltip :content="$t('sshSettings.killConnection')">
+                    <el-tooltip :content="$t('sshSettings.killConnection')" placement="top">
                       <el-button
                         @click="killConnection(conn.pid)"
                         size="small"
                         type="danger"
                         circle
                         plain
+                        class="kill-btn"
                       >
-                        <Icon icon="mdi:close" />
+                        <Icon icon="mdi:close" width="14" />
                       </el-button>
                     </el-tooltip>
                   </div>
@@ -387,7 +433,7 @@
       width="400px"
       class="quick-config-modal"
     >
-      <el-form label-position="top">
+      <el-form label-position="top" class="quick-form">
         <el-form-item :label="$t('sshSettings.changePort')">
           <el-input-number
             v-model="quickPort"
@@ -401,19 +447,23 @@
         <el-form-item :label="$t('sshSettings.enableRoot')">
           <el-switch
             v-model="quickRootAccess"
+            inline-prompt
             :active-text="$t('sshSettings.yes')"
             :inactive-text="$t('sshSettings.no')"
+            active-color="var(--el-color-danger)"
+            inactive-color="var(--el-color-success)"
           />
         </el-form-item>
       </el-form>
       
       <template #footer>
-        <el-button @click="quickConfigVisible = false">
+        <el-button @click="quickConfigVisible = false" class="dialog-btn">
           {{ $t('sshSettings.cancel') }}
         </el-button>
         <el-button
           type="primary"
           @click="applyQuickConfig"
+          class="dialog-btn"
         >
           {{ $t('sshSettings.apply') }}
         </el-button>
@@ -423,7 +473,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'  // DODAJ onUnmounted
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import axios from 'axios'
 import { Icon } from '@iconify/vue'
@@ -436,6 +486,7 @@ const statusLoading = ref(false)
 const saveLoading = ref(false)
 const connectionsLoading = ref(false)
 const quickConfigVisible = ref(false)
+const lastUpdate = ref('')
 
 const serviceStatus = ref({
   installed: false,
@@ -460,6 +511,11 @@ const defaultSettings = {
 const settings = ref({ ...defaultSettings })
 const quickPort = ref(22)
 const quickRootAccess = ref(false)
+
+// Aktualizuj czas ostatniej aktualizacji
+const updateLastUpdateTime = () => {
+  lastUpdate.value = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
 
 // Funkcje pomocnicze
 const getConnectionStateType = (state) => {
@@ -537,6 +593,7 @@ const loadServiceStatus = async () => {
     statusLoading.value = true
     const response = await axios.get('/services/ssh/status')
     serviceStatus.value = response.data
+    updateLastUpdateTime()
   } catch (error) {
     ElMessage.error(error.response?.data?.error || error.message)
   } finally {
@@ -632,11 +689,12 @@ onUnmounted(() => {
 })
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 .ssh-settings-modern {
-  padding: 24px;
+  padding: 20px;
   max-width: 1400px;
   margin: 0 auto;
+  font-family: 'Inter', -apple-system, sans-serif;
 }
 
 /* Nagłówek panelu */
@@ -645,45 +703,82 @@ onUnmounted(() => {
 }
 
 .service-card {
-  border: none;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #f5f7fa 0%, #e4e7ed 100%);
+  border-radius: 16px;
+  font-family: 'Inter', -apple-system, sans-serif;
+  background: linear-gradient(135deg, var(--el-bg-color) 0%, color-mix(in srgb, var(--el-bg-color) 90%, var(--el-color-primary-light-9)) 100%);
+  border: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  
+  :global(.dark) &,
+  :global(body.dark) & {
+    border-color: color-mix(in srgb, var(--el-border-color) 50%, #1e293b);
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  }
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--el-box-shadow-dark);
+  }
+
+  &:deep(.el-card__body) {
+    padding: 0;
+  }
 }
 
 .service-header {
   display: flex;
   align-items: center;
   gap: 20px;
-  padding: 16px;
+  padding: 24px;
+  background: transparent;
 }
 
 .service-icon-container {
   position: relative;
+  flex-shrink: 0;
 }
 
 .service-icon {
-  color: var(--el-color-primary);
-  background: white;
-  padding: 12px;
-  border-radius: 10px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--el-color-primary) 0%, var(--el-color-primary-dark-2) 100%);
+  border-radius: 12px;
+  color: white;
+  box-shadow: 0 4px 12px rgba(var(--el-color-primary-rgb), 0.3);
 }
 
 .service-status-badge {
   position: absolute;
-  top: -8px;
-  right: -8px;
+  top: -6px;
+  right: -6px;
+}
+
+.status-tag {
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
 
 .service-info {
   flex: 1;
+  min-width: 0;
 }
 
-.service-info h2 {
+.service-title {
   margin: 0 0 8px 0;
   font-size: 1.5rem;
   font-weight: 600;
   color: var(--el-text-color-primary);
+  line-height: 1.2;
 }
 
 .service-meta {
@@ -691,15 +786,26 @@ onUnmounted(() => {
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
+  font-size: 12px;
 }
 
 .version-info,
-.port-info {
+.port-info,
+.update-time {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.875rem;
+  padding: 4px 10px;
+  background: var(--el-fill-color-light);
+  border-radius: 6px;
   color: var(--el-text-color-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+  
+  :global(.dark) &,
+  :global(body.dark) & {
+    background: rgba(255, 255, 255, 0.05);
+  }
 }
 
 .service-actions {
@@ -707,7 +813,7 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: flex-end;
   gap: 12px;
-  min-width: 200px;
+  min-width: 180px;
 }
 
 .service-toggle {
@@ -718,9 +824,28 @@ onUnmounted(() => {
 }
 
 .toggle-label {
-  font-size: 0.875rem;
+  font-size: 12px;
   color: var(--el-text-color-secondary);
   font-weight: 500;
+}
+
+.service-buttons {
+  display: flex;
+}
+
+.action-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--el-box-shadow-light);
+  }
 }
 
 /* Konfiguracja */
@@ -729,37 +854,126 @@ onUnmounted(() => {
 }
 
 .compact-tabs {
-  border-radius: 12px;
+  border-radius: 16px;
   overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+  background: var(--el-bg-color);
+  
+  :global(.dark) &,
+  :global(body.dark) & {
+    border-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+  }
+}
+
+:deep(.compact-tabs .el-tabs__header) {
+  border-bottom: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+  margin-bottom: 0;
+  
+  :global(.dark) &,
+  :global(body.dark) & {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    border-bottom-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+  }
+}
+
+:deep(.compact-tabs .el-tabs__item) {
+  font-weight: 600;
+  color: var(--el-text-color-secondary);
+  padding: 0 24px;
+  height: 48px;
+  line-height: 48px;
+  transition: all 0.3s ease;
+  
+  &:hover {
+    color: var(--el-color-primary);
+  }
+}
+
+:deep(.compact-tabs .el-tabs__item.is-active) {
+  color: var(--el-color-primary);
+  background: var(--el-bg-color);
+  border-radius: 12px 12px 0 0;
+  position: relative;
+  
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--el-color-primary) 0%, var(--el-color-primary-light-3) 100%);
+    border-radius: 2px;
+  }
 }
 
 .tab-content {
-  padding: 16px;
+  padding: 24px;
 }
 
 .compact-card {
   border: none;
   border-radius: 12px;
+  background: var(--el-bg-color);
+  border: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  
+  :global(.dark) &,
+  :global(body.dark) & {
+    background: #1e293b;
+    border-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+  }
+
+  &:hover {
+    box-shadow: var(--el-box-shadow-light);
+  }
 }
 
 .config-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
   margin-bottom: 24px;
 }
 
 .config-group {
   padding: 20px;
-  background: var(--el-fill-color-lighter);
-  border-radius: 8px;
+  background: var(--el-fill-color-light);
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+  transition: all 0.3s ease;
+  
+  :global(.dark) &,
+  :global(body.dark) & {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+  }
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--el-box-shadow-light);
+  }
 }
 
-.config-group h4 {
-  margin: 0 0 16px 0;
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
+.config-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+  
+  :global(.dark) &,
+  :global(body.dark) & {
+    border-bottom-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+  }
+
+  h4 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--el-text-color-primary);
+  }
 }
 
 .config-item {
@@ -774,9 +988,13 @@ onUnmounted(() => {
 }
 
 .config-label {
-  font-weight: 500;
+  font-weight: 600;
   color: var(--el-text-color-primary);
   font-size: 0.875rem;
+}
+
+.config-switch-wrapper {
+  margin: 4px 0;
 }
 
 .compact-input {
@@ -794,25 +1012,42 @@ onUnmounted(() => {
   color: var(--el-color-warning);
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  font-weight: 500;
 }
 
 .advanced-options {
   margin-top: 24px;
   padding: 20px;
-  background: var(--el-fill-color-lighter);
-  border-radius: 8px;
+  background: var(--el-fill-color-light);
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+  
+  :global(.dark) &,
+  :global(body.dark) & {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+  }
 }
 
-.advanced-options h4 {
-  margin: 0 0 12px 0;
-  font-size: 1rem;
-  font-weight: 600;
+.advanced-options-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+
+  h4 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--el-text-color-primary);
+  }
 }
 
 .advanced-textarea {
-  font-family: monospace;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
   font-size: 0.875rem;
+  line-height: 1.4;
 }
 
 .config-actions {
@@ -821,25 +1056,73 @@ onUnmounted(() => {
   gap: 12px;
   margin-top: 24px;
   padding-top: 24px;
-  border-top: 1px solid var(--el-border-color-lighter);
+  border-top: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+  
+  :global(.dark) &,
+  :global(body.dark) & {
+    border-top-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+  }
 }
 
 .save-btn {
   min-width: 140px;
+  background: linear-gradient(135deg, var(--el-color-primary) 0%, var(--el-color-primary-dark-2) 100%);
+  border: none;
+  color: white;
+  font-weight: 600;
+  padding: 12px 24px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(var(--el-color-primary-rgb), 0.3);
+  }
+}
+
+.reset-btn {
+  padding: 12px 24px;
+  border-radius: 10px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+  
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--el-box-shadow-light);
+  }
 }
 
 /* Status */
 .status-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 24px;
+  gap: 20px;
 }
 
 .status-card {
-  background: white;
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 8px;
+  background: var(--el-fill-color-light);
+  border: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+  border-radius: 12px;
   overflow: hidden;
+  transition: all 0.3s ease;
+  
+  :global(.dark) &,
+  :global(body.dark) & {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+  }
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--el-box-shadow-light);
+  }
 }
 
 .status-header {
@@ -848,14 +1131,21 @@ onUnmounted(() => {
   gap: 12px;
   padding: 16px;
   background: var(--el-fill-color-lighter);
-  border-bottom: 1px solid var(--el-border-color-light);
-}
+  border-bottom: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+  
+  :global(.dark) &,
+  :global(body.dark) & {
+    background: rgba(255, 255, 255, 0.05);
+    border-bottom-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+  }
 
-.status-header h4 {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  flex: 1;
+  h4 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--el-text-color-primary);
+    flex: 1;
+  }
 }
 
 .status-icon {
@@ -863,18 +1153,26 @@ onUnmounted(() => {
 }
 
 .status-details {
-  padding: 16px;
+  padding: 20px;
 }
 
 .status-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--el-border-color) 20%, transparent);
+  
+  :global(.dark) &,
+  :global(body.dark) & {
+    border-bottom-color: rgba(255, 255, 255, 0.05);
+  }
 }
 
 .status-item:last-child {
   margin-bottom: 0;
+  border-bottom: none;
 }
 
 .status-item label {
@@ -883,10 +1181,21 @@ onUnmounted(() => {
   font-weight: 500;
 }
 
+.status-value-tag {
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .status-value {
-  font-family: monospace;
+  font-family: 'SF Mono', 'Monaco', monospace;
   font-size: 0.875rem;
   color: var(--el-text-color-primary);
+  font-weight: 500;
 }
 
 .logs-card {
@@ -897,30 +1206,49 @@ onUnmounted(() => {
 
 .logs-container {
   flex: 1;
-  padding: 16px;
+  padding: 20px;
   overflow: hidden;
 }
 
 .status-output {
   margin: 0;
-  padding: 12px;
+  padding: 16px;
   background: var(--el-fill-color-light);
-  border-radius: 4px;
-  font-family: 'Courier New', monospace;
+  border-radius: 8px;
+  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
   font-size: 0.75rem;
-  line-height: 1.4;
+  line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-all;
   overflow-y: auto;
   max-height: 300px;
+  color: var(--el-text-color-primary);
+  
+  :global(.dark) &,
+  :global(body.dark) & {
+    background: rgba(0, 0, 0, 0.2);
+  }
 }
 
 .logs-actions {
   display: flex;
   gap: 8px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--el-border-color-light);
+  padding: 16px;
+  border-top: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
   background: var(--el-fill-color-lighter);
+  
+  :global(.dark) &,
+  :global(body.dark) & {
+    background: rgba(255, 255, 255, 0.05);
+    border-top-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+  }
+}
+
+.log-action-btn {
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* Połączenia */
@@ -929,8 +1257,13 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
+  padding-bottom: 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+  
+  :global(.dark) &,
+  :global(body.dark) & {
+    border-bottom-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+  }
 }
 
 .connections-info {
@@ -943,6 +1276,11 @@ onUnmounted(() => {
   margin: 0;
   font-size: 1.125rem;
   font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.connections-count {
+  font-weight: 600;
 }
 
 .connections-actions {
@@ -950,51 +1288,77 @@ onUnmounted(() => {
   gap: 8px;
 }
 
+.connection-action-btn {
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .empty-state {
   text-align: center;
-  padding: 48px 24px;
+  padding: 60px 24px;
   color: var(--el-text-color-secondary);
-}
-
-.empty-state .iconify {
-  color: var(--el-color-info-light-5);
-  margin-bottom: 16px;
-}
-
-.empty-state p {
-  margin: 0;
-  font-size: 0.875rem;
+  background: var(--el-fill-color-lighter);
+  border-radius: 12px;
+  border: 2px dashed color-mix(in srgb, var(--el-border-color) 50%, transparent);
+  
+  :global(.dark) &,
+  :global(body.dark) & {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+  }
 }
 
 .connections-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
   gap: 16px;
 }
 
 .connection-card {
-  background: white;
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 8px;
-  padding: 16px;
-  transition: all 0.3s ease;
+  background: var(--el-fill-color-light);
+  border: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+  border-radius: 12px;
+  padding: 20px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
-}
+  overflow: hidden;
+  
+  :global(.dark) &,
+  :global(body.dark) & {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+  }
 
-.connection-card:hover {
-  border-color: var(--el-color-primary-light-5);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  &:hover {
+    border-color: var(--el-color-primary-light-5);
+    transform: translateY(-4px);
+    box-shadow: var(--el-box-shadow-light);
+  }
+  
+  &.connection-card-system {
+    border-left: 4px solid var(--el-color-danger);
+  }
 }
 
 .connection-header {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
-.conn-icon {
-  color: var(--el-color-primary);
+.connection-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--el-color-primary) 0%, var(--el-color-primary-light-3) 100%);
+  border-radius: 10px;
+  color: white;
+  flex-shrink: 0;
 }
 
 .conn-user {
@@ -1005,25 +1369,34 @@ onUnmounted(() => {
 }
 
 .conn-username {
-  font-weight: 500;
+  font-weight: 600;
   font-size: 0.875rem;
+  color: var(--el-text-color-primary);
+}
+
+.conn-state {
+  font-weight: 500;
+  padding: 2px 8px;
 }
 
 .conn-pid {
   font-size: 0.75rem;
   color: var(--el-text-color-secondary);
-  font-family: monospace;
+  font-family: 'SF Mono', monospace;
+  background: var(--el-fill-color-lighter);
+  padding: 2px 8px;
+  border-radius: 4px;
 }
 
 .connection-details {
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 .conn-address {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
 .address-item {
@@ -1035,26 +1408,33 @@ onUnmounted(() => {
 .address-item label {
   font-size: 0.75rem;
   color: var(--el-text-color-secondary);
-  font-weight: 500;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .address-value {
-  font-family: monospace;
+  font-family: 'SF Mono', monospace;
   font-size: 0.75rem;
   color: var(--el-text-color-primary);
+  font-weight: 500;
+  background: var(--el-fill-color-lighter);
+  padding: 4px 8px;
+  border-radius: 4px;
 }
 
 .conn-meta {
   display: flex;
-  gap: 16px;
+  gap: 20px;
 }
 
 .meta-item {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   font-size: 0.75rem;
   color: var(--el-text-color-secondary);
+  font-weight: 500;
 }
 
 .connection-actions {
@@ -1063,22 +1443,46 @@ onUnmounted(() => {
   right: 16px;
 }
 
+.kill-btn {
+  width: 28px;
+  height: 28px;
+  
+  &:hover {
+    transform: scale(1.1);
+  }
+}
+
 /* Modal */
-.quick-config-modal .el-dialog__body {
-  padding: 20px;
+.quick-config-modal :deep(.el-dialog) {
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--el-bg-color);
+  border: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+  
+  :global(.dark) &,
+  :global(body.dark) & {
+    background: #1e293b;
+    border-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+  }
+}
+
+.quick-form {
+  padding: 0 24px;
+}
+
+.dialog-btn {
+  font-weight: 600;
+  padding: 8px 20px;
+  border-radius: 8px;
 }
 
 /* Responsywność */
-@media (max-width: 992px) {
+@media (max-width: 1200px) {
   .config-grid {
     grid-template-columns: 1fr;
   }
   
   .status-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .connections-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -1114,6 +1518,10 @@ onUnmounted(() => {
     justify-content: flex-end;
   }
   
+  .connections-grid {
+    grid-template-columns: 1fr;
+  }
+  
   .config-actions {
     flex-direction: column;
   }
@@ -1124,6 +1532,12 @@ onUnmounted(() => {
 }
 
 @media (max-width: 480px) {
+  .service-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
   .conn-address {
     flex-direction: column;
     align-items: stretch;
@@ -1133,6 +1547,68 @@ onUnmounted(() => {
     flex-direction: column;
     align-items: flex-start;
     gap: 4px;
+  }
+  
+  .quick-config-modal {
+    width: 95%;
+  }
+}
+
+/* Animacje */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.connection-card {
+  animation: fadeInUp 0.3s ease;
+}
+
+/* Focus styles for accessibility */
+.action-btn:focus-visible,
+.save-btn:focus-visible,
+.reset-btn:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 2px;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--el-fill-color-lighter);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--el-color-primary-light-5);
+  border-radius: 4px;
+  
+  &:hover {
+    background: var(--el-color-primary);
+  }
+}
+
+:global(.dark) ::-webkit-scrollbar-track,
+:global(body.dark) ::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+:global(.dark) ::-webkit-scrollbar-thumb,
+:global(body.dark) ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  
+  &:hover {
+    background: rgba(255, 255, 255, 0.3);
   }
 }
 </style>

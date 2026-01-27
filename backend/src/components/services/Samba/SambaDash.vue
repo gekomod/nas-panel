@@ -269,7 +269,6 @@ async function installSamba() {
 }
 
 .samba-dashboard {
-  max-width: 1200px;
   margin: 0 auto;
   padding: 24px;
 }

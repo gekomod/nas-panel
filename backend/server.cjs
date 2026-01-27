@@ -856,6 +856,155 @@ app.get('/api/ram/detailed', requireAuth, (req, res) => {
   }
 });
 
+// Endpoint do czyszczenia cache pamięci RAM
+app.post('/api/ram/clear-cache', requireAuth, async (req, res) => {
+  try {
+    const { exec } = require('child_process');
+    const { promisify } = require('util');
+    const execAsync = promisify(exec);
+
+    // Sprawdź czy użytkownik ma uprawnienia sudo (opcjonalnie)
+    if (process.platform !== 'linux') {
+      return res.status(400).json({
+        success: false,
+        error: 'This operation is only available on Linux systems'
+      });
+    }
+
+    // Loguj próbę czyszczenia
+    console.log(`RAM cache clear requested by user: ${req.session.username}`);
+
+    const commands = [
+      'sync', // Synchronizuj dane na dysk
+      'echo 1 > /proc/sys/vm/drop_caches', // Czyszczenie pagecache
+      'echo 2 > /proc/sys/vm/drop_caches', // Czyszczenie dentries i inode
+      'echo 3 > /proc/sys/vm/drop_caches'  // Czyszczenie wszystkiego
+    ];
+
+    const results = [];
+    
+    for (const command of commands) {
+      try {
+        const { stdout, stderr } = await execAsync(`sudo ${command}`, {
+          timeout: 10000 // 10 sekund timeout
+        });
+        results.push({
+          command,
+          success: true,
+          output: stdout || stderr || 'OK'
+        });
+        // Mała przerwa między komendami
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (error) {
+        results.push({
+          command,
+          success: false,
+          error: error.message
+        });
+      }
+    }
+
+    // Pobierz aktualne dane RAM po czyszczeniu
+    let ramAfter = null;
+    try {
+      const si = require('systeminformation');
+      ramAfter = await si.mem();
+    } catch (e) {
+      console.error('Could not get RAM data after clearing:', e);
+    }
+
+    res.json({
+      success: true,
+      message: 'RAM cache cleared successfully',
+      timestamp: new Date().toISOString(),
+      executedBy: req.session.username,
+      commands: results,
+      ramAfter: ramAfter ? {
+        available: ramAfter.available,
+        cached: ramAfter.cached || 0,
+        buffers: ramAfter.buffers || 0,
+        free: ramAfter.free
+      } : null
+    });
+
+  } catch (error) {
+    console.error('RAM cache clear error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to clear RAM cache',
+      details: error.message,
+      note: 'This operation requires root privileges. Make sure the Node.js process has sudo access.'
+    });
+  }
+});
+
+// Alternatywna wersja z mniejszymi uprawnieniami (bez sudo)
+app.post('/api/ram/clear-cache-safe', requireAuth, async (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    
+    // Bezpieczna metoda - tylko jeśli plik jest zapisywalny
+    const dropCachesPath = '/proc/sys/vm/drop_caches';
+    
+    if (!fs.existsSync(dropCachesPath)) {
+      return res.status(400).json({
+        success: false,
+        error: 'System does not support dropping caches'
+      });
+    }
+
+    // Sprawdź uprawnienia (opcjonalnie)
+    try {
+      fs.accessSync(dropCachesPath, fs.constants.W_OK);
+    } catch (accessError) {
+      return res.status(403).json({
+        success: false,
+        error: 'Insufficient permissions to clear cache',
+        details: 'The process needs write access to /proc/sys/vm/drop_caches'
+      });
+    }
+
+    // Synchronizuj dane
+    require('child_process').execSync('sync', { stdio: 'ignore' });
+    
+    // Czyszczenie cache
+    fs.writeFileSync(dropCachesPath, '3');
+    
+    // Poczekaj chwilę na efekt
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Pobierz dane po czyszczeniu
+    const si = require('systeminformation');
+    const ramAfter = await si.mem();
+    
+    res.json({
+      success: true,
+      message: 'RAM cache cleared (safe mode)',
+      timestamp: new Date().toISOString(),
+      ramBefore: req.body.ramBefore || null,
+      ramAfter: {
+        total: ramAfter.total,
+        used: ramAfter.used,
+        free: ramAfter.free,
+        available: ramAfter.available,
+        cached: ramAfter.cached || 0,
+        buffers: ramAfter.buffers || 0
+      },
+      freedCache: req.body.ramBefore && ramAfter.cached ? 
+        req.body.ramBefore.cached - ramAfter.cached : null
+    });
+
+  } catch (error) {
+    console.error('Safe RAM cache clear error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to clear RAM cache',
+      details: error.message
+    });
+  }
+});
+
 function checkRestartRequired() {
   try {
     const fs = require('fs')

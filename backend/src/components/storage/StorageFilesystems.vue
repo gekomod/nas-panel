@@ -661,7 +661,7 @@
                       v-model="part.size" 
                       :min="1" 
                       :max="getMaxSize(part)" 
-                      :step="part.unit === '%' ? 1 : (part.unit === 'G' ? 10 : 100)}"
+                      :step="part.unit === '%' ? 1 : (part.unit === 'G' ? 10 : 100)"
                       :precision="0"
                       size="small"
                     />
@@ -3221,16 +3221,16 @@ onUnmounted(() => {
 }
 
 /* =========================================== */
-/* DARK MODE STYLES - CRITICAL FIX */
+/* DARK MODE STYLES - POPRAWIONE */
 /* =========================================== */
 
-/* Root level dark mode */
+/* Base dark mode styles */
 :root.dark .filesystems-widget,
 .dark-mode .filesystems-widget,
 [data-theme="dark"] .filesystems-widget {
   background: #1a1a1a !important;
   color: #e0e0e0 !important;
-  border-color: #333 !important;
+  border-color: #404040 !important;
 }
 
 :root.dark .filesystems-widget :deep(.el-card__header),
@@ -3696,5 +3696,69 @@ onUnmounted(() => {
 [data-theme="dark"] :deep(.el-button.is-plain:hover) {
   background: #363636 !important;
   border-color: #505050 !important;
+}
+
+/* Input number in dark mode */
+:root.dark :deep(.el-input-number),
+.dark-mode :deep(.el-input-number),
+[data-theme="dark"] :deep(.el-input-number) {
+  background: #2d2d2d !important;
+}
+
+:root.dark :deep(.el-input-number .el-input__inner),
+.dark-mode :deep(.el-input-number .el-input__inner),
+[data-theme="dark"] :deep(.el-input-number .el-input__inner) {
+  background: #2d2d2d !important;
+  border-color: #404040 !important;
+  color: #e0e0e0 !important;
+}
+
+/* Radio button in dark mode */
+:root.dark :deep(.el-radio-button__inner),
+.dark-mode :deep(.el-radio-button__inner),
+[data-theme="dark"] :deep(.el-radio-button__inner) {
+  background: #2d2d2d !important;
+  border-color: #404040 !important;
+  color: #e0e0e0 !important;
+}
+
+:root.dark :deep(.el-radio-button__inner:hover),
+.dark-mode :deep(.el-radio-button__inner:hover),
+[data-theme="dark"] :deep(.el-radio-button__inner:hover) {
+  color: #409eff !important;
+}
+
+/* Tabs in dark mode */
+:root.dark :deep(.el-tabs__nav-wrap::after),
+.dark-mode :deep(.el-tabs__nav-wrap::after),
+[data-theme="dark"] :deep(.el-tabs__nav-wrap::after) {
+  background-color: #404040 !important;
+}
+
+/* Alert in dark mode */
+:root.dark :deep(.el-alert),
+.dark-mode :deep(.el-alert),
+[data-theme="dark"] :deep(.el-alert) {
+  background: #2d2d2d !important;
+  border-color: #404040 !important;
+}
+
+:root.dark :deep(.el-alert__title),
+.dark-mode :deep(.el-alert__title),
+[data-theme="dark"] :deep(.el-alert__title) {
+  color: #e0e0e0 !important;
+}
+
+/* Stats icon in dark mode */
+:root.dark .stat-icon,
+.dark-mode .stat-icon,
+[data-theme="dark"] .stat-icon {
+  background: rgba(64, 158, 255, 0.2) !important;
+}
+
+:root.dark .stat-icon .iconify,
+.dark-mode .stat-icon .iconify,
+[data-theme="dark"] .stat-icon .iconify {
+  color: #409eff !important;
 }
 </style>

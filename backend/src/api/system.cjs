@@ -423,41 +423,63 @@ app.post('/system/updates/install', requireAuth, async (req, res) => {
 });
 
 // Endpoint do śledzenia postępu (SSE)
-app.get('/system/updates/progress/:pkg', requireAuth, (req, res) => {
-  const { pkg } = req.params
+app.get('/system/updates/progress/:processId', requireAuth, (req, res) => {
+  const { processId } = req.params;
   
-  res.setHeader('Content-Type', 'text/event-stream')
-  res.setHeader('Cache-Control', 'no-cache')
-  res.setHeader('Connection', 'keep-alive')
-  res.flushHeaders()
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
 
-  // Symulacja postępu (w rzeczywistości parsuj stdout apt)
-  let progress = 0
-  const interval = setInterval(() => {
-    progress += Math.floor(Math.random() * 15) + 5
-    if (progress >= 100) {
-      progress = 100
-      clearInterval(interval)
-      res.write(`data: ${JSON.stringify({
-        progress: 100,
-        status: 'success',
-        message: 'Installation complete'
-      })}\n\n`)
-      setTimeout(() => res.end(), 1000)
-    } else {
-      res.write(`data: ${JSON.stringify({
-        progress,
-        message: progress < 30 ? 'Downloading...' : 
-                progress < 70 ? 'Installing...' : 'Finalizing...',
-        status: ''
-      })}\n\n`)
-    }
-  }, 800)
+  // Znajdź aktywny proces
+  const process = activeProcesses.get(processId);
+  
+  if (!process) {
+    res.write(`data: ${JSON.stringify({
+      progress: 0,
+      status: 'error',
+      message: 'Process not found'
+    })}\n\n`);
+    res.end();
+    return;
+  }
 
+  // Dodaj klienta do procesu
+  const client = { res };
+  process.clients.add(client);
+
+  // Jeśli proces już się zakończył, wyślij status
+  if (process.output && process.output.includes('Installation complete')) {
+    res.write(`data: ${JSON.stringify({
+      progress: 100,
+      status: 'success',
+      message: 'Installation complete'
+    })}\n\n`);
+    res.end();
+    process.clients.delete(client);
+    return;
+  }
+
+  // Wyślij aktualny output jeśli istnieje
+  if (process.output) {
+    const progressData = parseAptProgress(process.output);
+    res.write(`data: ${JSON.stringify(progressData)}\n\n`);
+  }
+
+  // Obsługa zamknięcia połączenia
   req.on('close', () => {
-    clearInterval(interval)
-  })
-})
+    process.clients.delete(client);
+    
+    // Jeśli nie ma już klientów, wyczyść po czasie
+    if (process.clients.size === 0) {
+      setTimeout(() => {
+        if (process.clients.size === 0 && !process.output?.includes('Installation complete')) {
+          process.clients.clear();
+        }
+      }, 5000);
+    }
+  });
+});
 
 // Anulowanie instalacji
 app.delete('/system/updates/cancel/:pkg', requireAuth, async (req, res) => {
@@ -490,6 +512,42 @@ app.delete('/system/updates/cancel/:pkg', requireAuth, async (req, res) => {
     })
   }
 })
+
+function monitorActiveProcesses() {
+  setInterval(() => {
+    activeProcesses.forEach((process, processId) => {
+      // Sprawdź czy proces nadal działa
+      if (process.child && process.child.exitCode !== null) {
+        // Proces zakończony
+        const success = process.child.exitCode === 0;
+        const message = success ? 'Installation complete' : `Installation failed with code ${process.child.exitCode}`;
+        
+        // Powiadom wszystkich klientów
+        process.clients.forEach(client => {
+          try {
+            client.res.write(`data: ${JSON.stringify({
+              progress: success ? 100 : 0,
+              status: success ? 'success' : 'error',
+              message: message
+            })}\n\n`);
+            client.res.end();
+          } catch (err) {
+            console.error('Error sending SSE to client:', err);
+          }
+        });
+        
+        // Wyczyść klientów
+        process.clients.clear();
+        
+        // Po 30 sekundach usuń proces z pamięci
+        setTimeout(() => {
+          activeProcesses.delete(processId);
+        }, 30000);
+      }
+    });
+  }, 1000); // Sprawdzaj co sekundę
+}
+
 
 // Funkcja do ładowania ustawień
 function loadSettings() {
@@ -717,30 +775,59 @@ function parseAptProgress(output) {
   let progress = 0;
   let message = 'Starting installation...';
   let status = '';
+  let currentPackage = '';
   
   for (const line of lines) {
-    if (line.includes('Unpacking')) {
-      progress = Math.min(progress + 10, 70);
-      message = `Unpacking: ${line.split('Unpacking ')[1]}`;
-    } 
-    else if (line.includes('Setting up')) {
-      progress = Math.min(progress + 5, 95);
-      message = `Configuring: ${line.split('Setting up ')[1]}`;
-    }
-    else if (line.match(/Get:\d+/)) {
-      const percentMatch = line.match(/(\d+)%/);
-      if (percentMatch) {
-        progress = Math.min(parseInt(percentMatch[1]) * 0.7, 70);
-        message = `Downloading packages...`;
+    // Parsowanie postępu pobierania
+    if (line.match(/Get:\d+\s+\d+\/\d+\s+/)) {
+      const match = line.match(/(\d+)%/);
+      if (match) {
+        progress = Math.min(parseInt(match[1]), 70);
+        message = 'Downloading packages...';
       }
     }
-    else if (line.includes('Reading package lists')) {
-      progress = 5;
-      message = 'Reading package lists...';
+    // Parsowanie wypakowywania
+    else if (line.includes('Unpacking')) {
+      progress = Math.min(progress + 5, 85);
+      const pkgMatch = line.match(/Unpacking\s+([^(]+)/);
+      if (pkgMatch) {
+        currentPackage = pkgMatch[1].trim();
+        message = `Unpacking ${currentPackage}...`;
+      }
     }
-    else if (line.includes('Building dependency tree')) {
-      progress = 10;
-      message = 'Building dependency tree...';
+    // Parsowanie konfiguracji
+    else if (line.includes('Setting up')) {
+      progress = Math.min(progress + 5, 95);
+      const pkgMatch = line.match(/Setting up\s+([^(]+)/);
+      if (pkgMatch) {
+        currentPackage = pkgMatch[1].trim();
+        message = `Configuring ${currentPackage}...`;
+      }
+    }
+    // Koniec instalacji
+    else if (line.includes('Processing triggers for') || 
+             line.includes('Preparing to unpack')) {
+      progress = Math.min(progress + 1, 99);
+    }
+    // Błędy
+    else if (line.includes('E:') || line.includes('Error:')) {
+      status = 'error';
+      message = `Error: ${line}`;
+    }
+    // Ostrzeżenia
+    else if (line.includes('W:') || line.includes('Warning:')) {
+      status = 'warning';
+      message = `Warning: ${line}`;
+    }
+  }
+  
+  // Jeśli osiągnięto 100%, oznaczenie sukcesu
+  if (output.includes('apt-get upgrade -y') && output.length > 1000) {
+    const linesCount = lines.length;
+    if (linesCount > 50 && progress >= 95) {
+      progress = 100;
+      message = 'Installation complete';
+      status = 'success';
     }
   }
   
@@ -748,7 +835,8 @@ function parseAptProgress(output) {
     progress,
     message,
     status,
-    time: new Date().toISOString()
+    currentPackage,
+    timestamp: new Date().toISOString()
   };
 }
 

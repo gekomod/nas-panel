@@ -1,44 +1,30 @@
 <template>
-  <el-card class="cpu-widget" shadow="hover">
-    <!-- Nagłówek - kompaktowy -->
+  <el-card 
+    class="widget-card" 
+    shadow="hover" 
+    v-loading="loading"
+  >
+    <!-- Nagłówek -->
     <template #header>
       <div class="widget-header">
         <div class="header-main">
           <div class="header-icon">
-            <el-icon class="cpu-icon" :class="{ 'loading': loading }">
-              <Cpu />
-            </el-icon>
-            <span class="header-title">{{ t('cpu.title') }}</span>
+            <Icon icon="mdi:cpu-64-bit" width="16" />
           </div>
-          
-          <div class="header-status">
-            <div class="status-indicator" :class="cpuStatusType">
-              <span class="status-dot"></span>
-              <span class="status-text">{{ cpuStatusText }}</span>
-            </div>
-            
-            <div class="header-actions">
-              <span class="cores-badge">
-                {{ cpuData.cores }} <span class="cores-label">rdz.</span>
-              </span>
-              
-              <el-button 
-                size="small" 
-                circle 
-                text 
-                @click="fetchCpuData"
-                :loading="loading"
-                class="refresh-btn"
-              >
-                <el-icon><Refresh /></el-icon>
-              </el-button>
-            </div>
+          <span class="header-title">CPU</span>
+          <div class="update-time">
+            <Icon icon="mdi:update" width="12" />
+            <span>{{ t('common.update') }}: {{ lastUpdate }}</span>
           </div>
+        </div>
+        <div class="header-sub">
+          <span class="hostname" :class="cpuStatusType">{{ cpuStatusText }}</span>
+          <span class="system">{{ cpuData.cores }} rdzeni</span>
         </div>
       </div>
     </template>
-    
-    <!-- Główne metryki -->
+
+    <!-- Zawartość widgetu -->
     <div class="widget-content">
       <!-- Główny pasek użycia -->
       <div class="main-usage">
@@ -71,35 +57,32 @@
         </div>
       </div>
       
-      <!-- Temperatura - kompaktowa, bez ramki -->
+      <!-- Temperatura -->
       <div class="temperature-row" v-if="cpuData.temperature">
-        <div class="temperature-info">
-          <el-icon class="temp-icon">
-            <HotWater />
-          </el-icon>
-          <span class="temp-label">{{ t('cpu.temperature') }}</span>
-        </div>
-        <div class="temp-value" :class="getTemperatureClass(cpuData.temperature)">
-          {{ cpuData.temperature }}°C
+        <div class="info-row">
+          <div class="label">
+            <Icon icon="mdi:thermometer" width="14" />
+            <span>{{ t('cpu.temperature') }}</span>
+          </div>
+          <div class="value temp-value" :class="getTemperatureClass(cpuData.temperature)">
+            {{ cpuData.temperature }}°C
+          </div>
         </div>
       </div>
       
-      <!-- Load averages - bez ramki, w jednej linii -->
+      <!-- Load averages -->
       <div class="load-container">
-        <div class="load-header">
-          <span class="load-title">{{ t('cpu.load') }}</span>
-          <div class="load-legend">
-            <div class="legend-item">
-              <span class="legend-dot load-1m"></span>
-              <span class="legend-label">1m</span>
-            </div>
-            <div class="legend-item">
-              <span class="legend-dot load-5m"></span>
-              <span class="legend-label">5m</span>
-            </div>
-            <div class="legend-item">
-              <span class="legend-dot load-15m"></span>
-              <span class="legend-label">15m</span>
+        <div class="info-row">
+          <div class="label">
+            <Icon icon="mdi:chart-line" width="14" />
+            <span>{{ t('cpu.load') }}</span>
+          </div>
+          <div class="value">
+            <div class="load-badges">
+              <span class="load-badge" v-for="(load, index) in loadAverages" :key="index">
+                <span class="load-label">{{ load.label }}</span>
+                <span class="load-value">{{ load.value }}</span>
+              </span>
             </div>
           </div>
         </div>
@@ -110,30 +93,23 @@
               <div 
                 class="load-progress-fill" 
                 :style="{ width: `${load.percentage}%` }"
+                :class="getLoadClass(load.percentage)"
               ></div>
             </div>
-            <div class="load-value">{{ load.value }}</div>
           </div>
         </div>
       </div>
       
-      <!-- Quick stats - minimalistyczne -->
+      <!-- Quick stats -->
       <div class="metrics-grid">
-        <div class="metric-item" v-for="metric in metrics" :key="metric.label">
-          <div class="metric-icon">
-            <el-icon><component :is="metric.icon" /></el-icon>
+        <div class="info-row metric-item" v-for="metric in metrics" :key="metric.label">
+          <div class="label">
+            <Icon :icon="metric.icon" width="14" />
+            <span>{{ metric.label }}</span>
           </div>
-          <div class="metric-info">
-            <div class="metric-label">{{ metric.label }}</div>
-            <div class="metric-value">{{ metric.value }}</div>
+          <div class="value">
+            {{ metric.value }}
           </div>
-        </div>
-      </div>
-      
-      <!-- Stopka - minimalistyczna -->
-      <div class="widget-footer">
-        <div class="update-time">
-          <span class="update-text">Aktualizacja: {{ lastUpdate }}</span>
         </div>
       </div>
     </div>
@@ -143,25 +119,15 @@
 <script>
 export default {
   name: 'CpuWidget',
-  displayName: 'CPU Status'
+  displayName: 'CPU'
 }
 </script>
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
-import { 
-  Cpu, 
-  Refresh, 
-  HotWater, 
-  Clock,
-  Timer,
-  Histogram,
-  Lightning,
-  DataBoard
-} from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import axios from 'axios'
-import { ElMessage } from 'element-plus'
+import { Icon } from '@iconify/vue'
 
 const { t } = useI18n()
 
@@ -177,8 +143,7 @@ const cpuData = ref({
 })
 
 const lastUpdate = ref(t('common.loading'))
-const loading = ref(false)
-const error = ref(null)
+const loading = ref(true)
 let intervalId = null
 
 // Helper functions
@@ -199,52 +164,52 @@ const calculateLoadPercentage = (value) => {
 
 const getProgressColor = (usage) => {
   const num = safeNumber(usage)
-  if (num > 90) return 'var(--el-color-error)'
+  if (num > 90) return 'var(--el-color-danger)'
   if (num > 70) return 'var(--el-color-warning)'
   return 'var(--el-color-success)'
 }
 
 const getTemperatureClass = (temp) => {
   const num = safeNumber(temp)
-  if (num > 80) return 'temp-critical'
-  if (num > 65) return 'temp-warning'
-  return 'temp-normal'
+  if (num > 80) return 'critical'
+  if (num > 65) return 'warning'
+  return 'normal'
+}
+
+const getLoadClass = (percentage) => {
+  if (percentage > 90) return 'critical'
+  if (percentage > 70) return 'warning'
+  return 'normal'
 }
 
 // Computed properties
 const cpuStatusType = computed(() => {
-  if (error.value) return 'error'
-  if (cpuData.value.usage > 80) return 'warning'
-  return 'success'
+  if (cpuData.value.usage > 80) return 'critical'
+  if (cpuData.value.usage > 50) return 'warning'
+  return 'normal'
 })
 
 const cpuStatusText = computed(() => {
-  if (error.value) return t('common.error')
-  if (cpuData.value.usage > 80) return t('cpu.status.highLoad')
-  if (cpuData.value.usage > 50) return t('cpu.status.mediumLoad')
-  return t('cpu.status.normal')
+  if (cpuData.value.usage > 80) return 'WYSOKIE OBCIĄŻENIE'
+  if (cpuData.value.usage > 50) return 'ŚREDNIE OBCIĄŻENIE'
+  return 'NORMALNE'
 })
 
 const metrics = computed(() => [
   {
     label: 'Częstotliwość',
     value: cpuData.value.frequency ? `${cpuData.value.frequency} GHz` : '—',
-    icon: Lightning
-  },
-  {
-    label: 'Rdzenie',
-    value: cpuData.value.cores,
-    icon: DataBoard
+    icon: 'mdi:speedometer'
   },
   {
     label: 'Obciążenie (5m)',
     value: formatLoadValue(cpuData.value.load5),
-    icon: Timer
+    icon: 'mdi:timer-outline'
   },
   {
     label: 'Obciążenie (15m)',
     value: formatLoadValue(cpuData.value.load15),
-    icon: Histogram
+    icon: 'mdi:chart-histogram'
   }
 ])
 
@@ -270,7 +235,6 @@ const loadAverages = computed(() => [
 const fetchCpuData = async () => {
   try {
     loading.value = true
-    error.value = null
     
     const response = await axios.get('/api/cpu')
     const data = response.data
@@ -292,18 +256,18 @@ const fetchCpuData = async () => {
     
   } catch (err) {
     console.error(t('common.errorFetching'), err)
-    error.value = err.message
+    // Fallback data
+    cpuData.value = {
+      usage: Math.min(100, Math.round(Math.random() * 40 + 10)),
+      temperature: 45 + Math.round(Math.random() * 20),
+      cores: navigator.hardwareConcurrency || 4,
+      frequency: (2.4 + Math.random() * 1.6).toFixed(1),
+      load1: (Math.random() * 2).toFixed(2),
+      load5: (Math.random() * 2).toFixed(2),
+      load15: (Math.random() * 2).toFixed(2)
+    }
     
-    // Fallback
-    cpuData.value.usage = Math.min(100, Math.round(Math.random() * 40 + 10))
-    cpuData.value.load1 = safeNumber(Math.random().toFixed(2))
-    cpuData.value.load5 = safeNumber(Math.random().toFixed(2))
-    cpuData.value.load15 = safeNumber(Math.random().toFixed(2))
-    
-    ElMessage.error({
-      message: t('common.fetchError'),
-      duration: 2000
-    })
+    lastUpdate.value = t('common.error')
   } finally {
     loading.value = false
   }
@@ -312,7 +276,7 @@ const fetchCpuData = async () => {
 // Lifecycle
 onMounted(() => {
   fetchCpuData()
-  intervalId = setInterval(fetchCpuData, 3000)
+  intervalId = setInterval(fetchCpuData, 30000)
 })
 
 onBeforeUnmount(() => {
@@ -320,160 +284,136 @@ onBeforeUnmount(() => {
 })
 </script>
 
-<style lang="scss" scoped>
-.cpu-widget {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  background: var(--el-bg-color);
+<style scoped lang="scss">
+.widget-card {
   border-radius: 12px;
+  font-family: 'Inter', -apple-system, sans-serif;
+  background: linear-gradient(135deg, var(--el-bg-color) 0%, color-mix(in srgb, var(--el-bg-color) 90%, var(--el-color-primary-light-9)) 100%);
+  border: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
-  transition: all 0.3s ease;
+  min-height: 280px;
+  height: 100%;
   
-  :deep(.el-card__header) {
-    padding: 12px 16px 8px;
-    border-bottom: 1px solid var(--el-border-color-lighter);
-    background: transparent;
+  /* Ciemniejszy border w trybie dark */
+  :global(.dark) &,
+  :global(body.dark) & {
+    border-color: color-mix(in srgb, var(--el-border-color) 50%, #1e293b);
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
   }
-  
-  :deep(.el-card__body) {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    padding: 12px 16px;
-    gap: 16px;
-    background: transparent;
-  }
-}
 
-/* Nagłówek - minimalistyczny */
-.widget-header {
-  .header-main {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-  }
-  
-  .header-icon {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  
-  .cpu-icon {
-    font-size: 14px;
-    color: var(--el-color-primary);
-    transition: all 0.3s ease;
+  &:deep(.el-card__header) {
+    border-bottom: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+    padding: 16px 20px;
+    background: transparent;
     
-    &.loading {
-      animation: pulse 2s infinite;
+    :global(.dark) &,
+    :global(body.dark) & {
+      border-bottom-color: color-mix(in srgb, var(--el-border-color) 50%, #1e293b);
     }
   }
-  
-  .header-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--el-text-color-primary);
-    letter-spacing: -0.1px;
+
+  &:deep(.el-card__body) {
+    padding: 16px 20px;
   }
 }
 
-.header-status {
+.widget-header {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
 }
 
-.status-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 500;
-  background: transparent;
-  
-  &.success {
-    background: var(--el-color-success-light-9);
-    
-    .status-dot {
-      background: var(--el-color-success);
-    }
-    
-    .status-text {
-      color: var(--el-color-success);
-    }
-  }
-  
-  &.warning {
-    background: var(--el-color-warning-light-9);
-    
-    .status-dot {
-      background: var(--el-color-warning);
-    }
-    
-    .status-text {
-      color: var(--el-color-warning);
-    }
-  }
-  
-  &.error {
-    background: var(--el-color-danger-light-9);
-    
-    .status-dot {
-      background: var(--el-color-danger);
-    }
-    
-    .status-text {
-      color: var(--el-color-danger);
-    }
-  }
-}
-
-.status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.status-text {
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.header-actions {
+.header-main {
   display: flex;
   align-items: center;
-  gap: 6px;
-}
+  gap: 10px;
+  margin-bottom: 2px;
 
-.cores-badge {
-  font-size: 11px;
-  padding: 3px 8px;
-  background: var(--el-color-info-light-8);
-  color: var(--el-text-color-secondary);
-  border-radius: 6px;
-  font-weight: 500;
-  
-  .cores-label {
-    font-size: 10px;
-    opacity: 0.7;
+  .header-icon {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--el-color-primary) 0%, var(--el-color-primary-dark-2) 100%);
+    border-radius: 8px;
+    color: white;
+    box-shadow: 0 2px 6px rgba(var(--el-color-primary-rgb), 0.25);
+    flex-shrink: 0;
+  }
+
+  .header-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--el-text-color-primary);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .update-time {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--el-text-color-secondary);
+    font-weight: 400;
+    padding: 4px 8px;
+    background: var(--el-fill-color-light);
+    border-radius: 6px;
+    flex-shrink: 0;
+    white-space: nowrap;
   }
 }
 
-.refresh-btn {
-  padding: 4px;
-  
-  &:hover {
-    transform: rotate(90deg);
-    transition: transform 0.3s ease;
+.header-sub {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  gap: 8px;
+
+  .hostname, .system {
+    font-weight: 500;
+    color: var(--el-text-color-regular);
+    padding: 4px 8px;
+    background: var(--el-fill-color-lighter);
+    border-radius: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    text-align: center;
+    
+    &.normal {
+      color: var(--el-color-success);
+    }
+    
+    &.warning {
+      color: var(--el-color-warning);
+      background: rgba(var(--el-color-warning-rgb), 0.1);
+    }
+    
+    &.critical {
+      color: var(--el-color-danger);
+      background: rgba(var(--el-color-danger-rgb), 0.1);
+    }
+  }
+
+  .system {
+    color: var(--el-color-primary);
+    font-weight: 600;
   }
 }
 
-/* Główny pasek użycia - bez ramki */
+.widget-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Główny pasek użycia */
 .main-usage {
   margin-top: 4px;
 }
@@ -482,7 +422,7 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .usage-title {
@@ -500,7 +440,7 @@ onBeforeUnmount(() => {
     font-size: 24px;
     font-weight: 700;
     color: var(--el-text-color-primary);
-    font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+    font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
   }
   
   .value-unit {
@@ -517,7 +457,7 @@ onBeforeUnmount(() => {
 
 .progress-track {
   height: 8px;
-  background: var(--el-color-info-light-8);
+  background: color-mix(in srgb, var(--el-border-color) 20%, transparent);
   border-radius: 4px;
   overflow: hidden;
   position: relative;
@@ -562,126 +502,82 @@ onBeforeUnmount(() => {
   top: 0;
   width: 1px;
   height: 10px;
-  background: var(--el-border-color-light);
+  background: color-mix(in srgb, var(--el-border-color) 50%, transparent);
   
   &.critical {
-    background: var(--el-color-error-light-3);
+    background: color-mix(in srgb, var(--el-color-danger) 30%, transparent);
   }
 }
 
-/* Temperatura - minimalistyczna, bez ramki */
+/* Temperatura */
 .temperature-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 0;
-  margin: 4px 0;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-}
-
-.temperature-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.temp-icon {
-  font-size: 14px;
-  color: var(--el-color-primary);
-}
-
-.temp-label {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  font-weight: 500;
-}
-
-.temp-value {
-  font-size: 16px;
-  font-weight: 600;
-  font-family: 'SF Mono', monospace;
-  
-  &.temp-normal {
-    color: var(--el-color-success);
+  .info-row {
+    margin: 0;
   }
   
-  &.temp-warning {
-    color: var(--el-color-warning);
-  }
-  
-  &.temp-critical {
-    color: var(--el-color-error);
+  .temp-value {
+    font-size: 14px;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
+    
+    &.normal {
+      color: var(--el-color-success);
+    }
+    
+    &.warning {
+      color: var(--el-color-warning);
+    }
+    
+    &.critical {
+      color: var(--el-color-danger);
+    }
   }
 }
 
-/* Load container - bez ramki */
+/* Load container */
 .load-container {
-  margin: 8px 0;
+  .info-row {
+    margin-bottom: 8px;
+  }
 }
 
-.load-header {
+.load-badges {
   display: flex;
-  justify-content: space-between;
+  gap: 10px;
+}
+
+.load-badge {
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  margin-bottom: 12px;
+  min-width: 40px;
 }
 
-.load-title {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--el-text-color-secondary);
-}
-
-.load-legend {
-  display: flex;
-  gap: 12px;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.legend-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  
-  &.load-1m {
-    background: var(--el-color-primary);
-  }
-  
-  &.load-5m {
-    background: var(--el-color-info);
-  }
-  
-  &.load-15m {
-    background: var(--el-color-success);
-  }
-}
-
-.legend-label {
+.load-label {
   font-size: 10px;
   color: var(--el-text-color-secondary);
+  margin-bottom: 2px;
+}
+
+.load-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
 }
 
 .load-bars {
   display: flex;
-  flex-direction: column;
   gap: 8px;
 }
 
 .load-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  flex: 1;
 }
 
 .load-progress {
-  flex: 1;
   height: 4px;
-  background: var(--el-color-info-light-8);
+  background: color-mix(in srgb, var(--el-border-color) 20%, transparent);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -690,115 +586,84 @@ onBeforeUnmount(() => {
   height: 100%;
   border-radius: 2px;
   transition: width 0.6s ease;
+  
+  &.normal {
+    background: var(--el-color-success);
+  }
+  
+  &.warning {
+    background: var(--el-color-warning);
+  }
+  
+  &.critical {
+    background: var(--el-color-danger);
+  }
 }
 
-.load-value {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  font-family: 'SF Mono', monospace;
-  min-width: 40px;
-  text-align: right;
-}
-
-/* Load bar colors */
-.load-bar:nth-child(1) .load-progress-fill {
-  background: linear-gradient(90deg, var(--el-color-primary), var(--el-color-primary-light-3));
-}
-
-.load-bar:nth-child(2) .load-progress-fill {
-  background: linear-gradient(90deg, var(--el-color-info), var(--el-color-info-light-3));
-}
-
-.load-bar:nth-child(3) .load-progress-fill {
-  background: linear-gradient(90deg, var(--el-color-success), var(--el-color-success-light-3));
-}
-
-/* Metrics grid - minimalistyczny */
+/* Metrics grid */
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-  margin: 12px 0;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .metric-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px;
+  padding: 6px 10px;
   border-radius: 8px;
-  background: var(--el-color-info-light-9);
-  transition: all 0.3s ease;
+  background: var(--el-fill-color-lighter);
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
   
   &:hover {
-    background: var(--el-color-info-light-8);
-    transform: translateY(-1px);
+    background: var(--el-fill-color-light);
+    border-color: color-mix(in srgb, var(--el-border-color) 50%, transparent);
   }
-}
-
-.metric-icon {
-  padding: 6px;
-  border-radius: 6px;
-  background: var(--el-bg-color);
   
-  .el-icon {
+  .label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+  }
+  
+  .value {
+    font-weight: 500;
+    color: var(--el-text-color-primary);
+    font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
     font-size: 12px;
-    color: var(--el-color-primary);
   }
 }
 
-.metric-info {
-  flex: 1;
-}
-
-.metric-label {
-  font-size: 11px;
-  color: var(--el-text-color-secondary);
-  margin-bottom: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.metric-value {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  font-family: 'SF Mono', monospace;
-}
-
-/* Stopka - minimalistyczna */
-.widget-footer {
-  margin-top: auto;
-  padding-top: 12px;
-  border-top: 1px solid var(--el-border-color-lighter);
-}
-
-.update-time {
+.info-row {
   display: flex;
-  justify-content: flex-end;
-}
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  padding: 6px 0;
+  min-height: 28px;
 
-.update-text {
-  font-size: 10px;
-  color: var(--el-text-color-secondary);
-  font-family: 'SF Mono', monospace;
+  .label {
+    font-weight: 500;
+    color: var(--el-text-color-regular);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .value {
+    font-weight: 400;
+    color: var(--el-text-color-primary);
+    text-align: right;
+    margin-left: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 
 /* Animacje */
-@keyframes pulse {
-  0% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.6;
-  }
-  100% {
-    opacity: 1;
-  }
-}
-
 @keyframes shimmer {
   0% {
     transform: translateX(-100%);
@@ -808,59 +673,103 @@ onBeforeUnmount(() => {
   }
 }
 
-/* Dark mode optimizations */
-:deep(.el-card) {
-  .dark & {
-    background: var(--el-bg-color);
+/* Compact mode for very small screens */
+@media (max-width: 480px) {
+  .widget-card {
+    border-radius: 10px;
     
-    .metric-item {
-      background: var(--el-color-info-dark-9);
-      
-      &:hover {
-        background: var(--el-color-info-dark-8);
-      }
+    &:deep(.el-card__header) {
+      padding: 12px 16px;
     }
     
-    .progress-track {
-      background: var(--el-color-info-dark-8);
+    &:deep(.el-card__body) {
+      padding: 12px 16px;
+    }
+  }
+
+  .header-main {
+    .header-icon {
+      width: 28px;
+      height: 28px;
     }
     
-    .cores-badge {
-      background: var(--el-color-info-dark-8);
+    .header-title {
+      font-size: 13px;
     }
     
-    .status-indicator {
-      &.success {
-        background: var(--el-color-success-dark-9);
-      }
-      
-      &.warning {
-        background: var(--el-color-warning-dark-9);
-      }
-      
-      &.error {
-        background: var(--el-color-danger-dark-9);
-      }
+    .update-time {
+      font-size: 10px;
+      padding: 3px 6px;
+    }
+  }
+  
+  .header-sub {
+    font-size: 11px;
+    
+    .hostname, .system {
+      padding: 3px 6px;
+    }
+  }
+  
+  .usage-header {
+    .usage-title {
+      font-size: 11px;
+    }
+    
+    .value-number {
+      font-size: 20px;
+    }
+  }
+  
+  .load-badges {
+    gap: 6px;
+  }
+  
+  .load-badge {
+    min-width: 35px;
+  }
+  
+  .load-label {
+    font-size: 9px;
+  }
+  
+  .load-value {
+    font-size: 11px;
+  }
+  
+  .info-row {
+    font-size: 12px;
+    min-height: 24px;
+  }
+  
+  .temp-value {
+    font-size: 12px;
+  }
+  
+  .metric-item {
+    padding: 4px 8px;
+    
+    .value {
+      font-size: 11px;
     }
   }
 }
 
-/* Responsywność */
-@media (max-width: 768px) {
-  .cpu-widget {
-    :deep(.el-card__body) {
-      padding: 10px 12px;
-      gap: 14px;
-    }
+@media (max-width: 360px) {
+  .load-badges {
+    flex-direction: column;
+    gap: 4px;
   }
   
-  .metrics-grid {
-    grid-template-columns: 1fr;
-    gap: 8px;
+  .load-badge {
+    flex-direction: row;
+    justify-content: space-between;
+    min-width: 80px;
   }
   
-  .load-legend {
-    gap: 8px;
+  .load-label {
+    margin-bottom: 0;
+    margin-right: 4px;
   }
 }
 </style>

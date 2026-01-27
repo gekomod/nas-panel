@@ -1312,7 +1312,10 @@ backup: {
     disabled: 'Wyłączone',
     seconds: 'sekundy',
     megabytes: 'MB',
-    bytes: 'bajty'
+    bytes: 'bajty',
+    running: 'Uruchomione',
+    stopped: 'Zatrzymane',
+    total: 'Łącznie',
   },
   tabs: {
     docker: 'Docker',
