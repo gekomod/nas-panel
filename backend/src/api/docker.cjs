@@ -2939,56 +2939,111 @@ async function getBuildLogs(buildId) {
   return buildLogsStore.get(buildId) || 'No logs available';
 }
 
+// WSS configuration
 const wss = new WebSocket.Server({ port: 1111 });
 
 wss.on('connection', (ws) => {
   let childProcess = null;
   
+  console.log('WebSocket client connected');
+  
   ws.on('message', async (message) => {
     try {
       const msg = JSON.parse(message);
+      console.log('Received WebSocket message:', msg.type);
       
       if (msg.type === 'exec') {
         if (childProcess) {
           childProcess.kill();
         }
         
-        childProcess = spawn('docker', ['exec', '-it', msg.containerId, msg.command || '/bin/sh'], {
-          stdio: ['pipe', 'pipe', 'pipe']
+        console.log(`Starting exec for container ${msg.containerId} with command: ${msg.command}`);
+        
+        // Use the correct exec format for Docker
+        childProcess = spawn('docker', ['exec', '-i', msg.containerId, 'sh', '-c', msg.command || '/bin/sh'], {
+          stdio: ['pipe', 'pipe', 'pipe'],
+          shell: false
         });
         
         childProcess.stdout.on('data', (data) => {
-          ws.send(JSON.stringify({ type: 'stdout', data: data.toString() }));
+          const output = data.toString();
+          console.log('STDOUT:', output.substring(0, 100));
+          ws.send(JSON.stringify({ 
+            type: 'stdout', 
+            data: output 
+          }));
         });
         
         childProcess.stderr.on('data', (data) => {
-          ws.send(JSON.stringify({ type: 'stderr', data: data.toString() }));
+          const output = data.toString();
+          console.log('STDERR:', output.substring(0, 100));
+          ws.send(JSON.stringify({ 
+            type: 'stderr', 
+            data: output 
+          }));
         });
         
-        childProcess.on('close', () => {
-          ws.send(JSON.stringify({ type: 'closed' }));
+        childProcess.on('close', (code) => {
+          console.log(`Process closed with code ${code}`);
+          ws.send(JSON.stringify({ 
+            type: 'closed', 
+            code: code 
+          }));
+          childProcess = null;
+        });
+        
+        childProcess.on('error', (error) => {
+          console.error('Process error:', error);
+          ws.send(JSON.stringify({ 
+            type: 'error', 
+            data: `Process error: ${error.message}` 
+          }));
         });
       }
       
       if (msg.type === 'stdin' && childProcess) {
+        console.log('Received stdin:', msg.data.substring(0, 50));
         childProcess.stdin.write(msg.data);
       }
       
       if (msg.type === 'resize' && childProcess) {
-        childProcess.stdin.write(`\x1b[8;${msg.rows};${msg.cols}t`);
+        console.log(`Resize terminal to ${msg.rows}x${msg.cols}`);
+        // Docker exec doesn't support resize directly
+      }
+      
+      if (msg.type === 'ping') {
+        ws.send(JSON.stringify({ type: 'pong' }));
       }
       
     } catch (error) {
-      ws.send(JSON.stringify({ type: 'error', data: error.message }));
+      console.error('WebSocket message error:', error);
+      ws.send(JSON.stringify({ 
+        type: 'error', 
+        data: `Message error: ${error.message}` 
+      }));
     }
   });
   
   ws.on('close', () => {
+    console.log('WebSocket client disconnected');
     if (childProcess) {
       childProcess.kill();
+      childProcess = null;
     }
   });
+  
+  ws.on('error', (error) => {
+    console.error('WebSocket error:', error);
+  });
+  
+  // Send welcome message
+  ws.send(JSON.stringify({ 
+    type: 'connected', 
+    data: 'WebSocket connected successfully',
+    timestamp: new Date().toISOString()
+  }));
 });
+
 console.log('Docker WebSocket server listening on port 1111');
 
 // Inicjalizacja przy starcie

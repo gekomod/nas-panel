@@ -345,6 +345,241 @@ app.get('/system/updates/check-deps/:pkg', requireAuth, async (req, res) => {
   }
 });
 
+// GET dla pojedynczego pakietu
+app.get('/system/updates/details/:package', requireAuth, async (req, res) => {
+  try {
+    const { package } = req.params;
+    
+    // Pobierz szczegółowe informacje o pakiecie
+    const details = await execPromise(`apt-cache show ${package}`);
+    
+    // Parsowanie danych wyjściowych apt-cache show
+    const packageDetails = parsePackageDetails(details);
+    
+    res.json({
+      success: true,
+      package,
+      details: packageDetails
+    });
+  } catch (error) {
+    console.error('Error fetching package details:', error);
+    res.status(500).json({
+      success: false,
+      error: error.toString(),
+      message: 'Failed to fetch package details'
+    });
+  }
+});
+
+// POST dla wielu pakietów (frontend wysyła POST)
+app.post('/system/updates/details', requireAuth, async (req, res) => {
+  try {
+    const { packages } = req.body;
+    
+    if (!packages || !Array.isArray(packages) || packages.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Package list is required and must be an array'
+      });
+    }
+    
+    const packageDetails = {};
+    
+    // Pobierz szczegóły dla każdego pakietu równolegle
+    const promises = packages.map(async (pkg) => {
+      try {
+        const details = await execPromise(`apt-cache show ${pkg}`);
+        packageDetails[pkg] = parsePackageDetails(details);
+      } catch (error) {
+        console.error(`Error fetching details for ${pkg}:`, error);
+        packageDetails[pkg] = {
+          error: error.toString(),
+          message: 'Failed to fetch package details'
+        };
+      }
+    });
+    
+    await Promise.all(promises);
+    
+    res.json({
+      success: true,
+      packages: packageDetails
+    });
+  } catch (error) {
+    console.error('Error fetching package details:', error);
+    res.status(500).json({
+      success: false,
+      error: error.toString(),
+      message: 'Failed to fetch package details'
+    });
+  }
+});
+
+app.get('/system/updates/changelog/:package', requireAuth, async (req, res) => {
+  try {
+    const { package } = req.params;
+    const { version } = req.query; // Opcjonalna wersja
+    
+    let command;
+    if (version) {
+      command = `apt-get changelog ${package}=${version}`;
+    } else {
+      // Pobierz changelog dla aktualnej wersji
+      const currentVersion = await execPromise(`apt-cache policy ${package} | grep Installed | cut -d: -f2`);
+      const cleanVersion = currentVersion.trim();
+      if (cleanVersion && cleanVersion !== '(none)') {
+        command = `apt-get changelog ${package}=${cleanVersion}`;
+      } else {
+        command = `apt-get changelog ${package}`;
+      }
+    }
+    
+    const changelog = await execPromise(command);
+    
+    res.json({
+      success: true,
+      package,
+      changelog: changelog
+    });
+  } catch (error) {
+    console.error('Error fetching changelog:', error);
+    res.status(500).json({
+      success: false,
+      error: error.toString(),
+      message: 'Failed to fetch changelog'
+    });
+  }
+});
+
+app.post('/system/updates/changelog', requireAuth, async (req, res) => {
+  try {
+    const { packages } = req.body;
+    
+    if (!packages || !Array.isArray(packages) || packages.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Package list is required and must be an array'
+      });
+    }
+    
+    const changelogs = {};
+    
+    // Pobierz changelogi dla każdego pakietu
+    const promises = packages.map(async (pkg) => {
+      try {
+        const changelog = await execPromise(`apt-get changelog ${pkg}`);
+        changelogs[pkg] = changelog;
+      } catch (error) {
+        console.error(`Error fetching changelog for ${pkg}:`, error);
+        changelogs[pkg] = `Error: ${error.toString()}`;
+      }
+    });
+    
+    await Promise.all(promises);
+    
+    res.json({
+      success: true,
+      changelogs: changelogs
+    });
+  } catch (error) {
+    console.error('Error fetching changelogs:', error);
+    res.status(500).json({
+      success: false,
+      error: error.toString(),
+      message: 'Failed to fetch changelogs'
+    });
+  }
+});
+
+
+// Dodaj także funkcję pomocniczą do parsowania szczegółów pakietu
+function parsePackageDetails(detailsOutput) {
+  const lines = detailsOutput.split('\n');
+  const details = {
+    name: '',
+    version: '',
+    architecture: '',
+    maintainer: '',
+    installedSize: 0,
+    depends: [],
+    description: '',
+    homepage: '',
+    priority: '',
+    section: '',
+    source: ''
+  };
+  
+  let currentField = '';
+  
+  for (const line of lines) {
+    if (line.startsWith('Package:')) {
+      details.name = line.split(':')[1].trim();
+    } else if (line.startsWith('Version:')) {
+      details.version = line.split(':')[1].trim();
+    } else if (line.startsWith('Architecture:')) {
+      details.architecture = line.split(':')[1].trim();
+    } else if (line.startsWith('Maintainer:')) {
+      details.maintainer = line.split(':')[1].trim();
+    } else if (line.startsWith('Installed-Size:')) {
+      const size = line.split(':')[1].trim();
+      details.installedSize = parseInt(size) || 0;
+    } else if (line.startsWith('Depends:')) {
+      const deps = line.split(':')[1].trim();
+      details.depends = deps.split(',').map(dep => dep.trim()).filter(dep => dep);
+    } else if (line.startsWith('Description:')) {
+      details.description = line.split(':').slice(1).join(':').trim();
+      currentField = 'description';
+    } else if (line.startsWith('Homepage:')) {
+      details.homepage = line.split(':')[1].trim();
+    } else if (line.startsWith('Priority:')) {
+      details.priority = line.split(':')[1].trim();
+    } else if (line.startsWith('Section:')) {
+      details.section = line.split(':')[1].trim();
+    } else if (line.startsWith('Source:')) {
+      details.source = line.split(':')[1].trim();
+    } else if (currentField === 'description' && line.startsWith(' ')) {
+      // Kontynuacja opisu (wcięta linia)
+      details.description += '\n' + line.trim();
+    }
+  }
+  
+  return details;
+}
+
+// Możesz też dodać endpoint do pobierania listy wszystkich pakietów
+app.get('/system/updates/packages', requireAuth, async (req, res) => {
+  try {
+    const { search } = req.query;
+    let command = 'apt-cache search . | head -100';
+    
+    if (search) {
+      command = `apt-cache search "${search}" | head -50`;
+    }
+    
+    const output = await execPromise(command);
+    const packages = output.split('\n')
+      .filter(line => line.trim())
+      .map(line => {
+        const parts = line.split(' - ');
+        return {
+          name: parts[0]?.trim() || '',
+          description: parts.slice(1).join(' - ').trim()
+        };
+      });
+    
+    res.json({
+      success: true,
+      packages
+    });
+  } catch (error) {
+    console.error('Error fetching packages:', error);
+    res.status(500).json({
+      success: false,
+      error: error.toString()
+    });
+  }
+});
+
 // Instalacja aktualizacji
 app.post('/system/updates/install', requireAuth, async (req, res) => {
   const { packages = [], no_confirm = false } = req.body;
