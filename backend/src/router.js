@@ -121,6 +121,16 @@ const routes = [
           requiresAuth: true,
           icon: 'mdi:ip-network' 
         }
+      },
+      {
+        path: '/network/load-balancer',
+        name: 'LoadBalancer',
+        component: () => import('@/components/network/LoadBalancer/LoadBalancer.vue'),
+        meta: {
+          title: 'Load Balancer',
+          icon: 'mdi:server-network',
+          requiresAuth: true
+        }
       }
     ]
   },
@@ -239,6 +249,16 @@ const routes = [
           title: 'routes.ftp_sftp',
           requiresAuth: true,
           icon: 'mdi:folder-network' 
+        }
+      },
+      {
+        path: '/services/media',
+        name: 'Media Manager',
+        component: () => import('@/components/media/MediaServiceManager.vue'),
+        meta: { 
+          title: 'routes.media',
+          requiresAuth: true,
+          icon: 'mdi:play-network' 
         }
       }
     ]

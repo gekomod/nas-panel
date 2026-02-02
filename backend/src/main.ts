@@ -6,7 +6,6 @@ import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import { ElNotification } from 'element-plus'
 import './assets/main.scss'
-import { initDatabase } from './database/sqlite-service'
 import { i18n } from './locales'
 import lodash from 'lodash'
 import { NotificationPlugin } from './services/NotificationService'
@@ -95,8 +94,6 @@ async function initializeApp() {
   try {
     logger.info('Starting application initialization', { env })
     
-    await profilePerformance('Database initialization', initDatabase)
-
     const app = createApp(App)
     
     // Performance monitoring

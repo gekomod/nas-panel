@@ -1,267 +1,410 @@
 <template>
-  <div class="interface-details-container">
-    <!-- Header z breadcrumbs -->
-    <div class="details-header">
-      <el-button @click="$router.go(-1)" class="back-btn" size="large" text>
-        <Icon icon="mdi:arrow-left" width="24" />
-        {{ $t('common.back') }}
-      </el-button>
-      
-      <div class="header-title">
-        <Icon :icon="getInterfaceIcon()" width="28" class="title-icon" />
-        <h1>{{ interfaceDetails.device }}</h1>
-        <el-tag :type="getStatusType()" size="large" class="status-tag">
-          <Icon :icon="getStatusIcon()" width="16" />
-          {{ interfaceDetails.status?.toUpperCase() }}
-        </el-tag>
+  <div class="interface-details-container" :class="{ 'dark': isDark }">
+    <!-- Header -->
+    <div class="header">
+      <div class="header-left">
+        <el-button @click="$router.go(-1)" class="back-btn" size="large">
+          <el-icon><Icon icon="mdi:arrow-left" /></el-icon>
+          Powrót
+        </el-button>
+        <div class="header-title">
+          <h1>
+            <el-icon><Icon icon="mdi:ethernet-cable" /></el-icon>
+            {{ interfaceDetails.device || 'Interface Details' }}
+          </h1>
+          <p class="subtitle">Szczegóły konfiguracji interfejsu sieciowego</p>
+        </div>
       </div>
-      
-      <div class="header-actions">
-        <el-button type="primary" @click="saveChanges" :loading="saving">
-          <Icon icon="mdi:content-save" width="18" />
-          {{ $t('common.save') }}
-        </el-button>
-        <el-button @click="refreshDetails">
-          <Icon icon="mdi:refresh" width="18" />
-        </el-button>
+      <div class="header-right">
+        <el-button-group>
+          <el-button 
+            @click="toggleTheme"
+            :icon="themeIcon"
+            circle
+            size="large"
+            class="theme-toggle"
+          />
+          <el-button 
+            type="primary"
+            @click="refreshDetails"
+            :loading="loading"
+            size="large"
+          >
+            <el-icon><Icon icon="mdi:refresh" /></el-icon>
+            Odśwież
+          </el-button>
+        </el-button-group>
       </div>
     </div>
 
-    <!-- Karty w układzie grid -->
-    <div class="details-grid">
-      <!-- Karta podstawowych informacji -->
-      <el-card class="info-card" shadow="never">
-        <template #header>
-          <div class="card-header">
-            <Icon icon="mdi:information" width="20" />
-            <span>{{ $t('network.interfaces.basic_info') }}</span>
-          </div>
-        </template>
-        
-        <el-form :model="form" :rules="rules" ref="formRef" label-position="top">
-          <div class="form-grid">
-            <el-form-item :label="$t('network.interfaces.device')">
-              <el-input v-model="interfaceDetails.device" readonly>
-                <template #prefix>
-                  <Icon icon="mdi:network" width="18" />
-                </template>
-              </el-input>
-            </el-form-item>
-
-            <el-form-item :label="$t('network.interfaces.mac')">
-              <el-input v-model="interfaceDetails.mac" readonly />
-            </el-form-item>
-
-            <el-form-item :label="$t('network.interfaces.method')" prop="method">
-              <el-select v-model="form.method" class="w-full">
-                <el-option value="dhcp" :label="$t('network.methods.dhcp')" />
-                <el-option value="static" :label="$t('network.methods.static')" />
-              </el-select>
-            </el-form-item>
-
-            <el-form-item :label="$t('network.interfaces.mtu')" prop="mtu">
-              <el-input-number 
-                v-model="form.mtu" 
-                :min="576" 
-                :max="9000"
-                controls-position="right"
-                class="w-full"
-              />
-            </el-form-item>
-          </div>
-        </el-form>
-      </el-card>
-
-      <!-- Karta adresacji IP -->
-      <el-card class="ip-card" shadow="never" v-if="form.method === 'static'">
-        <template #header>
-          <div class="card-header">
-            <Icon icon="mdi:ip-network" width="20" />
-            <span>{{ $t('network.interfaces.ip_config') }}</span>
-          </div>
-        </template>
-
-        <el-form :model="form" :rules="rules" ref="formRef">
-          <div class="form-grid">
-            <el-form-item :label="$t('network.interfaces.address')" prop="address">
-              <el-input v-model="form.address" placeholder="192.168.1.100">
-                <template #prefix>
-                  <Icon icon="mdi:ip" width="18" />
-                </template>
-              </el-input>
-            </el-form-item>
-
-            <el-form-item :label="$t('network.interfaces.netmask')" prop="netmask">
-              <el-input-number 
-                v-model="form.netmask" 
-                :min="0" 
-                :max="32"
-                controls-position="right"
-                class="w-full"
-              />
-            </el-form-item>
-
-            <el-form-item :label="$t('network.interfaces.gateway')" prop="gateway">
-              <el-input v-model="form.gateway" placeholder="192.168.1.1">
-                <template #prefix>
-                  <Icon icon="mdi:gate" width="18" />
-                </template>
-              </el-input>
-            </el-form-item>
-          </div>
-        </el-form>
-      </el-card>
-
-      <!-- Karta prędkości i statystyk -->
-      <el-card class="stats-card" shadow="never">
-        <template #header>
-          <div class="card-header">
-            <Icon icon="mdi:speedometer" width="20" />
-            <span>{{ $t('network.interfaces.performance') }}</span>
-          </div>
-        </template>
-
-        <div class="performance-grid">
-          <!-- Prędkość interfejsu -->
-          <div class="performance-item">
-            <div class="performance-label">
-              <Icon icon="mdi:ethernet-cable" width="18" />
-              {{ $t('network.interfaces.speed') }}
+    <!-- Main Content -->
+    <div class="main-content">
+      <!-- Interface Statistics -->
+      <el-card class="stats-panel">
+        <div class="stats-section">
+          <h3><el-icon><Icon icon="mdi:chart-box" /></el-icon> Statystyki interfejsu</h3>
+          
+          <div class="stats-grid">
+            <div class="stat-item">
+              <div class="stat-icon">
+                <el-icon><Icon icon="mdi:download" /></el-icon>
+              </div>
+              <div class="stat-content">
+                <div class="stat-label">Odebrane bajty</div>
+                <div class="stat-value">{{ formatBytes(interfaceDetails.stats?.rx_bytes || 0) }}</div>
+              </div>
             </div>
-            <div class="performance-value" :class="getSpeedClass()">
-              {{ interfaceDetails.ethtool?.speed || 'N/A' }}
+            
+            <div class="stat-item">
+              <div class="stat-icon">
+                <el-icon><Icon icon="mdi:upload" /></el-icon>
+              </div>
+              <div class="stat-content">
+                <div class="stat-label">Wysłane bajty</div>
+                <div class="stat-value">{{ formatBytes(interfaceDetails.stats?.tx_bytes || 0) }}</div>
+              </div>
             </div>
-            <div class="performance-subtext">
-              <el-tag :type="getDuplexType()" size="small">
-                {{ getDuplexDisplay() }}
-              </el-tag>
+            
+            <div class="stat-item">
+              <div class="stat-icon">
+                <el-icon><Icon icon="mdi:package-down" /></el-icon>
+              </div>
+              <div class="stat-content">
+                <div class="stat-label">Odebrane pakiety</div>
+                <div class="stat-value">{{ interfaceDetails.stats?.rx_packets || 0 }}</div>
+              </div>
             </div>
-          </div>
-
-          <!-- Statystyki RX/TX -->
-          <div class="performance-item">
-            <div class="performance-label">
-              <Icon icon="mdi:download" width="18" />
-              {{ $t('network.interfaces.rx_bytes') }}
+            
+            <div class="stat-item">
+              <div class="stat-icon">
+                <el-icon><Icon icon="mdi:package-up" /></el-icon>
+              </div>
+              <div class="stat-content">
+                <div class="stat-label">Wysłane pakiety</div>
+                <div class="stat-value">{{ interfaceDetails.stats?.tx_packets || 0 }}</div>
+              </div>
             </div>
-            <div class="performance-value">
-              {{ formatBytes(interfaceDetails.stats?.rx_bytes || 0) }}
+            
+            <div class="stat-item">
+              <div class="stat-icon">
+                <el-icon><Icon icon="mdi:close-circle" /></el-icon>
+              </div>
+              <div class="stat-content">
+                <div class="stat-label">Błędy odbioru</div>
+                <div class="stat-value">{{ interfaceDetails.stats?.rx_errors || 0 }}</div>
+              </div>
             </div>
-          </div>
-
-          <div class="performance-item">
-            <div class="performance-label">
-              <Icon icon="mdi:upload" width="18" />
-              {{ $t('network.interfaces.tx_bytes') }}
-            </div>
-            <div class="performance-value">
-              {{ formatBytes(interfaceDetails.stats?.tx_bytes || 0) }}
-            </div>
-          </div>
-
-          <!-- Driver info -->
-          <div class="performance-item" v-if="interfaceDetails.ethtool?.driver">
-            <div class="performance-label">
-              <Icon icon="mdi:chip" width="18" />
-              {{ $t('network.interfaces.driver') }}
-            </div>
-            <div class="performance-value small">
-              {{ interfaceDetails.ethtool.driver }}
+            
+            <div class="stat-item">
+              <div class="stat-icon">
+                <el-icon><Icon icon="mdi:close-circle" /></el-icon>
+              </div>
+              <div class="stat-content">
+                <div class="stat-label">Błędy wysyłania</div>
+                <div class="stat-value">{{ interfaceDetails.stats?.tx_errors || 0 }}</div>
+              </div>
             </div>
           </div>
         </div>
       </el-card>
 
-      <!-- Karta testu prędkości -->
-      <el-card class="speedtest-card" shadow="never">
-        <template #header>
-          <div class="card-header">
-            <Icon icon="mdi:internet" width="20" />
-            <span>{{ $t('network.interfaces.speed_test') }}</span>
-          </div>
-        </template>
-
-        <div class="speedtest-content">
-          <div v-if="!speedTestRunning" class="test-controls">
-            <el-button 
-              type="primary" 
-              @click="startSpeedTest" 
-              :disabled="loading"
-              size="large"
-              class="test-button"
-            >
-              <Icon icon="mdi:play" width="18" />
-              {{ $t('network.interfaces.start_test') }}
-            </el-button>
-          </div>
-
-          <div v-else class="test-progress">
-            <el-progress 
-              :percentage="testProgress" 
-              :status="testProgress < 100 ? 'success' : 'success'"
-              :stroke-width="16"
-              striped
-              striped-flow
-            />
-            <div class="progress-text">
-              <Icon icon="mdi:progress-clock" width="18" />
-              {{ $t('network.interfaces.testing') }}...
-            </div>
-          </div>
-
-          <div v-if="speedTestResults" class="test-results">
-  <div class="results-header">
-    <Icon icon="mdi:check-circle" width="20" color="var(--el-color-success)" />
-    <span>Test completed</span>
-    <el-tag size="small" type="info" class="server-tag">
-      {{ speedTestResults.server }}
-    </el-tag>
-  </div>
-            
-              <div class="server-info" v-if="speedTestResults.serverHost">
-    <small>Server: {{ speedTestResults.serverHost }}</small>
-  </div>
-            
-            <div class="results-grid">
-              <div class="result-item download">
-                <div class="result-label">
-                  <Icon icon="mdi:download" width="20" />
-                  Download
-                </div>
-                <div class="result-value">
-                  {{ speedTestResults.download }} Mbps
-                </div>
-              </div>
-              
-              <div class="result-item upload">
-                <div class="result-label">
-                  <Icon icon="mdi:upload" width="20" />
-                  Upload
-                </div>
-                <div class="result-value">
-                  {{ speedTestResults.upload }} Mbps
-                </div>
-              </div>
-              
-              <div class="result-item ping">
-                <div class="result-label">
-                  <Icon icon="mdi:ping" width="20" />
-                  Ping
-                </div>
-                <div class="result-value">
-                  {{ speedTestResults.ping }} ms
-                </div>
+      <!-- Right Panel - Details & Speed Test -->
+      <div class="details-panel">
+        <el-card class="interface-details">
+          <!-- Interface Details Header -->
+          <div class="viewer-header">
+            <div class="file-info">
+              <h2>
+                <el-icon>
+                  <Icon :icon="getInterfaceIcon()" />
+                </el-icon>
+                {{ interfaceDetails.device || 'Interfejs' }}
+                <el-tag 
+                  :type="getStatusType()" 
+                  size="small" 
+                  class="status-tag"
+                >
+                  <el-icon><Icon :icon="getStatusIcon()" /></el-icon>
+                  {{ interfaceDetails.status?.toUpperCase() || 'UNKNOWN' }}
+                </el-tag>
+                <el-tag v-if="interfaceDetails.ethtool?.driver" size="small" class="driver-tag">
+                  {{ interfaceDetails.ethtool.driver }}
+                </el-tag>
+              </h2>
+              <div class="file-meta">
+                <el-tag size="small" type="info">
+                  <el-icon><Icon icon="mdi:card-bulleted-settings" /></el-icon>
+                  MTU: {{ interfaceDetails.mtu || 1500 }}
+                </el-tag>
+                <el-tag size="small" :type="getSpeedClass()">
+                  <el-icon><Icon icon="mdi:speedometer" /></el-icon>
+                  {{ formatSpeed(interfaceDetails.ethtool?.speed) }}
+                </el-tag>
+                <el-tag size="small" :type="getDuplexType()">
+                  <el-icon><Icon icon="mdi:swap-horizontal" /></el-icon>
+                  {{ getDuplexDisplay() }}
+                </el-tag>
+                <el-tag size="small" type="info">
+                  <el-icon><Icon icon="mdi:identifier" /></el-icon>
+                  {{ interfaceDetails.mac || 'No MAC' }}
+                </el-tag>
               </div>
             </div>
           </div>
-        </div>
-      </el-card>
+
+          <!-- Speed Test Section -->
+          <div class="speedtest-section">
+            <div class="section-header">
+              <h3><el-icon><Icon icon="mdi:speedometer" /></el-icon> Test prędkości</h3>
+            </div>
+            
+            <div class="speedtest-content">
+              <!-- Initial state -->
+              <div v-if="!speedTestRunning && !speedTestResults" class="test-start">
+                <div class="test-info">
+                  <el-icon size="64" class="test-icon"><Icon icon="mdi:internet" /></el-icon>
+                  <h4>Przetestuj prędkość połączenia</h4>
+                  <p>Wykonaj test prędkości pobierania i wysyłania przez ten interfejs</p>
+                </div>
+
+                <div class="server-selection" v-if="!speedTestRunning && !speedTestResults">
+                  <el-button 
+                    @click="showServerSelection = !showServerSelection" 
+                    size="small" 
+                    type="info"
+                  >
+                    <el-icon><Icon icon="mdi:server" /></el-icon>
+                    {{ selectedServer ? `Serwer: ${selectedServer.name}` : 'Wybierz serwer' }}
+                  </el-button>
+                  
+                  <div v-if="showServerSelection" class="server-list">
+                    <el-select
+                      v-model="selectedServer"
+                      placeholder="Wybierz serwer..."
+                      filterable
+                      class="server-select"
+                      @change="showServerSelection = false"
+                    >
+                      <el-option
+                        v-for="server in speedtestServers"
+                        :key="server.id"
+                        :label="`${server.name} - ${server.location}`"
+                        :value="server"
+                      >
+                        <div class="server-option">
+                          <span class="server-name">{{ server.name }}</span>
+                          <span class="server-location">{{ server.location }}</span>
+                          <el-tag size="small" type="info">{{ server.country }}</el-tag>
+                        </div>
+                      </el-option>
+                    </el-select>
+                  </div>
+                </div>
+
+                <el-button 
+                  type="primary" 
+                  @click="startSpeedTest" 
+                  :disabled="loading || !isInterfaceUp"
+                  size="large"
+                  class="test-button"
+                >
+                  <el-icon><Icon icon="mdi:play" /></el-icon>
+                  Rozpocznij test
+                </el-button>
+                <p v-if="!isInterfaceUp" class="warning-text">
+                  <el-icon><Icon icon="mdi:alert-circle" /></el-icon>
+                  Interfejs musi być włączony aby wykonać test
+                </p>
+              </div>
+
+              <!-- Test in progress -->
+              <div v-else-if="speedTestRunning" class="test-progress">
+                <div class="progress-info">
+                  <el-progress 
+                    :percentage="testProgress" 
+                    :status="testProgress < 100 ? 'success' : 'success'"
+                    :stroke-width="16"
+                    striped
+                    striped-flow
+                  />
+                  <div class="progress-text">
+                    <el-icon><Icon icon="mdi:progress-clock" /></el-icon>
+                    Testowanie w toku...
+                  </div>
+                  <div class="progress-details" v-if="currentServer">
+                    <el-icon><Icon icon="mdi:server" /></el-icon>
+                    Serwer testowy: {{ currentServer }}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Test results -->
+              <div v-else-if="speedTestResults" class="test-results">
+                <div class="results-header">
+                  <el-icon color="var(--el-color-success)" size="20"><Icon icon="mdi:check-circle" /></el-icon>
+                  <span>Test zakończony pomyślnie</span>
+                  <el-tag size="small" type="info" class="server-tag">
+                    <el-icon><Icon icon="mdi:server" /></el-icon>
+                    {{ speedTestResults.server }}
+                  </el-tag>
+                  <el-button 
+                    size="small" 
+                    @click="speedTestResults = null"
+                    class="clear-results"
+                  >
+                    <el-icon><Icon icon="mdi:close" /></el-icon>
+                  </el-button>
+                </div>
+                
+                <div class="server-info" v-if="speedTestResults.serverHost">
+                  <small><el-icon><Icon icon="mdi:link" /></el-icon> Host: {{ speedTestResults.serverHost }}:{{ speedTestResults.serverPort }}</small>
+                </div>
+                
+                <div class="results-grid">
+                  <div class="result-item download">
+                    <div class="result-icon">
+                      <el-icon size="32"><Icon icon="mdi:download" /></el-icon>
+                    </div>
+                    <div class="result-content">
+                      <div class="result-label">Pobieranie</div>
+                      <div class="result-value">
+                        {{ speedTestResults.download }} Mbps
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div class="result-item upload">
+                    <div class="result-icon">
+                      <el-icon size="32"><Icon icon="mdi:upload" /></el-icon>
+                    </div>
+                    <div class="result-content">
+                      <div class="result-label">Wysyłanie</div>
+                      <div class="result-value">
+                        {{ speedTestResults.upload }} Mbps
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div class="result-item ping">
+                    <div class="result-icon">
+                      <el-icon size="32"><Icon icon="mdi:ping" /></el-icon>
+                    </div>
+                    <div class="result-content">
+                      <div class="result-label">Ping</div>
+                      <div class="result-value">
+                        {{ speedTestResults.ping || 'N/A' }} ms
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <div class="results-actions">
+                  <el-button @click="startSpeedTest" type="primary" size="small">
+                    <el-icon><Icon icon="mdi:refresh" /></el-icon>
+                    Testuj ponownie
+                  </el-button>
+                  <el-button @click="copyResults" size="small">
+                    <el-icon><Icon icon="mdi:content-copy" /></el-icon>
+                    Kopiuj wyniki
+                  </el-button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Interface Properties -->
+          <div class="properties-section">
+            <div class="section-header">
+              <h3><el-icon><Icon icon="mdi:card-bulleted" /></el-icon> Właściwości interfejsu</h3>
+            </div>
+            
+            <div class="properties-grid">
+              <div class="property-item">
+                <div class="property-icon">
+                  <el-icon><Icon icon="mdi:car-engine" /></el-icon>
+                </div>
+                <div class="property-content">
+                  <div class="property-label">Sterownik</div>
+                  <div class="property-value">{{ interfaceDetails.ethtool?.driver || 'N/A' }}</div>
+                </div>
+              </div>
+              
+              <div class="property-item">
+                <div class="property-icon">
+                  <el-icon><Icon icon="mdi:speedometer" /></el-icon>
+                </div>
+                <div class="property-content">
+                  <div class="property-label">Prędkość</div>
+                  <div class="property-value" :class="getSpeedClass()">
+                    {{ formatSpeed(interfaceDetails.ethtool?.speed) }}
+                  </div>
+                </div>
+              </div>
+              
+              <div class="property-item">
+                <div class="property-icon">
+                  <el-icon><Icon icon="mdi:swap-horizontal" /></el-icon>
+                </div>
+                <div class="property-content">
+                  <div class="property-label">Duplex</div>
+                  <div class="property-value">
+                    <el-tag :type="getDuplexType()" size="small">
+                      {{ getDuplexDisplay() }}
+                    </el-tag>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="property-item">
+                <div class="property-icon">
+                  <el-icon><Icon icon="mdi:power-sleep" /></el-icon>
+                </div>
+                <div class="property-content">
+                  <div class="property-label">Wake-on-LAN</div>
+                  <div class="property-value">
+                    <el-tag :type="interfaceDetails.ethtool?.wol ? 'success' : 'info'" size="small">
+                      {{ interfaceDetails.ethtool?.wol || 'N/A' }}
+                    </el-tag>
+                  </div>
+                </div>
+              </div>
+
+              <div class="property-item">
+                <div class="property-icon">
+                  <el-icon><Icon icon="mdi:ip" /></el-icon>
+                </div>
+                <div class="property-content">
+                  <div class="property-label">Adres IP</div>
+                  <div class="property-value">
+                    <el-tag v-if="interfaceDetails.ipv4?.local" type="success" size="small">
+                      {{ interfaceDetails.ipv4.local }}/{{ interfaceDetails.ipv4.prefixlen || 24 }}
+                    </el-tag>
+                    <span v-else class="no-ip">Nie skonfigurowano</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="property-item">
+                <div class="property-icon">
+                  <el-icon><Icon icon="mdi:gate" /></el-icon>
+                </div>
+                <div class="property-content">
+                  <div class="property-label">Brama</div>
+                  <div class="property-value">
+                    {{ interfaceDetails.config?.['IP4.GATEWAY'] || 'N/A' }}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-card>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, computed, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElNotification, ElMessage } from 'element-plus'
 import { Icon } from '@iconify/vue'
@@ -275,149 +418,146 @@ const interfaceDetails = ref({
   mtu: 1500,
   ipv4: { local: '', prefixlen: '' },
   stats: {},
-  ethtool: {}
-})
-
-const form = reactive({
-  method: 'dhcp',
-  address: '',
-  netmask: 24,
-  gateway: '',
-  mtu: 1500
+  ethtool: {},
+  config: {}
 })
 
 const loading = ref(false)
-const saving = ref(false)
 const speedTestRunning = ref(false)
 const speedTestResults = ref(null)
 const testProgress = ref(0)
-const formRef = ref(null)
+const currentServer = ref('')
 
-const rules = reactive({
-  address: [
-    { 
-      validator: (rule, value, callback) => {
-        if (form.method === 'static' && !validateIP(value)) {
-          callback(new Error('Invalid IP address'));
-        } else {
-          callback();
-        }
-      },
-      trigger: 'blur'
+const showServerSelection = ref(false)
+const selectedServer = ref(null)
+const speedtestServers = ref([])
+
+// Theme management
+const isDark = ref(false)
+const themeIcon = computed(() => 
+  isDark.value ? 'mdi:weather-sunny' : 'mdi:weather-night'
+)
+
+const toggleTheme = () => {
+  isDark.value = !isDark.value
+  // Apply theme to body and component
+  if (isDark.value) {
+    document.body.classList.add('dark-theme')
+    document.documentElement.classList.add('dark')
+  } else {
+    document.body.classList.remove('dark-theme')
+    document.documentElement.classList.remove('dark')
+  }
+  // Save preference
+  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
+}
+
+const loadSpeedtestServers = async () => {
+  try {
+    const response = await axios.get('/network/speedtest/servers')
+    if (response.data.success) {
+      speedtestServers.value = response.data.servers
     }
-  ],
-  netmask: [
-    {
-      validator: (rule, value, callback) => {
-        if (form.method === 'static' && (value < 0 || value > 32)) {
-          callback(new Error('Netmask must be between 0-32'));
-        } else {
-          callback();
-        }
-      },
-      trigger: 'blur'
-    }
-  ],
-  gateway: [
-    {
-      validator: (rule, value, callback) => {
-        if (form.method === 'static' && value && !validateIP(value)) {
-          callback(new Error('Invalid gateway IP'));
-        } else {
-          callback();
-        }
-      },
-      trigger: 'blur'
-    }
-  ]
-});
+  } catch (error) {
+    console.error('Failed to load speedtest servers:', error)
+  }
+}
+
+// Initialize theme
+onMounted(() => {
+  const savedTheme = localStorage.getItem('theme')
+  if (savedTheme === 'dark') {
+    isDark.value = true
+    document.body.classList.add('dark-theme')
+    document.documentElement.classList.add('dark')
+  }
+  
+  // Load interface details
+  fetchInterfaceDetails()
+  loadSpeedtestServers()
+})
 
 // Computed properties
 const isInterfaceUp = computed(() => {
   const status = interfaceDetails.value.status?.toLowerCase();
-  return status === 'up' || status === 'unknown';
+  return status === 'up';
 });
 
-// Funkcje pomocnicze
-const validateIP = (ip) => {
-  return /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(ip);
-};
-
+// Helper functions
 const formatBytes = (bytes) => {
   if (bytes === 0) return '0 B';
   const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+const formatSpeed = (speed) => {
+  if (!speed || speed === 'unknown') return 'N/A';
+  if (typeof speed === 'number') {
+    return speed >= 1000 ? `${speed/1000} Gbps` : `${speed} Mbps`;
+  }
+  return speed;
 };
 
 const getInterfaceIcon = () => {
   const device = interfaceDetails.value.device?.toLowerCase() || '';
   if (device.includes('eth') || device.includes('en')) return 'mdi:ethernet-cable';
   if (device.includes('wlan') || device.includes('wlp')) return 'mdi:wifi';
+  if (device.includes('bond')) return 'mdi:link-variant';
+  if (device.includes('br')) return 'mdi:bridge';
   if (device.includes('tun') || device.includes('tap')) return 'mdi:tunnel';
   return 'mdi:network';
 };
 
 const getStatusType = () => {
   const status = interfaceDetails.value.status?.toLowerCase();
-  if (status === 'up' || status === 'unknown') return 'success';
-  return 'danger';
+  if (status === 'up') return 'success';
+  if (status === 'down') return 'danger';
+  return 'info';
 };
 
 const getStatusIcon = () => {
   const status = interfaceDetails.value.status?.toLowerCase();
-  if (status === 'up' || status === 'unknown') return 'mdi:check-circle';
-  return 'mdi:close-circle';
+  if (status === 'up') return 'mdi:check-circle';
+  if (status === 'down') return 'mdi:close-circle';
+  return 'mdi:help-circle';
 };
 
 const getSpeedClass = () => {
   const speed = interfaceDetails.value.ethtool?.speed;
-  if (!speed || speed === 'unknown' || speed === 'N/A') return 'unknown';
-  
-  const speedValue = parseInt(speed.replace(/[^\d]/g, ''));
-  if (speedValue >= 1000) return 'gigabit';
-  if (speedValue >= 100) return 'fast';
-  return 'slow';
+  if (!speed || speed === 'unknown') return 'unknown';
+  const speedNum = typeof speed === 'string' ? parseInt(speed) : speed;
+  if (speedNum >= 1000) return 'gigabit';
+  if (speedNum >= 100) return 'fast';
+  return 'normal';
 };
 
 const getDuplexType = () => {
   const duplex = interfaceDetails.value.ethtool?.duplex?.toLowerCase();
   if (duplex === 'full') return 'success';
   if (duplex === 'half') return 'warning';
-  return 'info'; // Dla unknown
+  return 'info';
 };
 
 const getDuplexDisplay = () => {
   const duplex = interfaceDetails.value.ethtool?.duplex?.toLowerCase();
   if (duplex === 'full') return 'Full Duplex';
   if (duplex === 'half') return 'Half Duplex';
-  return 'Unknown Duplex';
+  return 'Unknown';
 };
 
-// API calls
+// API functions
 const fetchInterfaceDetails = async () => {
   try {
     loading.value = true;
     const response = await axios.get(`/network/interfaces/details/${route.params.interface}`);
     interfaceDetails.value = response.data;
-    
-    // Debug: sprawdź co przychodzi z API
-    console.log('Interface details:', response.data);
-    
-    // Uzupełnij formularz danymi
-    form.method = response.data.config?.['IP4.ADDRESS[1]'] ? 'static' : 'dhcp';
-    form.mtu = response.data.mtu || 1500;
-    
-    if (response.data.ipv4) {
-      form.address = response.data.ipv4.local || '';
-      form.netmask = response.data.ipv4.prefixlen || 24;
-    }
-    
   } catch (error) {
+    console.error('Error fetching interface details:', error);
     ElNotification({
-      title: 'Error',
-      message: 'Failed to load interface details',
+      title: 'Błąd',
+      message: 'Nie udało się załadować szczegółów interfejsu',
       type: 'error'
     });
   } finally {
@@ -425,194 +565,401 @@ const fetchInterfaceDetails = async () => {
   }
 };
 
-const saveChanges = async () => {
-  try {
-    await formRef.value.validate();
-    saving.value = true;
-    
-    const response = await axios.post(
-      `/network/interfaces/details/${route.params.interface}`,
-      {
-        method: form.method,
-        address: form.method === 'static' ? form.address : null,
-        netmask: form.method === 'static' ? form.netmask : null,
-        gateway: form.method === 'static' ? form.gateway : null,
-        mtu: form.mtu
-      }
-    );
-
-    ElMessage.success(response.data.message);
-    await fetchInterfaceDetails();
-  } catch (error) {
-    ElMessage.error(error.response?.data?.details || error.message);
-  } finally {
-    saving.value = false;
-  }
-};
-
 const startSpeedTest = async () => {
+  if (!isInterfaceUp.value) {
+    ElMessage.warning('Interfejs musi być włączony do testu prędkości')
+    return
+  }
+  
   try {
-    speedTestRunning.value = true;
-    testProgress.value = 0;
-    speedTestResults.value = null;
+    speedTestRunning.value = true
+    speedTestResults.value = null
+    testProgress.value = 0
     
-    const progressInterval = setInterval(() => {
-      testProgress.value = Math.min(testProgress.value + 2, 90);
-    }, 300);
-
+    const serverId = selectedServer.value ? selectedServer.value.id : null
     const response = await axios.post(
-      `/network/interfaces/details/${route.params.interface}/speedtest`
-    );
+      `/network/interfaces/details/${route.params.interface}/speedtest`,
+      { serverId }
+    )
 
-    clearInterval(progressInterval);
-    testProgress.value = 100;
+    testProgress.value = 100
     
     if (response.data.success) {
-      speedTestResults.value = response.data.data;
-      ElMessage.success(`Speed test completed using ${response.data.data.server} server`);
+      speedTestResults.value = response.data.data
+      ElMessage.success(`Test prędkości zakończony`)
+    } else {
+      throw new Error(response.data.error || 'Test nieudany')
     }
   } catch (error) {
-    ElMessage.error(error.response?.data?.error || 'Speed test failed');
+    console.error('Speed test error:', error)
+    ElMessage.error(error.response?.data?.error || error.message || 'Test prędkości nieudany')
+    
+    // Fallback result
+    speedTestResults.value = {
+      download: '0.00',
+      upload: '0.00',
+      ping: 'N/A',
+      server: 'Test failed',
+      serverHost: 'Error',
+      sponsor: 'N/A'
+    }
   } finally {
-    speedTestRunning.value = false;
+    speedTestRunning.value = false
+    await nextTick()
+    testProgress.value = 0
+  }
+}
+
+const copyResults = async () => {
+  if (!speedTestResults.value) return;
+  
+  const text = `Wyniki testu prędkości:
+Interfejs: ${interfaceDetails.value.device}
+Pobieranie: ${speedTestResults.value.download} Mbps
+Wysyłanie: ${speedTestResults.value.upload} Mbps
+Ping: ${speedTestResults.value.ping || 'N/A'} ms
+Serwer: ${speedTestResults.value.server}
+Czas: ${new Date().toLocaleString('pl-PL')}`;
+  
+  try {
+    await navigator.clipboard.writeText(text);
+    ElMessage.success('Wyniki skopiowane do schowka');
+  } catch (error) {
+    console.error('Copy failed:', error);
+    ElMessage.error('Błąd kopiowania');
   }
 };
 
 const refreshDetails = () => {
   fetchInterfaceDetails();
 };
-
-onMounted(() => {
-  fetchInterfaceDetails();
-});
 </script>
 
 <style scoped>
 .interface-details-container {
-  padding: 24px;
-  max-width: 1400px;
-  margin: 0 auto;
+  padding: 20px;
+  min-height: 100vh;
+  background: var(--el-bg-color-page);
+  color: var(--el-text-color-primary);
+  transition: background-color 0.3s, color 0.3s;
 }
 
-.details-header {
+.interface-details-container.dark {
+  background: #1a1a1a;
+  color: #e0e0e0;
+}
+
+/* Header Styles */
+.header {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  margin-bottom: 32px;
+  align-items: center;
+  margin-bottom: 24px;
   flex-wrap: wrap;
   gap: 16px;
 }
 
-.header-title {
+.header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   flex: 1;
-  min-width: 300px;
+}
+
+.header-title {
+  flex: 1;
 }
 
 .header-title h1 {
   margin: 0;
   font-size: 28px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-}
-
-.title-icon {
-  color: var(--el-color-primary);
-}
-
-.status-tag {
-  margin-left: 12px;
-  font-weight: 600;
-}
-
-.header-actions {
+  font-weight: 700;
   display: flex;
+  align-items: center;
   gap: 12px;
 }
 
-.details-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-  gap: 24px;
+.subtitle {
+  margin: 4px 0 0;
+  color: var(--el-text-color-secondary);
+  font-size: 14px;
 }
 
-.card-header {
+.dark .subtitle {
+  color: #a0a0a0;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.theme-toggle {
+  margin-right: 8px;
+}
+
+.back-btn {
+  min-width: 120px;
+}
+
+/* Main Content Layout */
+.main-content {
+  display: grid;
+  grid-template-columns: 350px 1fr;
+  gap: 20px;
+  min-height: calc(100vh - 120px);
+}
+
+@media (max-width: 1024px) {
+  .main-content {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Stats Panel */
+.stats-panel {
+  background: var(--el-bg-color-overlay);
+  border: 1px solid var(--el-border-color);
+  border-radius: 12px;
+  height: fit-content;
+}
+
+.dark .stats-panel {
+  background: #2d2d2d;
+  border-color: #404040;
+}
+
+.stats-section {
+  padding: 20px;
+}
+
+.stats-section h3 {
+  margin: 0 0 20px 0;
+  font-size: 16px;
+  font-weight: 600;
   display: flex;
   align-items: center;
   gap: 8px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
 }
 
-.form-grid {
+.stats-grid {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
-.w-full {
-  width: 100%;
-}
-
-.performance-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 20px;
-}
-
-.performance-item {
-  text-align: center;
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   padding: 16px;
-  border-radius: 12px;
   background: var(--el-fill-color-light);
+  border-radius: 8px;
+  transition: transform 0.2s;
 }
 
-.performance-label {
+.dark .stat-item {
+  background: #3d3d3d;
+}
+
+.stat-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.stat-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  width: 40px;
+  height: 40px;
+  background: var(--el-color-primary-light-9);
+  border-radius: 8px;
+  color: var(--el-color-primary);
+}
+
+.dark .stat-icon {
+  background: rgba(64, 158, 255, 0.2);
+}
+
+.stat-content {
+  flex: 1;
+}
+
+.stat-label {
   font-size: 12px;
   color: var(--el-text-color-secondary);
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
-.performance-value {
-  font-size: 20px;
+.dark .stat-label {
+  color: #a0a0a0;
+}
+
+.stat-value {
+  font-size: 18px;
   font-weight: 700;
+  color: var(--el-text-color-primary);
 }
 
-.performance-value.gigabit { color: var(--el-color-success); }
-.performance-value.fast { color: var(--el-color-warning); }
-.performance-value.slow { color: var(--el-color-danger); }
-.performance-value.unknown { 
-  color: var(--el-text-color-secondary);
-  font-size: 16px;
+/* Details Panel */
+.details-panel {
+  min-height: 600px;
 }
 
-.performance-value.small {
-  font-size: 14px;
+.interface-details {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--el-bg-color-overlay);
+  border: 1px solid var(--el-border-color);
+  border-radius: 12px;
+}
+
+.dark .interface-details {
+  background: #2d2d2d;
+  border-color: #404040;
+}
+
+.viewer-header {
+  padding: 20px;
+  border-bottom: 1px solid var(--el-border-color-light);
+}
+
+.dark .viewer-header {
+  border-bottom-color: #404040;
+}
+
+.file-info h2 {
+  margin: 0 0 12px 0;
+  font-size: 20px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.status-tag {
+  margin-left: 8px;
   font-weight: 600;
 }
 
-.performance-subtext {
-  margin-top: 6px;
+.driver-tag {
+  margin-left: 8px;
+  font-family: monospace;
+  font-size: 10px;
+}
+
+.file-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.file-meta .el-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Speed Test Section */
+.speedtest-section {
+  padding: 20px;
+  border-bottom: 1px solid var(--el-border-color-light);
+}
+
+.dark .speedtest-section {
+  border-bottom-color: #404040;
+}
+
+.section-header {
+  margin-bottom: 20px;
+}
+
+.section-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .speedtest-content {
-  padding: 8px 0;
+  min-height: 250px;
+  display: flex;
+  flex-direction: column;
+}
+
+.test-start {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.test-info {
+  margin-bottom: 24px;
+}
+
+.test-icon {
+  color: var(--el-color-primary);
+  margin-bottom: 16px;
+}
+
+.server-selection {
+  margin: 16px 0;
+}
+
+.server-select {
+  margin-top: 8px;
+  width: 300px;
+}
+
+.server-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.server-name {
+  font-weight: 600;
+}
+
+.server-location {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 
 .test-button {
   width: 100%;
+  max-width: 300px;
   height: 60px;
   font-size: 16px;
   font-weight: 600;
 }
 
+.warning-text {
+  margin-top: 16px;
+  color: var(--el-color-warning);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* Test Progress */
 .test-progress {
-  margin: 20px 0;
+  margin: 40px 0;
+}
+
+.progress-info {
+  text-align: center;
 }
 
 .progress-text {
@@ -624,112 +971,255 @@ onMounted(() => {
   color: var(--el-text-color-secondary);
 }
 
+.progress-details {
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--el-text-color-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+/* Test Results */
 .test-results {
-  margin-top: 24px;
+  padding: 20px;
+  background: var(--el-fill-color-lighter);
+  border-radius: 12px;
+  margin-top: 20px;
+}
+
+.dark .test-results {
+  background: #3d3d3d;
 }
 
 .results-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   font-weight: 600;
   color: var(--el-text-color-primary);
+  flex-wrap: wrap;
+}
+
+.server-tag {
+  margin-left: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.clear-results {
+  margin-left: auto;
+}
+
+.server-info {
+  margin: 8px 0 16px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .results-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 16px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 768px) {
+  .results-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .result-item {
-  text-align: center;
-  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
   border-radius: 12px;
   background: var(--el-fill-color-light);
+}
+
+.dark .result-item {
+  background: #4d4d4d;
 }
 
 .result-item.download { border-left: 4px solid var(--el-color-success); }
 .result-item.upload { border-left: 4px solid var(--el-color-warning); }
 .result-item.ping { border-left: 4px solid var(--el-color-info); }
 
-.result-label {
+.result-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  font-size: 12px;
+}
+
+.result-content {
+  flex: 1;
+}
+
+.result-label {
+  font-size: 14px;
   color: var(--el-text-color-secondary);
   margin-bottom: 8px;
 }
 
 .result-value {
-  font-size: 18px;
+  font-size: 24px;
   font-weight: 700;
   color: var(--el-text-color-primary);
 }
 
-.server-tag {
-  margin-left: 8px;
+.results-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 20px;
 }
 
-.server-info {
-  margin: 8px 0;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
+/* Properties Section */
+.properties-section {
+  padding: 20px;
 }
 
-/* Responsywność */
-@media (max-width: 1024px) {
-  .details-grid {
+.properties-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .properties-grid {
     grid-template-columns: 1fr;
   }
-  
-  .header-title {
-    min-width: auto;
-  }
 }
 
+.property-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: var(--el-fill-color-light);
+  border-radius: 8px;
+}
+
+.dark .property-item {
+  background: #3d3d3d;
+}
+
+.property-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: var(--el-color-info-light-9);
+  border-radius: 8px;
+  color: var(--el-color-info);
+}
+
+.property-content {
+  flex: 1;
+}
+
+.property-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-bottom: 4px;
+}
+
+.property-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.property-value.gigabit { color: var(--el-color-success); }
+.property-value.fast { color: var(--el-color-warning); }
+.property-value.normal { color: var(--el-color-info); }
+.property-value.unknown { color: var(--el-text-color-secondary); }
+
+.no-ip {
+  color: var(--el-text-color-secondary);
+  font-style: italic;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #3d3d3d;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--el-border-color);
+  border-radius: 4px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #555;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--el-border-color-dark);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #666;
+}
+
+/* Responsive */
 @media (max-width: 768px) {
   .interface-details-container {
     padding: 16px;
   }
   
-  .details-header {
+  .header {
     flex-direction: column;
     align-items: stretch;
+    gap: 12px;
   }
   
-  .header-title {
-    justify-content: center;
-    text-align: center;
+  .header-left {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
   }
   
-  .header-actions {
-    justify-content: center;
+  .header-right {
+    justify-content: flex-start;
   }
   
-  .performance-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-  
-  .results-grid {
+  .stats-grid,
+  .properties-grid {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 480px) {
-  .performance-grid {
-    grid-template-columns: 1fr;
+  .main-content {
+    gap: 16px;
   }
   
-  .form-grid {
-    gap: 12px;
+  .test-button {
+    height: 50px;
+    font-size: 14px;
   }
   
-  .header-title h1 {
-    font-size: 24px;
+  .server-select {
+    width: 100%;
   }
 }
 </style>

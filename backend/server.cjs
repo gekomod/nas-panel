@@ -29,6 +29,8 @@ const SystemBackupRoutes = require('./src/api/system-backup.cjs');
 const SftpFtpRoutes = require('./src/api/sftp-ftp.cjs');
 const LogsRoutes = require('./src/api/logs.cjs');
 const PowerRoutes = require('./src/api/power.cjs');
+const MediaRoutes = require('./src/api/media.cjs');
+const VPNRoutes = require('./src/api/vpn.cjs');
 
 const os = require('os');
 const { publicIpv4 } = require('public-ip');
@@ -223,6 +225,8 @@ SystemBackupRoutes(app, requireAuth);
 SftpFtpRoutes(app, requireAuth);
 LogsRoutes(app, requireAuth);
 PowerRoutes(app, requireAuth);
+MediaRoutes(app, requireAuth);
+VPNRoutes(app, requireAuth);
 
 // Zmieniamy funkcję logowania:
 app.post('/api/login', async (req, res) => {

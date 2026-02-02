@@ -44,9 +44,6 @@
               @change="handleWidgetToggle(row)"
               active-color="#13ce66"
               inactive-color="#ff4949"
-              :active-value="1"
-              :inactive-value="0"
-              inline-prompt
             />
           </template>
         </el-table-column>
@@ -77,12 +74,6 @@
 import { useI18n } from 'vue-i18n';
 const { t } = useI18n();
 import { ref, computed, onMounted, markRaw } from 'vue';
-import { 
-  initDatabase, 
-  query, 
-  executeSQL, 
-  saveDatabaseState
-} from '@/database/sqlite-service';
 import { ElButton, ElDialog, ElTable, ElTableColumn, ElTag, ElSwitch, ElNotification } from 'element-plus';
 import { Setting as ElIconSetting } from '@element-plus/icons-vue';
 import draggable from 'vuedraggable';
@@ -90,41 +81,51 @@ import draggable from 'vuedraggable';
 const widgetManagerVisible = ref(false);
 const allWidgets = ref([]);
 const enabledWidgets = ref([]);
-const isInitialLoad = ref(true);
+
+// Klucz dla localStorage
+const WIDGETS_STORAGE_KEY = 'dashboard_widgets_settings';
 
 const openWidgetManager = () => {
   widgetManagerVisible.value = true;
-  if (isInitialLoad.value) {
+  if (allWidgets.value.length === 0) {
     loadWidgets();
-    isInitialLoad.value = false;
   }
 };
 
 const loadWidgets = async () => {
   try {
-    await initDatabase();
-    const dbWidgets = await query("SELECT name, enabled, position FROM widgets ORDER BY position");
+    // Wczytaj zapisane ustawienia z localStorage
+    const savedSettings = JSON.parse(localStorage.getItem(WIDGETS_STORAGE_KEY) || '{}');
+    
+    // Dynamicznie importuj wszystkie komponenty z folderu Dashboard
     const widgetModules = import.meta.glob('@/components/Dashboard/*.vue');
     
     const loadedWidgets = [];
+    
     for (const path in widgetModules) {
       const widgetName = path.split('/').pop().replace('.vue', '');
+      
+      // Załaduj komponent
       const module = await widgetModules[path]();
-      const dbWidget = dbWidgets.find(w => w.name === widgetName) || {
-        name: widgetName,
-        enabled: false,
-        position: loadedWidgets.length
+      
+      // Pobierz zapisane ustawienia lub użyj domyślnych
+      const widgetSettings = savedSettings[widgetName] || {
+        enabled: true, // domyślnie włączony
+        position: loadedWidgets.length,
+        displayName: module.default.displayName || widgetName
       };
       
       loadedWidgets.push({
-        ...dbWidget,
+        name: widgetName,
         component: markRaw(module.default),
-        displayName: module.default.displayName || widgetName
+        displayName: module.default.displayName || widgetName,
+        enabled: widgetSettings.enabled,
+        position: widgetSettings.position || loadedWidgets.length
       });
     }
-
-    // Sort by position
-    allWidgets.value = loadedWidgets.sort((a, b) => (a.position || 0) - (b.position || 0));
+    
+    // Posortuj według pozycji
+    allWidgets.value = loadedWidgets.sort((a, b) => a.position - b.position);
     updateEnabledWidgets();
     
   } catch (error) {
@@ -134,42 +135,49 @@ const loadWidgets = async () => {
       message: 'Nie udało się załadować widgetów',
       duration: 5000
     });
-    allWidgets.value = JSON.parse(localStorage.getItem('widgets_fallback') || '[]');
   }
 };
 
 const updateEnabledWidgets = () => {
   enabledWidgets.value = allWidgets.value
     .filter(w => w.enabled)
-    .sort((a, b) => (a.position || 0) - (b.position || 0));
+    .sort((a, b) => a.position - b.position);
 };
 
 const saveWidgetPositions = () => {
-  // Update positions based on current order
+  // Aktualizuj pozycje na podstawie bieżącej kolejności
   enabledWidgets.value.forEach((widget, index) => {
     const originalWidget = allWidgets.value.find(w => w.name === widget.name);
     if (originalWidget) {
       originalWidget.position = index;
     }
   });
+  
+  // Zaktualizuj pozycje pozostałych widgetów
+  allWidgets.value
+    .filter(w => !w.enabled)
+    .forEach((widget, index) => {
+      widget.position = enabledWidgets.value.length + index;
+    });
+    
   saveWidgetSettings();
 };
 
-const saveWidgetSettings = async () => {
+const saveWidgetSettings = () => {
   try {
-    await initDatabase();
-    await executeSQL("BEGIN TRANSACTION");
-    await executeSQL("DELETE FROM widgets");
+    // Przygotuj obiekt do zapisania
+    const settingsToSave = {};
+    allWidgets.value.forEach(widget => {
+      settingsToSave[widget.name] = {
+        enabled: widget.enabled,
+        position: widget.position,
+        displayName: widget.displayName
+      };
+    });
     
-    for (const widget of allWidgets.value) {
-      await executeSQL(
-        "INSERT INTO widgets (name, enabled, position) VALUES (?, ?, ?)",
-        [widget.name, widget.enabled ? 1 : 0, widget.position || 0]
-      );
-    }
+    // Zapisz w localStorage
+    localStorage.setItem(WIDGETS_STORAGE_KEY, JSON.stringify(settingsToSave));
     
-    await executeSQL("COMMIT");
-    await saveDatabaseState();
     updateEnabledWidgets();
     
     ElNotification.success({
@@ -177,9 +185,11 @@ const saveWidgetSettings = async () => {
       message: 'Ustawienia widgetów zostały zapisane',
       duration: 3000
     });
+    
+    widgetManagerVisible.value = false;
+    
   } catch (error) {
     console.error('Widget save failed:', error);
-    await executeSQL("ROLLBACK");
     ElNotification.error({
       title: 'Błąd',
       message: 'Nie udało się zapisać ustawień',
@@ -189,6 +199,7 @@ const saveWidgetSettings = async () => {
 };
 
 const handleWidgetToggle = (widget) => {
+  // Automatycznie zapisz przy zmianie
   saveWidgetSettings();
 };
 
@@ -234,5 +245,30 @@ onMounted(() => {
 
 .widget-manager-table {
   margin-bottom: 20px;
+}
+
+/* Responsywność */
+@media (max-width: 1200px) {
+  .widgets-container {
+    column-count: 3;
+  }
+}
+
+@media (max-width: 900px) {
+  .widgets-container {
+    column-count: 2;
+  }
+}
+
+@media (max-width: 600px) {
+  .widgets-container {
+    column-count: 1;
+  }
+  
+  .header {
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
+  }
 }
 </style>

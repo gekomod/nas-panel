@@ -54,6 +54,6 @@ export default defineConfig({
     }
   },
   optimizeDeps: {
-    exclude: ['monaco-editor','@sqlite.org/sqlite-wasm']
+    exclude: ['monaco-editor']
   }
 })

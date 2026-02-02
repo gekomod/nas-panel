@@ -38,5 +38,35 @@ export default [
       { name: 'api_key', label: 'dynamicDns.apiKey', type: 'password', required: true },
       { name: 'email', label: 'dynamicDns.email', type: 'email', required: true }
     ]
+  },
+  {
+    id: 'godaddy',
+    name: 'GoDaddy',
+    icon: 'mdi:domain',
+    fields: [
+      { name: 'domain', label: 'dynamicDns.domain', type: 'text', required: true },
+      { name: 'api_key', label: 'dynamicDns.apiKey', type: 'password', required: true },
+      { name: 'api_secret', label: 'dynamicDns.apiSecret', type: 'password', required: true }
+    ]
+  },
+  {
+    id: 'namecheap',
+    name: 'Namecheap',
+    icon: 'mdi:tag',
+    fields: [
+      { name: 'hostname', label: 'dynamicDns.hostname', type: 'text', required: true },
+      { name: 'password', label: 'dynamicDns.password', type: 'password', required: true }
+    ]
+  },
+  {
+    id: 'custom',
+    name: 'Custom Provider',
+    icon: 'mdi:cog',
+    fields: [
+      { name: 'hostname', label: 'dynamicDns.hostname', type: 'text', required: true },
+      { name: 'update_url', label: 'dynamicDns.updateUrl', type: 'text', required: true },
+      { name: 'username', label: 'dynamicDns.username', type: 'text', required: false },
+      { name: 'password', label: 'dynamicDns.password', type: 'password', required: false }
+    ]
   }
 ]
