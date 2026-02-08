@@ -1322,7 +1322,7 @@ const manageContainer = async (id, action) => {
     loadingActions.value[id] = action;
     
     await axios.post(`/services/docker/container/${id}/${action}`, {}, {
-      timeout: 15000
+      timeout: 30000
     });
     
     ElMessage.success(`Container ${action} successful`);
@@ -1393,7 +1393,7 @@ const deleteContainer = async (containerId) => {
     loadingActions.value[containerId] = 'delete';
     await axios.delete(`/services/docker/container/${containerId}`, {
       params: { force: true },
-      timeout: 15000
+      timeout: 30000
     });
     ElMessage.success('Container deleted');
     await fetchContainers();
@@ -1447,7 +1447,7 @@ const fetchLogs = async (params = 'tail=100') => {
   
   try {
     const response = await axios.get(`/services/docker/container/logs/${selectedContainerId.value}?${params}`, {
-      timeout: 15000
+      timeout: 30000
     });
     
     let newLogs = response.data?.logs || response.data || 'No logs available';

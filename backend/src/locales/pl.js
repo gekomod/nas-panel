@@ -65,6 +65,7 @@ export default {
     ups_monitoring: 'Monitoring UPS',
     power_actions: 'Akcje Zasilania',
     energy_monitoring: 'Monitorowanie Energii',
+    media: 'Serwery Mediów',
     "app": {
       "name": "Panel NAS"
     }
@@ -87,6 +88,7 @@ export default {
   },
   storageDisks: {
     title: 'Dyski magazynujące',
+    subtitle: 'Zarządzanie dyskami i urządzeniami pamięci masowej',
     device: 'Urządzenie',
     model: 'Model',
     serial: 'Numer seryjny',
@@ -97,7 +99,36 @@ export default {
     scanNew: 'Skanuj nowe urządzenia',
     scanSuccess: 'Skanowanie zakończone',
     scanComplete: 'Zakończono skanowanie w poszukiwaniu nowych urządzeń',
-    scanError: 'Błąd podczas skanowania'
+    scanError: 'Błąd podczas skanowania',
+    // Nowe klucze z ulepszonego komponentu
+    totalCapacity: 'Całkowita pojemność',
+    lastUpdated: 'Ostatnio zaktualizowano',
+    never: 'Nigdy',
+    justNow: 'Przed chwilą',
+    minutesAgo: '{minutes} min temu',
+    hoursAgo: '{hours} godz. temu',
+    searchPlaceholder: 'Wyszukaj dyski...',
+    noDisksFound: 'Nie znaleziono dysków',
+    noDisksDescription: 'Brak dysków wykrytych w systemie',
+    scanForDisks: 'Skanuj w poszukiwaniu dysków',
+    loading: 'Ładowanie dysków...',
+    showing: 'Wyświetlanie',
+    disks: 'dysków',
+    total: 'Łącznie',
+    refreshed: 'Odświeżono',
+    refreshComplete: 'Lista dysków została odświeżona',
+    diskDetails: 'Szczegóły dysku',
+    featureNotAvailable: 'Funkcja niedostępna',
+    diskTestComingSoon: 'Testowanie dysku dostępne wkrótce',
+    export: 'Eksportuj',
+    exportSuccess: 'Dane dysków wyeksportowano pomyślnie',
+    copiedToClipboard: 'Skopiowano do schowka',
+    copyFailed: 'Nie udało się skopiować',
+    actions: 'Akcje',
+    noDisks: 'Brak dysków do wyświetlenia',
+    retry: 'Spróbuj ponownie',
+    disksCount: 'dysków',
+    retryFetch: 'Spróbuj ponownie',
   },
   "storageFilesystems": {
     "title": "Systemy plików",
@@ -240,6 +271,92 @@ export default {
       outOfSpec: "Parametry poza normą",
       threshold: "norma"
     },
+      repair: 'Naprawa',
+  repairBadSectors: 'Napraw bad sectors',
+  runExtendedTest: 'Uruchom test rozszerzony',
+  fixLoadCycle: 'Napraw Load Cycle Count',
+  refreshAttributes: 'Odśwież atrybuty',
+  enableAutoRepair: 'Włącz automatyczną naprawę',
+  ataSecureErase: 'ATA Secure Erase',
+  checkRepairStatus: 'Sprawdź status naprawy',
+  startRepair: 'Rozpocznij naprawę',
+  checkStatus: 'Sprawdź status',
+  
+  // Komunikaty
+  repairStarted: 'Naprawa rozpoczęta',
+  repairError: 'Błąd naprawy',
+  failedToStartRepair: 'Nie udało się rozpocząć naprawy',
+  testStarted: 'Test rozpoczęty',
+  failedToStartTest: 'Nie udało się uruchomić testu',
+  loadCycleRepair: 'Naprawa Load Cycle Count',
+  failedToApplyFixes: 'Nie udało się zastosować poprawek',
+  attributesRefreshed: 'Atrybuty odświeżone',
+  smartAttributesRefreshed: 'Atrybuty SMART zostały odświeżone',
+  failedToRefreshAttributes: 'Nie udało się odświeżyć atrybutów',
+  autoRepairEnabled: 'Automatyczna naprawa włączona',
+  failedToEnableAutoRepair: 'Nie udało się włączyć automatycznej naprawy',
+  secureEraseCompleted: 'Secure Erase zakończony',
+  allDataSecurelyErased: 'Wszystkie dane zostały bezpiecznie usunięte',
+  secureEraseError: 'Błąd Secure Erase',
+  operationFailed: 'Operacja nie powiodła się',
+  failedToGetStatus: 'Nie udało się pobrać statusu',
+  
+  // Dialogi
+  extendedTestWarning1: 'Rozszerzony test SMART dla',
+  extendedTestWarning2: 'może trwać kilka godzin.',
+  continueQuestion: 'Kontynuować?',
+  secureEraseWarning1: 'ATA Secure Erase USUNIE WSZYSTKIE DANE na',
+  secureEraseWarning2: 'Ta operacja jest nieodwracalna!',
+  yesEraseAll: 'Tak, usuń wszystko',
+  
+  // Tooltipy
+  deviceUnavailable: 'Dysk niedostępny',
+  needsRepair: 'Wymaga naprawy',
+  deviceHealthy: 'Dysk jest zdrowy',
+  highLoadCycle: 'Wysoki Load Cycle Count',
+  endToEndErrors: 'Błędy End-to-End',
+  criticalTemperature: 'Krytyczna temperatura',
+  
+  // Szczegóły sektorów
+  sectorDetails: 'Szczegóły sektorów',
+  totalBadSectors: 'Łącznie uszkodzonych sektorów',
+  sectorType: 'Typ sektora',
+  count: 'Liczba',
+  description: 'Opis',
+  sectorInfoTitle: 'Informacje o sektorach',
+  sectorInfo1: 'Reallocated Sectors - sektory które zostały zrealokowane na zapasowe',
+  sectorInfo2: 'Pending Sectors - sektory czekające na realokację',
+  sectorInfo3: 'Offline Uncorrectable - sektory które nie mogą być naprawione',
+  
+  // Typy sektorów
+  sectorTypes: {
+    reallocated: 'Zrealokowane',
+    pending: 'Oczekujące',
+    offline: 'Offline (nie do naprawy)',
+    reported: 'Zgłoszone błędy',
+    timeout: 'Timeouty komend'
+  },
+  
+  // Opisy sektorów
+  sectorDesc: {
+    reallocated: 'Sektory przeniesione do zapasowej puli',
+    pending: 'Sektory wymagające realokacji',
+    offline: 'Nieodwracalnie uszkodzone sektory',
+    reported: 'Błędy zgłoszone przez kontroler',
+    timeout: 'Błędy timeoutu komend ATA'
+  },
+  
+    // Status naprawy
+    repairStatus: 'Status naprawy',
+    testsInProgress: 'Testy w trakcie...',
+    noActiveTests: 'Brak aktywnych testów',
+    attributes: 'Atrybuty',
+    loadCycleCount: 'Load Cycle Count',
+    endToEndError: 'End-to-End Error',
+    temperature: 'Temperatura',
+  
+    // Common
+    hasStarted: 'została rozpoczęta',
     notAvailableMessage: "Brak dysków objętych monitoringiem",
     attributes: {
       noData: 'Brak danych atrybutów SMART'
@@ -1318,6 +1435,7 @@ backup: {
     total: 'Łącznie',
     copied: 'Skopiowano',
     copyError: 'Błąd kopiowania',
+    clear: 'Wyczyść',
   },
   media: {
     running: 'Działa',
@@ -1469,11 +1587,6 @@ backup: {
     "markAllAsRead": "Oznacz wszystkie jako przeczytane",
     "empty": "Brak nowych powiadomień",
     "viewAll": "Zobacz wszystkie"
-  },
-  "theme": {
-    "light": "Jasny",
-    "dark": "Ciemny",
-    "system": "Systemowy"
   },
   "userMenu": {
     "profile": "Profil",

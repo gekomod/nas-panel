@@ -102,6 +102,9 @@
                 <span :class="['device-type', row.isSSD ? 'ssd-tag' : 'hdd-tag']">
                   {{ row.isSSD ? 'SSD' : 'HDD' }}
                 </span>
+                <div v-if="hasPhysicalShocks(row)" class="shock-indicator">
+                  <Icon icon="ph:warning" width="10" />
+                </div>
               </div>
             </div>
           </template>
@@ -184,14 +187,15 @@
                   <Icon :icon="getStatusIcon(row)" width="10" height="10" class="status-icon" />
                   {{ getStatusText(row) }}
                 </el-tag>
+                
                 <el-tooltip 
-                  v-if="hasCriticalIssues(row)"
+                  v-if="needsRepair(row)"
                   effect="dark" 
                   placement="top"
-                  :content="getCriticalIssuesTooltip(row)"
+                  :content="getRepairTooltip(row)"
                 >
-                  <div class="warning-indicator">
-                    <Icon icon="ph:warning" width="12" />
+                  <div class="repair-needed-indicator">
+                    <Icon icon="ph:wrench" width="12" />
                   </div>
                 </el-tooltip>
               </div>
@@ -205,7 +209,90 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="Akcje" width="80" align="center">
+        <el-table-column :label="t('storageSmart.repair')" width="160" align="center">
+          <template #default="{ row }">
+            <div class="repair-buttons">
+              <el-dropdown 
+                size="small" 
+                @command="handleRepairCommand($event, row)"
+                v-if="row.available && needsRepair(row)"
+              >
+                <el-button size="small" type="warning" plain>
+                  <Icon icon="ph:wrench" width="12" />
+                  <span class="button-text">{{ t('storageSmart.repair') }}</span>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="bad-sectors" :disabled="row.badSectors === 0">
+                      <Icon icon="ph:warning-circle" />
+                      {{ t('storageSmart.repairBadSectors') }} ({{ row.badSectors }})
+                    </el-dropdown-item>
+                    <el-dropdown-item command="physical-issues" :disabled="!hasPhysicalShocks(row)">
+                      <Icon icon="ph:activity" />
+                      {{ t('storageSmart.fixPhysicalIssues') }} {{ hasPhysicalShocks(row) ? '🚨' : '' }}
+                    </el-dropdown-item>
+                    <el-dropdown-item command="extended-test">
+                      <Icon icon="ph:hourglass" />
+                      {{ t('storageSmart.runExtendedTest') }}
+                    </el-dropdown-item>
+                    <el-dropdown-item command="load-cycle">
+                      <Icon icon="ph:cycle" />
+                      {{ t('storageSmart.fixLoadCycle') }}
+                    </el-dropdown-item>
+                    <el-dropdown-item command="refresh-attrs">
+                      <Icon icon="ph:arrows-clockwise" />
+                      {{ t('storageSmart.refreshAttributes') }}
+                    </el-dropdown-item>
+                    <el-dropdown-item command="auto-offline" divided>
+                      <Icon icon="ph:robot" />
+                      {{ t('storageSmart.enableAutoRepair') }}
+                    </el-dropdown-item>
+                    <el-dropdown-item command="secure-erase" :disabled="!row.isSSD">
+                      <Icon icon="ph:shield-check" />
+                      {{ t('storageSmart.ataSecureErase') }}
+                    </el-dropdown-item>
+                    <el-dropdown-item command="check-status">
+                      <Icon icon="ph:chart-line" />
+                      {{ t('storageSmart.checkRepairStatus') }}
+                    </el-dropdown-item>
+                    <el-dropdown-item command="sector-details">
+                      <Icon icon="ph:info" />
+                      {{ t('storageSmart.sectorDetailsBtn') }}
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+              <el-tooltip 
+                v-else 
+                :content="getRepairTooltip(row)" 
+                placement="top"
+              >
+                <el-button 
+                  size="small" 
+                  type="info" 
+                  plain 
+                  :disabled="!row.available || row.badSectors === 0"
+                  @click="showSectorDetails(row)"
+                >
+                  <template v-if="row.badSectors > 0">
+                    <Icon icon="ph:warning-circle" width="12" />
+                    <span class="button-text">{{ row.badSectors }}</span>
+                  </template>
+                  <template v-else-if="hasPhysicalShocks(row)">
+                    <Icon icon="ph:activity" width="12" />
+                    <span class="button-text">!</span>
+                  </template>
+                  <template v-else>
+                    <Icon icon="ph:check-circle" width="12" />
+                    <span class="button-text">OK</span>
+                  </template>
+                </el-button>
+              </el-tooltip>
+            </div>
+          </template>
+        </el-table-column>
+
+        <el-table-column :label="t('storageSmart.actions')" width="80" align="center">
           <template #default="{ row }">
             <div class="action-buttons">
               <el-tooltip :content="t('storageSmart.viewDetails')" placement="top">
@@ -238,6 +325,89 @@
         <el-button @click="rawDataDialog = false">{{ t('common.close') }}</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog 
+      v-model="sectorDialog" 
+      :title="t('storageSmart.sectorDetails')" 
+      width="60%"
+      class="sector-details-dialog"
+    >
+      <div v-if="currentSectorDetails" class="sector-details-container">
+        <div class="sector-summary">
+          <h4>{{ t('storageSmart.totalBadSectors') }}: {{ currentSectorDetails.total }}</h4>
+          <div v-if="currentSectorDetails.gsense > 1000" class="shock-warning">
+            <Icon icon="ph:warning" width="16" />
+            <span>{{ t('storageSmart.shockDetected') }}: {{ currentSectorDetails.gsense }}</span>
+          </div>
+        </div>
+        
+        <el-table :data="sectorDetailsTable" style="width: 100%" size="small">
+          <el-table-column prop="type" :label="t('storageSmart.sectorType')" />
+          <el-table-column prop="count" :label="t('storageSmart.count')" align="right" />
+          <el-table-column prop="description" :label="t('storageSmart.description')" />
+        </el-table>
+        
+        <div class="sector-actions mt-4">
+          <el-button type="warning" @click="repairBadSectors(currentDevice)">
+            {{ t('storageSmart.startRepair') }}
+          </el-button>
+          <el-button @click="runExtendedTest(currentDevice)">
+            {{ t('storageSmart.runExtendedTest') }}
+          </el-button>
+          <el-button v-if="currentSectorDetails.gsense > 1000" type="danger" @click="fixPhysicalIssues(currentDevice)">
+            {{ t('storageSmart.fixPhysicalIssues') }}
+          </el-button>
+          <el-button @click="checkRepairStatus(currentDevice)">
+            {{ t('storageSmart.checkStatus') }}
+          </el-button>
+        </div>
+        
+        <div class="sector-info mt-4">
+          <el-alert type="info" :closable="false">
+            <template #title>
+              {{ t('storageSmart.sectorInfoTitle') }}
+            </template>
+            <div class="info-content">
+              <p>{{ t('storageSmart.sectorInfo1') }}</p>
+              <p>{{ t('storageSmart.sectorInfo2') }}</p>
+              <p>{{ t('storageSmart.sectorInfo3') }}</p>
+              <p v-if="currentSectorDetails.gsense > 1000" class="shock-info">
+                <strong>{{ t('storageSmart.shockWarning') }}</strong><br>
+                {{ t('storageSmart.shockAdvice') }}
+              </p>
+            </div>
+          </el-alert>
+        </div>
+      </div>
+    </el-dialog>
+
+    <el-dialog 
+      v-model="testProgressDialog" 
+      :title="t('storageSmart.testProgress')"
+      width="50%"
+      class="test-progress-dialog"
+    >
+      <div v-if="currentTestDevice" class="progress-container">
+        <div class="progress-info">
+          <p>{{ t('storageSmart.testingDevice') }}: <strong>{{ currentTestDevice.device }}</strong></p>
+          <p v-if="testProgress > 0">{{ t('storageSmart.progress') }}: {{ testProgress }}%</p>
+          <p v-else>{{ t('storageSmart.testStarting') }}</p>
+        </div>
+        
+        <el-progress 
+          v-if="testProgress > 0"
+          :percentage="testProgress" 
+          :status="testProgress === 100 ? 'success' : 'warning'"
+          :stroke-width="12"
+          :text-inside="true"
+        />
+        
+        <div class="test-actions mt-4">
+          <el-button @click="stopTestMonitoring">{{ t('common.stop') }}</el-button>
+          <el-button type="primary" @click="checkTestProgressNow">{{ t('storageSmart.checkNow') }}</el-button>
+        </div>
+      </div>
+    </el-dialog>
   </el-card>
 </template>
 
@@ -253,7 +423,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@iconify/vue'
 import axios from 'axios'
-import { ElNotification, ElMessage } from 'element-plus'
+import { ElNotification, ElMessage, ElMessageBox } from 'element-plus'
 import { CopyDocument, Loading, Check, Close } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 
@@ -265,6 +435,13 @@ const error = ref(null)
 const smartNotAvailable = ref(false)
 const rawDataDialog = ref(false)
 const currentRawData = ref('')
+const sectorDialog = ref(false)
+const currentSectorDetails = ref(null)
+const currentDevice = ref(null)
+const testProgressDialog = ref(false)
+const currentTestDevice = ref(null)
+const testProgress = ref(0)
+const testMonitorInterval = ref(null)
 const router = useRouter()
 
 axios.defaults.baseURL = `${window.location.protocol}//${window.location.hostname}:${import.meta.env.VITE_API_PORT}`
@@ -273,6 +450,51 @@ const emptyText = computed(() => {
   if (smartNotAvailable.value) return t('storageSmart.smartNotAvailable')
   if (error.value) return t('storageSmart.errorLoading')
   return t('storageSmart.noDevices')
+})
+
+const sectorDetailsTable = computed(() => {
+  if (!currentSectorDetails.value) return []
+  
+  const details = currentSectorDetails.value
+  const t = useI18n().t
+  
+  const tableData = [
+    {
+      type: t('storageSmart.sectorTypes.reallocated'),
+      count: details.reallocated,
+      description: t('storageSmart.sectorDesc.reallocated')
+    },
+    {
+      type: t('storageSmart.sectorTypes.pending'),
+      count: details.pending,
+      description: t('storageSmart.sectorDesc.pending')
+    },
+    {
+      type: t('storageSmart.sectorTypes.offline'),
+      count: details.offline,
+      description: t('storageSmart.sectorDesc.offline')
+    },
+    {
+      type: t('storageSmart.sectorTypes.reported'),
+      count: details.reported,
+      description: t('storageSmart.sectorDesc.reported')
+    },
+    {
+      type: t('storageSmart.sectorTypes.timeout'),
+      count: details.timeout,
+      description: t('storageSmart.sectorDesc.timeout')
+    }
+  ]
+  
+  if (details.gsense > 0) {
+    tableData.push({
+      type: t('storageSmart.sectorTypes.gsense'),
+      count: details.gsense,
+      description: t('storageSmart.sectorDesc.gsense')
+    })
+  }
+  
+  return tableData
 })
 
 const getDeviceIcon = (device) => {
@@ -310,6 +532,7 @@ const getTempIcon = (temp, isSSD) => {
 
 const getStatusIcon = (device) => {
   if (device.badSectors > 0) return 'ph:warning-circle'
+  if (hasPhysicalShocks(device)) return 'ph:activity'
   
   switch (device.status) {
     case 'healthy': return 'ph:check-circle'
@@ -348,6 +571,9 @@ const getStatusText = (device) => {
   if (device.badSectors > 0) {
     return t('storageSmart.statusValues.badSectors')
   }
+  if (hasPhysicalShocks(device)) {
+    return t('storageSmart.statusValues.shocks')
+  }
   if (device.status) {
     return t(`storageSmart.statusValues.${device.status}`) || device.status
   }
@@ -357,6 +583,9 @@ const getStatusText = (device) => {
 const getStatusTagType = (device) => {
   if (device.badSectors > 0) {
     return 'warning'
+  }
+  if (hasPhysicalShocks(device)) {
+    return 'danger'
   }
   switch (device.status) {
     case 'healthy': return 'success'
@@ -379,29 +608,169 @@ const copyInstallCommand = async () => {
   }
 }
 
-const hasCriticalIssues = (device) => {
-  return device.badSectors > 0 || 
-         (device.outOfSpecParams && device.outOfSpecParams.length > 0) ||
-         isTempCritical(device.temperature, device.isSSD)
+const hasPhysicalShocks = (device) => {
+  if (!device.rawData?.ata_smart_attributes?.table) return false
+  
+  const gsenseAttr = device.rawData.ata_smart_attributes.table.find(
+    attr => attr.id === 191 || attr.name === 'G-Sense_Error_Rate'
+  )
+  
+  if (gsenseAttr?.raw?.value) {
+    const gsenseValue = parseInt(gsenseAttr.raw.value)
+    return gsenseValue > 1000
+  }
+  
+  return false
 }
 
-const getCriticalIssuesTooltip = (device) => {
-  const issues = []
+const getShockLevelText = (device) => {
+  if (!device.rawData?.ata_smart_attributes?.table) return null
   
-  if (device.badSectors > 0) {
-    issues.push(`${t('storageSmart.badSectors')}: ${device.badSectors}`)
+  const gsenseAttr = device.rawData.ata_smart_attributes.table.find(
+    attr => attr.id === 191 || attr.name === 'G-Sense_Error_Rate'
+  )
+  
+  if (!gsenseAttr?.raw?.value) return null
+  
+  const value = parseInt(gsenseAttr.raw.value)
+  
+  if (value < 100) return null
+  if (value < 1000) return t('storageSmart.shockLevel.minor')
+  if (value < 10000) return t('storageSmart.shockLevel.moderate')
+  if (value < 100000) return t('storageSmart.shockLevel.severe')
+  return t('storageSmart.shockLevel.critical')
+}
+
+const needsRepair = (device) => {
+  return (
+    device.badSectors > 0 ||
+    (device.outOfSpecParams && device.outOfSpecParams.length > 0) ||
+    device.status === 'warning' ||
+    device.status === 'error' ||
+    isTempCritical(device.temperature, device.isSSD) ||
+    hasHighLoadCycleCount(device.rawData) ||
+    hasEndToEndErrors(device.rawData) ||
+    hasPhysicalShocks(device)
+  )
+}
+
+const getSectorDetails = (smartData) => {
+  if (!smartData?.ata_smart_attributes?.table) return null
+  
+  const details = {
+    reallocated: 0,
+    pending: 0,
+    offline: 0,
+    reported: 0,
+    timeout: 0,
+    gsense: 0,
+    total: 0
+  }
+  
+  const attributeMap = [
+    { id: 5, key: 'reallocated', name: 'Reallocated Sectors' },
+    { id: 197, key: 'pending', name: 'Pending Sectors' },
+    { id: 198, key: 'offline', name: 'Offline Uncorrectable' },
+    { id: 187, key: 'reported', name: 'Reported Uncorrectable' },
+    { id: 188, key: 'timeout', name: 'Command Timeout' },
+    { id: 191, key: 'gsense', name: 'G-Sense Error Rate' }
+  ]
+  
+  attributeMap.forEach(item => {
+    const attr = smartData.ata_smart_attributes.table.find(a => a.id === item.id)
+    if (attr?.raw?.value !== undefined) {
+      details[item.key] = parseInt(attr.raw.value)
+    }
+  })
+  
+  details.total = details.reallocated + details.pending + details.offline + details.reported + details.timeout
+  
+  return details
+}
+
+const getRepairTooltip = (device) => {
+  if (!device.available) {
+    return t('storageSmart.deviceUnavailable')
+  }
+  
+  const issues = []
+  const sectorDetails = getSectorDetails(device.rawData)
+  const shockLevel = getShockLevelText(device)
+  
+  if (shockLevel) {
+    issues.push(`🚨 ${shockLevel}`)
+  }
+  
+  if (sectorDetails) {
+    if (sectorDetails.reallocated > 0) {
+      issues.push(`${t('storageSmart.sectorTypes.reallocated')}: ${sectorDetails.reallocated}`)
+    }
+    if (sectorDetails.pending > 0) {
+      issues.push(`${t('storageSmart.sectorTypes.pending')}: ${sectorDetails.pending}`)
+    }
+    if (sectorDetails.offline > 0) {
+      issues.push(`${t('storageSmart.sectorTypes.offline')}: ${sectorDetails.offline}`)
+    }
+    if (sectorDetails.reported > 0) {
+      issues.push(`${t('storageSmart.sectorTypes.reported')}: ${sectorDetails.reported}`)
+    }
+    if (sectorDetails.timeout > 0) {
+      issues.push(`${t('storageSmart.sectorTypes.timeout')}: ${sectorDetails.timeout}`)
+    }
+    if (sectorDetails.gsense > 1000) {
+      issues.push(`${t('storageSmart.sectorTypes.gsense')}: ${sectorDetails.gsense}`)
+    }
   }
   
   if (device.outOfSpecParams && device.outOfSpecParams.length > 0) {
     issues.push(`${t('storageSmart.outOfSpecParams')}: ${device.outOfSpecParams.length}`)
   }
   
-  if (isTempCritical(device.temperature, device.isSSD)) {
-    const limit = device.isSSD ? TEMP_LIMIT_SSD : TEMP_LIMIT_HDD
-    issues.push(`${t('storageSmart.highTemp')}: ${device.temperature}°C (${t('storageSmart.max')} ${limit}°C)`)
+  if (device.status && device.status !== 'healthy') {
+    issues.push(`${t('storageSmart.status')}: ${device.status}`)
   }
   
-  return issues.join('\n')
+  if (hasHighLoadCycleCount(device.rawData)) {
+    issues.push(t('storageSmart.highLoadCycle'))
+  }
+  
+  if (hasEndToEndErrors(device.rawData)) {
+    issues.push(t('storageSmart.endToEndErrors'))
+  }
+  
+  if (isTempCritical(device.temperature, device.isSSD)) {
+    issues.push(t('storageSmart.criticalTemperature'))
+  }
+  
+  if (issues.length > 0) {
+    return `${t('storageSmart.needsRepair')}:\n${issues.join('\n• ')}`
+  }
+  
+  return t('storageSmart.deviceHealthy')
+}
+
+const hasHighLoadCycleCount = (smartData) => {
+  if (!smartData?.ata_smart_attributes?.table) return false
+  
+  const loadCycleAttr = smartData.ata_smart_attributes.table.find(
+    attr => attr.id === 193 || attr.name === 'Load_Cycle_Count'
+  )
+  
+  if (loadCycleAttr?.raw?.value) {
+    return parseInt(loadCycleAttr.raw.value) > 300000
+  }
+  
+  return false
+}
+
+const hasEndToEndErrors = (smartData) => {
+  if (!smartData?.ata_smart_attributes?.table) return false
+  
+  const e2eAttr = smartData.ata_smart_attributes.table.find(
+    attr => attr.id === 184 || attr.name === 'End-to-End_Error'
+  )
+  
+  return e2eAttr?.raw?.value > 0
 }
 
 const isTempCritical = (temp, isSSD = false) => {
@@ -512,13 +881,23 @@ const toggleMonitoring = async (device) => {
 const calculateBadSectors = (smartData) => {
   if (!smartData?.ata_smart_attributes?.table) return 0
   
-  const reallocated = smartData.ata_smart_attributes.table.find(a => a.id === 5)
-  const pending = smartData.ata_smart_attributes.table.find(a => a.id === 197)
-  const offline = smartData.ata_smart_attributes.table.find(a => a.id === 198)
+  const attributeIds = {
+    reallocated: 5,
+    pending: 197,
+    offline: 198,
+    reported: 187,
+    commandTimeout: 188
+  }
   
-  return (reallocated?.raw?.value || 0) + 
-         (pending?.raw?.value || 0) + 
-         (offline?.raw?.value || 0)
+  let total = 0
+  for (const [key, id] of Object.entries(attributeIds)) {
+    const attr = smartData.ata_smart_attributes.table.find(a => a.id === id)
+    if (attr?.raw?.value !== undefined) {
+      total += parseInt(attr.raw.value)
+    }
+  }
+  
+  return total
 }
 
 const checkOutOfSpecParams = (smartData) => {
@@ -551,6 +930,372 @@ const extractTemperature = (smartData) => {
   }
   
   return null
+}
+
+const handleRepairCommand = async (command, device) => {
+  switch (command) {
+    case 'bad-sectors':
+      await repairBadSectors(device)
+      break
+    case 'extended-test':
+      await runExtendedTest(device)
+      break
+    case 'load-cycle':
+      await fixLoadCycleCount(device)
+      break
+    case 'refresh-attrs':
+      await refreshAttributes(device)
+      break
+    case 'auto-offline':
+      await enableAutoOffline(device)
+      break
+    case 'secure-erase':
+      await secureErase(device)
+      break
+    case 'check-status':
+      await checkRepairStatus(device)
+      break
+    case 'sector-details':
+      await showSectorDetails(device)
+      break
+    case 'physical-issues':
+      await fixPhysicalIssues(device)
+      break
+  }
+}
+
+const repairBadSectors = async (device) => {
+  try {
+    loading.value = true
+    const response = await axios.post('/api/storage/smart/repair-bad-sectors', {
+      device: device.device
+    })
+    
+    if (response.data.testStarted) {
+      ElNotification.success({
+        title: t('storageSmart.repairStarted'),
+        message: `Test SMART dla ${device.device} został uruchomiony`,
+        duration: 3000
+      })
+      
+      startTestMonitoring(device, response.data.testActive)
+    } else {
+      ElNotification.warning({
+        title: t('storageSmart.repairWarning'),
+        message: response.data.message || t('storageSmart.testMayNotStart'),
+        duration: 5000
+      })
+    }
+    
+  } catch (error) {
+    ElNotification.error({
+      title: t('storageSmart.repairError'),
+      message: error.response?.data?.error || t('storageSmart.failedToStartRepair'),
+      duration: 5000
+    })
+  } finally {
+    loading.value = false
+  }
+}
+
+const startTestMonitoring = (device, isActive) => {
+  currentTestDevice.value = device
+  testProgress.value = 0
+  testProgressDialog.value = true
+  
+  if (isActive) {
+    testMonitorInterval.value = setInterval(() => {
+      checkTestProgress()
+    }, 10000)
+  }
+}
+
+const checkTestProgress = async () => {
+  if (!currentTestDevice.value) return
+  
+  try {
+    const response = await axios.get(`/api/storage/smart/test-status/${encodeURIComponent(currentTestDevice.value.device)}`)
+    
+    if (response.data.testActive) {
+      testProgress.value = response.data.progress
+    } else {
+      stopTestMonitoring()
+      ElNotification.success({
+        title: t('storageSmart.testCompleted'),
+        message: t('storageSmart.testFinishedSuccess'),
+        duration: 5000
+      })
+      fetchDevices()
+    }
+  } catch (error) {
+    console.error('Error checking test progress:', error)
+  }
+}
+
+const checkTestProgressNow = () => {
+  if (testMonitorInterval.value) {
+    clearInterval(testMonitorInterval.value)
+  }
+  checkTestProgress()
+  testMonitorInterval.value = setInterval(() => {
+    checkTestProgress()
+  }, 10000)
+}
+
+const stopTestMonitoring = () => {
+  if (testMonitorInterval.value) {
+    clearInterval(testMonitorInterval.value)
+    testMonitorInterval.value = null
+  }
+  testProgressDialog.value = false
+  currentTestDevice.value = null
+}
+
+const runExtendedTest = async (device) => {
+  const confirmed = await ElMessageBox.confirm(
+    `${t('storageSmart.extendedTestWarning1')} ${device.device} ${t('storageSmart.extendedTestWarning2')}<br>${t('storageSmart.continueQuestion')}`,
+    t('storageSmart.runExtendedTest'),
+    {
+      confirmButtonText: t('common.run'),
+      cancelButtonText: t('common.cancel'),
+      type: 'warning',
+      dangerouslyUseHTMLString: true
+    }
+  )
+  
+  if (!confirmed) return
+  
+  try {
+    loading.value = true
+    const response = await axios.post('/api/storage/smart/run-extended-test', {
+      device: device.device
+    })
+    
+    ElNotification.success({
+      title: t('storageSmart.testStarted'),
+      message: response.data.message,
+      duration: 5000
+    })
+    
+    startTestMonitoring(device, true)
+    
+  } catch (error) {
+    ElNotification.error({
+      title: t('common.error'),
+      message: error.response?.data?.error || t('storageSmart.failedToStartTest'),
+      duration: 5000
+    })
+  } finally {
+    loading.value = false
+  }
+}
+
+const fixLoadCycleCount = async (device) => {
+  try {
+    loading.value = true
+    const response = await axios.post('/api/storage/smart/fix-load-cycle-count', {
+      device: device.device
+    })
+    
+    ElNotification.success({
+      title: t('storageSmart.loadCycleRepair'),
+      message: response.data.message,
+      duration: 5000
+    })
+    
+  } catch (error) {
+    ElNotification.error({
+      title: t('common.error'),
+      message: error.response?.data?.error || t('storageSmart.failedToApplyFixes'),
+      duration: 5000
+    })
+  } finally {
+    loading.value = false
+  }
+}
+
+const refreshAttributes = async (device) => {
+  try {
+    loading.value = true
+    const response = await axios.post('/api/storage/smart/refresh-attributes', {
+      device: device.device
+    })
+    
+    ElNotification.success({
+      title: t('storageSmart.attributesRefreshed'),
+      message: t('storageSmart.smartAttributesRefreshed'),
+      duration: 3000
+    })
+    
+    fetchDevices()
+    
+  } catch (error) {
+    ElNotification.error({
+      title: t('common.error'),
+      message: error.response?.data?.error || t('storageSmart.failedToRefreshAttributes'),
+      duration: 5000
+    })
+  } finally {
+    loading.value = false
+  }
+}
+
+const enableAutoOffline = async (device) => {
+  try {
+    loading.value = true
+    const response = await axios.post('/api/storage/smart/enable-automatic-offline', {
+      device: device.device
+    })
+    
+    ElNotification.success({
+      title: t('storageSmart.autoRepairEnabled'),
+      message: response.data.message,
+      duration: 5000
+    })
+    
+  } catch (error) {
+    ElNotification.error({
+      title: t('common.error'),
+      message: error.response?.data?.error || t('storageSmart.failedToEnableAutoRepair'),
+      duration: 5000
+    })
+  } finally {
+    loading.value = false
+  }
+}
+
+const secureErase = async (device) => {
+  const confirmed = await ElMessageBox.confirm(
+    `${t('storageSmart.secureEraseWarning1')} ${device.device}!<br><br>
+    <strong>${t('storageSmart.secureEraseWarning2')}</strong><br>
+    ${t('storageSmart.continueQuestion')}`,
+    t('storageSmart.ataSecureErase'),
+    {
+      confirmButtonText: t('storageSmart.yesEraseAll'),
+      cancelButtonText: t('common.cancel'),
+      type: 'error',
+      dangerouslyUseHTMLString: true,
+      confirmButtonClass: 'el-button--danger'
+    }
+  )
+  
+  if (!confirmed) return
+  
+  try {
+    loading.value = true
+    const response = await axios.post('/api/storage/smart/ata-secure-erase', {
+      device: device.device
+    })
+    
+    ElNotification.success({
+      title: t('storageSmart.secureEraseCompleted'),
+      message: t('storageSmart.allDataSecurelyErased'),
+      duration: 10000
+    })
+    
+    fetchDevices()
+    
+  } catch (error) {
+    ElNotification.error({
+      title: t('storageSmart.secureEraseError'),
+      message: error.response?.data?.error || t('storageSmart.operationFailed'),
+      duration: 10000
+    })
+  } finally {
+    loading.value = false
+  }
+}
+
+const checkRepairStatus = async (device) => {
+  try {
+    loading.value = true
+    const response = await axios.get(`/api/storage/smart/repair-status/${encodeURIComponent(device.device)}`)
+    
+    const statusText = response.data.testsInProgress 
+      ? t('storageSmart.testsInProgress') 
+      : t('storageSmart.noActiveTests')
+    
+    let message = `<pre>${t('storageSmart.repairStatus')}: ${statusText}\n\n${t('storageSmart.attributes')}:\n`
+    message += `• ${t('storageSmart.sectorTypes.reallocated')}: ${response.data.attributes.badSectors}\n`
+    message += `• ${t('storageSmart.sectorTypes.pending')}: ${response.data.attributes.pendingSectors}\n`
+    message += `• ${t('storageSmart.sectorTypes.offline')}: ${response.data.attributes.offlineUncorrectable}\n`
+    message += `• ${t('storageSmart.loadCycleCount')}: ${response.data.attributes.loadCycleCount}\n`
+    message += `• ${t('storageSmart.endToEndError')}: ${response.data.attributes.endToEndError}\n`
+    message += `• ${t('storageSmart.gSenseErrorRate')}: ${response.data.attributes.gSenseErrorRate}\n`
+    message += `• ${t('storageSmart.temperature')}: ${response.data.attributes.temperature}°C\n</pre>`
+    
+    ElMessageBox.alert(
+      message,
+      t('storageSmart.repairStatus'),
+      {
+        dangerouslyUseHTMLString: true,
+        confirmButtonText: 'OK',
+        customClass: 'repair-status-dialog'
+      }
+    )
+    
+  } catch (error) {
+    ElNotification.error({
+      title: t('common.error'),
+      message: error.response?.data?.error || t('storageSmart.failedToGetStatus'),
+      duration: 5000
+    })
+  } finally {
+    loading.value = false
+  }
+}
+
+const showSectorDetails = async (device) => {
+  try {
+    loading.value = true
+    currentDevice.value = device
+    
+    const response = await axios.get(`/api/storage/smart/sector-details/${encodeURIComponent(device.device)}`)
+    
+    if (response.data.success) {
+      currentSectorDetails.value = response.data.sectorDetails
+      sectorDialog.value = true
+    }
+  } catch (error) {
+    currentSectorDetails.value = getSectorDetails(device.rawData)
+    sectorDialog.value = true
+  } finally {
+    loading.value = false
+  }
+}
+
+const fixPhysicalIssues = async (device) => {
+  try {
+    loading.value = true
+    const response = await axios.post('/api/storage/smart/fix-physical-issues', {
+      device: device.device
+    })
+    
+    ElMessageBox.alert(
+      `<strong>${t('storageSmart.physicalIssuesDiagnosis')}:</strong><br><br>
+      <strong>${t('storageSmart.gSenseErrorRate')}:</strong> ${response.data.gSenseErrorRate}<br>
+      <strong>${t('storageSmart.shockLevel')}:</strong> ${response.data.shockLevel}<br><br>
+      <strong>${t('storageSmart.recommendations')}:</strong><br>
+      ${response.data.recommendations.join('<br>')}`,
+      t('storageSmart.physicalShockProblem'),
+      {
+        dangerouslyUseHTMLString: true,
+        confirmButtonText: t('common.understand'),
+        customClass: 'shock-alert-dialog'
+      }
+    )
+    
+    startTestMonitoring(device, true)
+    
+  } catch (error) {
+    ElNotification.error({
+      title: t('storageSmart.diagnosisError'),
+      message: error.response?.data?.error || t('storageSmart.failedToDiagnosePhysical'),
+      duration: 5000
+    })
+  } finally {
+    loading.value = false
+  }
 }
 
 onMounted(async () => {
@@ -649,7 +1394,6 @@ onMounted(async () => {
   font-size: 13px;
 }
 
-/* KLUCZOWA POPRAWKA: Naprawa łamania tekstu w nagłówkach */
 .devices-table :deep(.el-table) {
   --el-table-border-color: var(--el-border-color-lighter);
   --el-table-header-bg-color: var(--el-fill-color-light);
@@ -675,11 +1419,10 @@ onMounted(async () => {
   border: none;
   height: 40px;
   vertical-align: middle;
-  white-space: nowrap !important; /* NIE łam tekstu! */
+  white-space: nowrap !important;
   overflow: visible !important;
 }
 
-/* TO JEST KLUCZOWE: Style dla komórek nagłówka */
 .devices-table :deep(.el-table__header .cell) {
   white-space: nowrap !important;
   overflow: visible !important;
@@ -691,7 +1434,6 @@ onMounted(async () => {
   line-height: 1.2;
 }
 
-/* Dla kolumn z align center i right */
 .devices-table :deep(.el-table__header th.is-center .cell) {
   justify-content: center;
 }
@@ -763,6 +1505,7 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  position: relative;
 }
 
 .device-name {
@@ -789,6 +1532,30 @@ onMounted(async () => {
 .hdd-tag {
   background: var(--el-color-info-light-8);
   color: var(--el-color-info-dark-2);
+}
+
+.shock-indicator {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--el-color-danger);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  animation: shake 0.5s infinite alternate;
+}
+
+@keyframes shake {
+  0% { transform: translateX(0); }
+  25% { transform: translateX(-1px); }
+  50% { transform: translateX(1px); }
+  75% { transform: translateX(-1px); }
+  100% { transform: translateX(0); }
 }
 
 .model-text {
@@ -942,7 +1709,7 @@ onMounted(async () => {
   flex-shrink: 0;
 }
 
-.warning-indicator {
+.repair-needed-indicator {
   width: 20px;
   height: 20px;
   border-radius: 50%;
@@ -953,10 +1720,34 @@ onMounted(async () => {
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
+  animation: pulse 2s infinite;
 }
 
-.warning-indicator:hover {
+.repair-needed-indicator:hover {
   background: var(--el-color-warning-light-6);
+}
+
+@keyframes pulse {
+  0% { opacity: 0.7; }
+  50% { opacity: 1; }
+  100% { opacity: 0.7; }
+}
+
+.repair-buttons {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.repair-buttons .el-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.button-text {
+  margin-left: 4px;
+  font-size: 12px;
 }
 
 .action-buttons {
@@ -1000,7 +1791,93 @@ onMounted(async () => {
   color: var(--el-text-color-primary);
 }
 
-/* TRYB CIEMNY - POPRAWIŁEM */
+.sector-details-dialog {
+  border-radius: 8px;
+}
+
+.sector-details-container {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.sector-summary {
+  background: var(--el-color-warning-light-9);
+  border: 1px solid var(--el-color-warning-light-8);
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 20px;
+  text-align: center;
+  position: relative;
+}
+
+.sector-summary h4 {
+  margin: 0;
+  color: var(--el-color-warning);
+  font-size: 18px;
+}
+
+.shock-warning {
+  margin-top: 10px;
+  padding: 8px;
+  background: var(--el-color-danger-light-9);
+  border-radius: 4px;
+  color: var(--el-color-danger);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.sector-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.sector-info {
+  margin-top: 16px;
+}
+
+.info-content p {
+  margin: 8px 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.shock-info {
+  padding: 10px;
+  background: var(--el-color-danger-light-8);
+  border-radius: 4px;
+  margin-top: 15px !important;
+  border-left: 4px solid var(--el-color-danger);
+}
+
+.test-progress-dialog {
+  border-radius: 8px;
+}
+
+.progress-container {
+  padding: 20px;
+}
+
+.progress-info {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.progress-info p {
+  margin: 8px 0;
+  font-size: 14px;
+}
+
+.test-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
 :global(.dark) .storage-smart-widget {
   background: var(--el-bg-color-overlay);
   border-color: var(--el-border-color);
@@ -1046,7 +1923,6 @@ onMounted(async () => {
   color: var(--el-text-color-primary);
 }
 
-/* NAPRAWIŁEM TABELĘ W TRYBIE CIEMNYM */
 :global(.dark) .devices-table :deep(.el-table) {
   --el-table-border-color: var(--el-border-color);
   --el-table-header-bg-color: var(--el-fill-color-dark);
@@ -1110,6 +1986,20 @@ onMounted(async () => {
   color: var(--el-color-info-light-3);
 }
 
+:global(.dark) .shock-indicator {
+  background: var(--el-color-danger);
+  color: white;
+  animation: shake-dark 0.5s infinite alternate;
+}
+
+@keyframes shake-dark {
+  0% { transform: translateX(0); opacity: 0.8; }
+  25% { transform: translateX(-1px); opacity: 0.9; }
+  50% { transform: translateX(1px); opacity: 1; }
+  75% { transform: translateX(-1px); opacity: 0.9; }
+  100% { transform: translateX(0); opacity: 0.8; }
+}
+
 :global(.dark) .temp-cell.temp-normal {
   background: var(--el-color-success-dark-9);
   color: var(--el-color-success-light-3);
@@ -1158,13 +2048,16 @@ onMounted(async () => {
   border-color: var(--el-color-info-dark-7);
 }
 
-:global(.dark) .warning-indicator {
+:global(.dark) .repair-needed-indicator {
   background: var(--el-color-warning-dark-8);
   color: var(--el-color-warning-light-3);
+  animation: pulse-dark 2s infinite;
 }
 
-:global(.dark) .warning-indicator:hover {
-  background: var(--el-color-warning-dark-6);
+@keyframes pulse-dark {
+  0% { opacity: 0.5; }
+  50% { opacity: 0.8; }
+  100% { opacity: 0.5; }
 }
 
 :global(.dark) .action-btn {
@@ -1184,7 +2077,25 @@ onMounted(async () => {
   border-color: var(--el-border-color);
 }
 
-/* Scrollbar styling dla trybu ciemnego */
+:global(.dark) .sector-summary {
+  background: var(--el-color-warning-dark-9);
+  border-color: var(--el-color-warning-dark-8);
+}
+
+:global(.dark) .sector-summary h4 {
+  color: var(--el-color-warning-light-3);
+}
+
+:global(.dark) .shock-warning {
+  background: var(--el-color-danger-dark-9);
+  color: var(--el-color-danger-light-3);
+}
+
+:global(.dark) .shock-info {
+  background: var(--el-color-danger-dark-8);
+  border-left-color: var(--el-color-danger);
+}
+
 :global(.dark) .raw-data-container::-webkit-scrollbar-track {
   background: var(--el-fill-color-dark);
 }
@@ -1193,7 +2104,6 @@ onMounted(async () => {
   background: var(--el-border-color);
 }
 
-/* Animacje */
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -1211,7 +2121,6 @@ onMounted(async () => {
   animation: spin 1s linear infinite;
 }
 
-/* Responsywność */
 @media (max-width: 1400px) {
   .devices-table {
     font-size: 12px;
@@ -1246,6 +2155,14 @@ onMounted(async () => {
     font-size: 11px;
     padding: 3px 8px;
   }
+  
+  .repair-buttons .el-button {
+    font-size: 11px;
+  }
+  
+  .button-text {
+    font-size: 11px;
+  }
 }
 
 @media (max-width: 1200px) {
@@ -1261,9 +2178,32 @@ onMounted(async () => {
   .error-container {
     margin: 14px;
   }
+  
+  .repair-buttons {
+    flex-direction: column;
+    gap: 4px;
+  }
 }
 
-/* Scrollbar styling */
+@media (max-width: 768px) {
+  .device-cell {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  
+  .device-info {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+  }
+  
+  .sector-details-dialog,
+  .test-progress-dialog {
+    width: 95% !important;
+  }
+}
+
 .raw-data-container::-webkit-scrollbar {
   width: 6px;
 }
@@ -1274,6 +2214,20 @@ onMounted(async () => {
 }
 
 .raw-data-container::-webkit-scrollbar-thumb {
+  background: var(--el-border-color);
+  border-radius: 3px;
+}
+
+.sector-details-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sector-details-container::-webkit-scrollbar-track {
+  background: var(--el-fill-color-light);
+  border-radius: 3px;
+}
+
+.sector-details-container::-webkit-scrollbar-thumb {
   background: var(--el-border-color);
   border-radius: 3px;
 }

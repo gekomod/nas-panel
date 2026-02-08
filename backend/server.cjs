@@ -31,6 +31,7 @@ const LogsRoutes = require('./src/api/logs.cjs');
 const PowerRoutes = require('./src/api/power.cjs');
 const MediaRoutes = require('./src/api/media.cjs');
 const VPNRoutes = require('./src/api/vpn.cjs');
+const LoadBalancer = require('./src/api/loadbalancer.cjs');
 
 const os = require('os');
 const { publicIpv4 } = require('public-ip');
@@ -227,6 +228,7 @@ LogsRoutes(app, requireAuth);
 PowerRoutes(app, requireAuth);
 MediaRoutes(app, requireAuth);
 VPNRoutes(app, requireAuth);
+LoadBalancer(app, requireAuth);
 
 // Zmieniamy funkcję logowania:
 app.post('/api/login', async (req, res) => {

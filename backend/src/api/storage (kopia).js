@@ -1239,174 +1239,69 @@ module.exports = function(app, requireAuth) {
     }
   }
 
-app.post('/api/storage/scan-lvm', requireAuth, async (req, res) => {
-  try {
-    await execAsync('sudo vgscan');
-    await execAsync('sudo vgchange -ay');
+  app.post('/api/storage/mount', requireAuth, async (req, res) => {
+    const { device, mountPoint, fsType, options, zfsPoolName } = req.body;
     
-    res.json({
-      success: true,
-      message: 'LVM volumes scanned and activated'
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Failed to scan LVM volumes',
-      details: error.message
-    });
-  }
-});
-
-// Add RAID activation before mount
-app.post('/api/storage/scan-raid', requireAuth, async (req, res) => {
-  try {
-    await execAsync('sudo mdadm --assemble --scan');
-    
-    res.json({
-      success: true,
-      message: 'RAID arrays assembled'
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Failed to assemble RAID arrays',
-      details: error.message
-    });
-  }
-});
-
-// RAID endpoints
-app.get('/api/storage/raid', requireAuth, async (req, res) => {
-  try {
-    const { stdout } = await execAsync('cat /proc/mdstat');
-    // Parse mdstat output
-    const raidDevices = [];
-    // ... parsing logic
-    res.json({ success: true, data: raidDevices });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-app.post('/api/storage/raid/start', requireAuth, async (req, res) => {
-  const { device } = req.body;
-  try {
-    await execAsync(`mdadm --assemble ${device}`);
-    res.json({ success: true, message: 'RAID array started' });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// LVM endpoints
-app.get('/api/storage/lvm', requireAuth, async (req, res) => {
-  try {
-    const { stdout } = await execAsync('lvs --units b --noheadings -o lv_name,vg_name,lv_size');
-    // Parse LVM output
-    const lvmVolumes = [];
-    // ... parsing logic
-    res.json({ success: true, data: lvmVolumes });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-app.post('/api/storage/mount', requireAuth, async (req, res) => {
-  const { device, mountPoint, fsType, options, zfsPoolName } = req.body;
-  
-  if (!device || !device.startsWith('/dev/')) {
-    return res.status(400).json({
-      success: false,
-      error: 'Invalid device path',
-      details: 'Device must start with /dev/'
-    });
-  }
-
-  try {
-    let detectedFsType = fsType;
-    let mountCmd;
-    let actualMountPoint = mountPoint;
-
-    // Detect filesystem type
-    if (!detectedFsType || detectedFsType === 'auto') {
-      try {
-        const { stdout } = await execAsync(`blkid -o value -s TYPE ${device} 2>/dev/null || true`);
-        detectedFsType = stdout.trim().toLowerCase();
-        if (!detectedFsType) {
-          // Try with lsblk
-          const { stdout: lsblkOut } = await execAsync(`lsblk -o FSTYPE -n ${device} 2>/dev/null || true`);
-          detectedFsType = lsblkOut.trim().toLowerCase();
-        }
-      } catch (detectError) {
-        detectedFsType = 'auto';
-      }
-    }
-
-    const isRaidDevice = device.includes('/dev/md');
-    const isZfs = detectedFsType === 'zfs';
-    const isLvm = device.includes('/dev/mapper/') || device.includes('/dev/dm-');
-    
-    // Create mount point directory
-    if (!isZfs) {
-      if (!mountPoint) {
-        return res.status(400).json({
-          success: false,
-          error: 'Mount point is required',
-          details: 'Please specify a mount point'
-        });
-      }
-      await execAsync(`mkdir -p "${mountPoint}"`);
-    }
-
-    // Construct mount command based on device type
-    if (isRaidDevice) {
-      mountCmd = `sudo mount ${detectedFsType !== 'auto' ? `-t ${detectedFsType}` : ''} ${options ? `-o ${options}` : ''} ${device} ${mountPoint}`;
-    } else if (isZfs) {
-      mountCmd = `sudo zpool import ${zfsPoolName || 'zpool'} && sudo zfs mount ${zfsPoolName || 'zpool'}`;
-      actualMountPoint = `/mnt/${zfsPoolName || 'zpool'}`;
-    } else if (isLvm) {
-      // For LVM, try auto detection first
-      mountCmd = `sudo mount ${device} ${mountPoint}`;
-      if (options && options !== 'defaults,nofail') {
-        mountCmd = `sudo mount -o ${options} ${device} ${mountPoint}`;
-      }
-    } else {
-      // Regular device/partition
-      mountCmd = `sudo mount -t ${detectedFsType !== 'auto' ? detectedFsType : 'auto'} ${options ? `-o ${options}` : ''} ${device} ${mountPoint}`;
-    }
-
-    console.log(`Mount command: ${mountCmd}`);
-    const { stdout, stderr } = await execAsync(mountCmd);
-    
-    // Verify mount
-    let verifyCmd;
-    if (isZfs) {
-      verifyCmd = `sudo zfs list -H -o mounted ${zfsPoolName || 'zpool'}`;
-    } else {
-      verifyCmd = `findmnt -n -o SOURCE --target ${mountPoint}`;
+    if (!device || !device.startsWith('/dev/')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid device path',
+        details: 'Device must start with /dev/'
+      });
     }
 
     try {
+      let detectedFsType = fsType;
+      let mountCmd;
+      let actualMountPoint = mountPoint;
+
+      if (!detectedFsType || detectedFsType === 'auto') {
+        try {
+          const { stdout } = await execAsync(`blkid -o value -s TYPE ${device}`);
+          detectedFsType = stdout.trim().toLowerCase();
+          if (!detectedFsType) throw new Error('Cannot detect filesystem');
+        } catch (detectError) {
+          detectedFsType = 'auto';
+        }
+      }
+
+      const isRaidDevice = device.includes('/dev/md');
+      const isZfs = detectedFsType === 'zfs';
+      
+      if (isRaidDevice) {
+        await execAsync(`mkdir -p "${mountPoint}"`);
+        mountCmd = `mount ${detectedFsType ? `-t ${detectedFsType}` : ''} ${options ? `-o ${options}` : ''} ${device} ${mountPoint}`;
+      } else if (isZfs) {
+        mountCmd = `sudo zpool import ${zfsPoolName || 'zpool'} && sudo zfs mount ${device}`;
+        actualMountPoint = zfsPoolName || 'zpool';
+      } else {
+        if (!mountPoint) {
+          return res.status(400).json({
+            success: false,
+            error: 'Mount point is required',
+            details: 'Please specify a mount point for non-ZFS filesystems'
+          });
+        }
+        await execAsync(`mkdir -p "${mountPoint}"`);
+        mountCmd = `mount -t ${detectedFsType} -o ${options || 'defaults'} ${device} ${mountPoint}`;
+      }
+
+      const { stdout, stderr } = await execAsync(mountCmd);
+      
+      let verifyCmd;
+      if (isZfs) {
+        verifyCmd = `sudo zfs list -H -o mounted ${device}`;
+      } else {
+        verifyCmd = `findmnt -n -o SOURCE --target ${mountPoint}`;
+      }
+
       const { stdout: verifyStdout } = await execAsync(verifyCmd);
-      const isMounted = isZfs 
-        ? verifyStdout.trim() === 'yes'
-        : verifyStdout.trim() === device;
-
-      if (!isMounted) {
+      
+      if ((isZfs && verifyStdout.trim() !== 'yes') || (!isZfs && verifyStdout.trim() !== device)) {
         throw new Error('Mount verification failed');
       }
-    } catch (verifyError) {
-      console.log('Mount verification failed, trying alternative check...');
-      // Alternative check
-      const { stdout: mountCheck } = await execAsync(`mount | grep ${mountPoint}`);
-      if (!mountCheck.includes(device)) {
-        throw new Error('Mount verification failed');
-      }
-    }
 
-    // Add to fstab if not ZFS
-    if (!isZfs && !isRaidDevice) {
-      try {
+      if (!isZfs && !isRaidDevice) {
         const fstabEntries = await readFstab();
         const existingEntry = fstabEntries.find(entry => {
           const parts = entry.split(/\s+/);
@@ -1414,54 +1309,43 @@ app.post('/api/storage/mount', requireAuth, async (req, res) => {
         });
 
         if (!existingEntry) {
-          const fsTypeForFstab = detectedFsType !== 'auto' ? detectedFsType : 'auto';
-          const newEntry = `${device} ${mountPoint} ${fsTypeForFstab} ${options || 'defaults,nofail'} 0 2`;
+          const newEntry = `${device} ${mountPoint} ${detectedFsType} ${options || 'defaults'} 0 2`;
           fstabEntries.push(newEntry);
           await writeFstab(fstabEntries);
         }
-      } catch (fstabError) {
-        console.warn('Failed to update fstab:', fstabError);
       }
+
+      res.json({
+        success: true,
+        message: 'Device mounted successfully',
+        mountPoint: actualMountPoint,
+        device: device,
+        detectedFsType: detectedFsType,
+        isZfs: isZfs,
+        isRaid: isRaidDevice,
+        addedToFstab: !isZfs && !isRaidDevice
+      });
+    } catch (error) {
+      let errorDetails = error.stderr || error.message;
+
+      if (errorDetails.includes('already mounted')) {
+        errorDetails = 'Device is already mounted';
+      } else if (errorDetails.includes('no such pool')) {
+        errorDetails = 'ZFS pool does not exist';
+      } else if (errorDetails.includes('wrong fs type')) {
+        errorDetails = 'Wrong filesystem type or corrupted device';
+      } else if (errorDetails.includes('no such device')) {
+        errorDetails = 'Device does not exist';
+      }
+
+      res.status(500).json({
+        success: false,
+        error: 'Failed to mount device',
+        details: errorDetails,
+        command: error.cmd
+      });
     }
-
-    res.json({
-      success: true,
-      message: 'Device mounted successfully',
-      mountPoint: actualMountPoint,
-      device: device,
-      detectedFsType: detectedFsType,
-      isZfs: isZfs,
-      isRaid: isRaidDevice,
-      isLvm: isLvm,
-      addedToFstab: !isZfs && !isRaidDevice
-    });
-  } catch (error) {
-    console.error('Mount error:', error);
-    let errorDetails = error.stderr || error.message;
-
-    // User-friendly error messages
-    if (errorDetails.includes('already mounted')) {
-      errorDetails = 'Device is already mounted';
-    } else if (errorDetails.includes('no such pool')) {
-      errorDetails = 'ZFS pool does not exist';
-    } else if (errorDetails.includes('wrong fs type')) {
-      errorDetails = 'Wrong filesystem type. Try formatting the device first.';
-    } else if (errorDetails.includes('no such device')) {
-      errorDetails = 'Device does not exist';
-    } else if (errorDetails.includes('permission denied')) {
-      errorDetails = 'Permission denied. Try using sudo or check permissions.';
-    } else if (errorDetails.includes('unknown filesystem')) {
-      errorDetails = 'Unknown filesystem type. The device may need to be formatted.';
-    }
-
-    res.status(500).json({
-      success: false,
-      error: 'Failed to mount device',
-      details: errorDetails,
-      command: error.cmd
-    });
-  }
-});
+  });
 
   app.post('/api/storage/unmount', requireAuth, async (req, res) => {
     const { mountPoint } = req.body;
@@ -1884,39 +1768,6 @@ app.post('/api/storage/mount', requireAuth, async (req, res) => {
       });
     }
   });
-  
-  app.get('/api/storage/lvm-volumes', requireAuth, async (req, res) => {
-  try {
-    const { stdout } = await execAsync('sudo lvs --units b --separator ";" --noheadings -o lv_name,vg_name,lv_size,lv_path 2>/dev/null || true');
-    
-    const volumes = stdout.split('\n')
-      .filter(line => line.trim())
-      .map(line => {
-        const [name, vg, size, path] = line.split(';').map(s => s.trim());
-        return {
-          name,
-          vg,
-          path: path || `/dev/mapper/${vg}-${name}`,
-          size: parseInt(size) || 0,
-          fstype: 'lvm'
-        };
-      })
-      .filter(vol => vol.path && vol.size > 0);
-    
-    res.json({
-      success: true,
-      volumes
-    });
-  } catch (error) {
-    console.error('Error fetching LVM volumes:', error);
-    res.json({
-      success: true,
-      volumes: []
-    });
-  }
-});
-
-
 
   async function syncSmartMonitoring() {
     const config = await loadSmartConfig();

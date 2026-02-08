@@ -7,14 +7,16 @@ export function useTheme() {
   const updateTheme = () => {
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
     const shouldBeDark = theme.value === 'dark' || (theme.value === 'system' && prefersDark)
-    
+
     isDarkMode.value = shouldBeDark
     
     if (shouldBeDark) {
       document.documentElement.classList.add('dark')
+      document.documentElement.setAttribute('data-theme', 'dark')
       document.documentElement.style.colorScheme = 'dark'
     } else {
       document.documentElement.classList.remove('dark')
+      document.documentElement.setAttribute('data-theme', 'light')
       document.documentElement.style.colorScheme = 'light'
     }
     
@@ -40,10 +42,11 @@ export function useTheme() {
     
     // Obserwuj zmiany systemowego theme
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-    mediaQuery.addEventListener('change', updateTheme)
+    const handler = () => updateTheme()
+    mediaQuery.addEventListener('change', handler)
     
     // Cleanup
-    return () => mediaQuery.removeEventListener('change', updateTheme)
+    return () => mediaQuery.removeEventListener('change', handler)
   })
 
   watch(theme, updateTheme)

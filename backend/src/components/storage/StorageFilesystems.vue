@@ -1,329 +1,451 @@
 <template>
-  <el-card class="filesystems-widget" :body-style="{ padding: '0', height: '100%', display: 'flex', flexDirection: 'column' }">
-    <!-- Header -->
-    <template #header>
-      <div class="widget-header">
-        <div class="header-content">
-          <div class="header-main">
-            <Icon icon="mdi:file-tree" width="24" height="24" class="header-icon" />
-            <div class="header-text">
-              <h3 class="header-title">{{ $t('storageFilesystems.title') }}</h3>
-              <p class="header-subtitle">{{ $t('storageFilesystems.subtitle') || 'Manage filesystems and storage devices' }}</p>
+  <div class="filesystems-dashboard">
+    <!-- Compact Header -->
+    <el-card class="dashboard-header compact" shadow="hover">
+      <div class="header-content">
+        <div class="header-left">
+          <div class="header-icon small">
+            <Icon icon="mdi:file-tree" />
+          </div>
+          <div class="header-text">
+            <h2>{{ $t('storageFilesystems.title') }}</h2>
+            <p class="subtitle">{{ $t('storageFilesystems.subtitle') || 'Manage filesystems and storage devices' }}</p>
+          </div>
+        </div>
+        
+        <!-- Stats Section -->
+        <div class="header-stats">
+          <div class="stat-item small">
+            <div class="stat-icon">
+              <Icon icon="mdi:harddisk" width="14" />
+            </div>
+            <div class="stat-info">
+              <div class="stat-value">{{ filesystems.length }}</div>
+              <div class="stat-label">Filesystems</div>
             </div>
           </div>
-          <div class="header-actions">
-            <el-button-group class="main-actions">
-              <el-tooltip content="Mount device">
-                <el-button 
-                  @click="showMountDialog" 
-                  :disabled="loading"
-                  type="primary"
-                  size="small"
-                >
-                  <Icon icon="streamline-cyber-color:harddisk-4" width="18" height="18" />
-                  <span class="button-text">Mount</span>
-                </el-button>
-              </el-tooltip>
-              
-              <el-tooltip content="Partition disk">
-                <el-button 
-                  @click="showPartitionDialog" 
-                  :disabled="loading"
-                  size="small"
-                >
-                  <Icon icon="mdi:harddisk-plus" width="18" height="18" />
-                  <span class="button-text">Partition</span>
-                </el-button>
-              </el-tooltip>
-              
-              <el-tooltip content="Format device">
-                <el-button 
-                  @click="showFormatDialog" 
-                  :disabled="loading"
-                  size="small"
-                >
-                  <Icon icon="icon-park:clear-format" width="18" height="18" />
-                  <span class="button-text">Format</span>
-                </el-button>
-              </el-tooltip>
-              
-              <el-tooltip content="Create RAID">
-                <el-button 
-                  @click="showRaidDialog" 
-                  :disabled="loading"
-                  size="small"
-                >
-                  <Icon icon="icon-park:solid-state-disk" width="18" height="18" />
-                  <span class="button-text">RAID</span>
-                </el-button>
-              </el-tooltip>
-            </el-button-group>
-            
-            <div class="tool-actions">
-              <el-tooltip content="Edit fstab">
-                <el-button 
-                  @click="openFstabEditor" 
-                  :disabled="loading"
-                  size="small"
-                  circle
-                  plain
-                >
-                  <Icon icon="mdi:file-edit" width="18" height="18" />
-                </el-button>
-              </el-tooltip>
-              
-              <el-tooltip content="Debug devices">
-                <el-button 
-                  @click="debugDevices" 
-                  :disabled="loading"
-                  size="small"
-                  circle
-                  plain
-                  type="warning"
-                >
-                  <Icon icon="mdi:bug" width="18" height="18" />
-                </el-button>
-              </el-tooltip>
-              
-              <el-tooltip content="Refresh">
-                <el-button 
-                  @click="refreshFilesystems" 
-                  :loading="loading"
-                  size="small"
-                  circle
-                  plain
-                >
-                  <Icon icon="mdi:refresh" width="18" height="18" :class="{ 'spin': loading }" />
-                </el-button>
-              </el-tooltip>
+          
+          <div class="stat-item small">
+            <div class="stat-icon">
+              <Icon icon="mdi:chart-pie" width="14" />
+            </div>
+            <div class="stat-info">
+              <div class="stat-value">{{ totalUsedPercent }}%</div>
+              <div class="stat-label">Used</div>
+            </div>
+          </div>
+          
+          <div class="stat-item small">
+            <div class="stat-icon">
+              <Icon icon="mdi:database" width="14" />
+            </div>
+            <div class="stat-info">
+              <div class="stat-value">{{ formatBytes(totalCapacity) }}</div>
+              <div class="stat-label">Capacity</div>
+            </div>
+          </div>
+          
+          <div class="stat-item small">
+            <div class="stat-icon">
+              <Icon icon="mdi:auto-fix" width="14" />
+            </div>
+            <div class="stat-info">
+              <div class="stat-value">{{ autoMountCount }}</div>
+              <div class="stat-label">Auto-mount</div>
+            </div>
+          </div>
+          
+          <div class="stat-item small">
+            <div class="stat-icon">
+              <Icon :icon="getThemeIcon" width="14" />
+            </div>
+            <div class="stat-info">
+              <el-switch
+                v-model="darkMode"
+                @change="toggleTheme"
+                size="small"
+                style="margin-top: 4px;"
+              />
+              <div class="stat-label">Theme</div>
             </div>
           </div>
         </div>
         
-        <!-- Stats -->
-        <div v-if="filesystems.length > 0" class="stats-container">
-          <div class="stats-grid">
-            <div class="stat-card">
-              <div class="stat-icon">
-                <Icon icon="mdi:harddisk" width="20" height="20" />
-              </div>
-              <div class="stat-details">
-                <div class="stat-value">{{ filesystems.length }}</div>
-                <div class="stat-label">Devices</div>
-              </div>
-            </div>
-            
-            <div class="stat-card">
-              <div class="stat-icon">
-                <Icon icon="mdi:chart-pie" width="20" height="20" />
-              </div>
-              <div class="stat-details">
-                <div class="stat-value">{{ totalUsedPercent }}%</div>
-                <div class="stat-label">Used</div>
-              </div>
-            </div>
-            
-            <div class="stat-card">
-              <div class="stat-icon">
-                <Icon icon="mdi:database" width="20" height="20" />
-              </div>
-              <div class="stat-details">
-                <div class="stat-value">{{ formatBytes(totalCapacity) }}</div>
-                <div class="stat-label">Capacity</div>
-              </div>
-            </div>
-            
-            <div class="stat-card">
-              <div class="stat-icon">
-                <Icon icon="mdi:auto-fix" width="20" height="20" />
-              </div>
-              <div class="stat-details">
-                <div class="stat-value">{{ autoMountCount }}</div>
-                <div class="stat-label">Auto-mount</div>
-              </div>
-            </div>
-          </div>
+        <!-- Filter Buttons -->
+        <div class="header-actions compact">
+          <el-button-group>
+            <el-button 
+              :type="viewFilter === 'all' ? 'primary' : 'default'"
+              @click="viewFilter = 'all'"
+              size="small"
+            >
+              All
+            </el-button>
+            <el-button 
+              :type="viewFilter === 'raid' ? 'primary' : 'default'"
+              @click="viewFilter = 'raid'"
+              size="small"
+            >
+              RAID
+            </el-button>
+            <el-button 
+              :type="viewFilter === 'lvm' ? 'primary' : 'default'"
+              @click="viewFilter = 'lvm'"
+              size="small"
+            >
+              LVM
+            </el-button>
+            <el-button 
+              :type="viewFilter === 'critical' ? 'primary' : 'default'"
+              @click="viewFilter = 'critical'"
+              size="small"
+            >
+              Critical
+            </el-button>
+          </el-button-group>
         </div>
       </div>
-    </template>
+    </el-card>
 
-    <!-- Main Content -->
-    <div class="widget-content">
-      <div class="content-container">
-        <div class="table-container" v-loading="loading">
-          <el-table 
-            :data="filesystems" 
-            empty-text="No filesystems found"
-            size="small"
-            stripe
-            highlight-current-row
-            class="filesystems-table"
-            :max-height="tableHeight"
-          >
-            <el-table-column prop="device" label="Device" width="160" fixed>
-              <template #default="{ row }">
-                <div class="device-cell">
-                  <el-tag :type="getDeviceTagType(row.device)" size="small" class="device-tag">
-                    <Icon :icon="getDeviceIcon(row.device)" width="14" height="14" />
-                    <span>{{ getDeviceShortName(row.device) }}</span>
-                  </el-tag>
-                  <div class="device-info">
-                    <span class="device-path">{{ row.device }}</span>
-                    <span v-if="row.tags" class="device-tags">
-                      <el-tag size="mini" type="info">{{ row.tags }}</el-tag>
-                    </span>
-                  </div>
-                </div>
-              </template>
-            </el-table-column>
+    <!-- Quick Actions & Stats Combined -->
+    <el-card class="combined-card" shadow="hover">
+      <div class="combined-content">
+        <!-- Quick Actions -->
+        <div class="quick-actions">
+          <el-button-group>
+            <el-button 
+              @click="showMountDialog" 
+              :disabled="loading"
+              size="small"
+            >
+              <Icon icon="streamline-cyber-color:harddisk-4" width="14" />
+              Mount
+            </el-button>
             
-            <el-table-column prop="type" label="Type" width="120">
-              <template #default="{ row }">
-                <div class="fs-type">
-                  <el-tag :type="getFsTagType(row.type)" size="small" effect="light">
-                    <Icon :icon="getFsIcon(row.type)" width="14" height="14" />
-                    <span>{{ row.type.toUpperCase() }}</span>
-                  </el-tag>
-                </div>
-              </template>
-            </el-table-column>
+            <el-button 
+              @click="showPartitionDialog" 
+              :disabled="loading"
+              size="small"
+            >
+              <Icon icon="mdi:harddisk-plus" width="14" />
+              Partition
+            </el-button>
             
-            <el-table-column prop="mounted" label="Mount Point" width="200">
-              <template #default="{ row }">
-                <div class="mount-cell">
-                  <Icon icon="mdi:folder" width="16" height="16" class="mount-icon" />
-                  <span class="mount-path" :title="row.mounted">{{ truncatePath(row.mounted, 30) }}</span>
-                </div>
-              </template>
-            </el-table-column>
+            <el-button 
+              @click="showFormatDialog" 
+              :disabled="loading"
+              size="small"
+            >
+              <Icon icon="icon-park:clear-format" width="14" />
+              Format
+            </el-button>
             
-            <el-table-column prop="used" label="Usage" width="240">
-              <template #default="{ row }">
-                <div class="usage-cell">
-                  <div class="usage-info">
-                    <span class="usage-percent">{{ row.usedPercent }}%</span>
-                    <span class="usage-size">{{ formatBytes(row.used) }} / {{ formatBytes(row.size) }}</span>
-                  </div>
-                  <el-progress 
-                    :percentage="row.usedPercent" 
-                    :color="getUsageColor(row.usedPercent)"
-                    :show-text="false"
-                    :stroke-width="8"
-                    class="usage-bar"
-                  />
-                </div>
-              </template>
-            </el-table-column>
+            <el-button 
+              @click="showRaidDialog" 
+              :disabled="loading"
+              size="small"
+            >
+              <Icon icon="icon-park:solid-state-disk" width="14" />
+              RAID
+            </el-button>
             
-            <el-table-column prop="status" label="Status" width="120">
-              <template #default="{ row }">
-                <el-tag 
-                  :type="getStatusType(row.status)" 
-                  size="small"
-                  :effect="row.status === 'active' ? 'dark' : 'plain'"
-                  class="status-tag"
-                >
-                  <Icon :icon="getStatusIcon(row.status)" width="12" height="12" />
-                  <span class="status-text">{{ row.status }}</span>
-                  <span v-if="row.readOnly" class="read-only-badge">RO</span>
-                </el-tag>
-              </template>
-            </el-table-column>
+            <el-button 
+              @click="showLvmDialog" 
+              :disabled="loading"
+              size="small"
+            >
+              <Icon icon="mdi:layers" width="14" />
+              LVM
+            </el-button>
+          </el-button-group>
+          
+          <div class="right-actions">
+            <el-button 
+              @click="openFstabEditor" 
+              :disabled="loading"
+              size="small"
+              plain
+            >
+              <Icon icon="mdi:file-edit" width="14" />
+              Edit fstab
+            </el-button>
             
-            <el-table-column label="Auto-mount" width="100">
-              <template #default="{ row }">
-                <div class="auto-mount-cell">
-                  <el-switch
-                    v-if="!row.isZfs"
-                    v-model="row.inFstab"
-                    @change="toggleFstabEntry(row.device, row.mounted, row.type, row.options, $event)"
-                    :loading="row.fstabLoading"
-                    size="small"
-                    active-color="#13ce66"
-                  />
-                  <el-tag v-else type="info" size="small" effect="plain">ZFS</el-tag>
-                </div>
-              </template>
-            </el-table-column>
+            <el-button 
+              @click="debugDevices" 
+              :disabled="loading"
+              size="small"
+              plain
+              type="warning"
+            >
+              <Icon icon="mdi:bug" width="14" />
+              Debug
+            </el-button>
             
-            <el-table-column label="Actions" width="120" fixed="right">
-              <template #default="{ row }">
-                <div class="action-buttons">
-                  <el-tooltip content="Unmount" placement="top">
-                    <el-button 
-                      size="small" 
-                      @click="unmountFilesystem(row.mounted)" 
-                      :disabled="row.status !== 'active'"
-                      circle
-                      :type="row.status === 'active' ? 'danger' : 'info'"
-                      class="action-btn"
-                    >
-                      <Icon icon="mdi:eject" width="16" height="16" />
-                    </el-button>
-                  </el-tooltip>
-                  
-                  <el-dropdown trigger="click" placement="bottom-end">
-                    <el-button size="small" circle class="action-btn">
-                      <Icon icon="mdi:dots-vertical" width="16" height="16" />
-                    </el-button>
-                    <template #dropdown>
-                      <el-dropdown-menu>
-                        <el-dropdown-item @click="showDeviceActions(row)">
-                          <Icon icon="mdi:information" width="16" height="16" />
-                          Info
-                        </el-dropdown-item>
-                        <el-dropdown-item @click="checkDevice(row)" :disabled="row.status !== 'active'">
-                          <Icon icon="mdi:check-circle" width="16" height="16" />
-                          Check
-                        </el-dropdown-item>
-                        <el-dropdown-item divided @click="editFstabEntry(row)">
-                          <Icon icon="mdi:pencil" width="16" height="16" />
-                          Edit fstab
-                        </el-dropdown-item>
-                      </el-dropdown-menu>
-                    </template>
-                  </el-dropdown>
-                </div>
-              </template>
-            </el-table-column>
-          </el-table>
-        </div>
-
-        <!-- Empty State -->
-        <div v-if="!loading && filesystems.length === 0" class="empty-state">
-          <div class="empty-content">
-            <Icon icon="mdi:harddisk-remove" width="64" height="64" class="empty-icon" />
-            <h3>No Filesystems Found</h3>
-            <p>No mounted filesystems detected. Mount a device to get started.</p>
-            <el-button type="primary" @click="showMountDialog" :disabled="loading">
-              <Icon icon="streamline-cyber-color:harddisk-4" width="18" height="18" />
-              Mount First Device
+            <el-button 
+              @click="refreshFilesystems" 
+              :loading="loading"
+              size="small"
+              plain
+            >
+              <Icon icon="mdi:refresh" width="14" :class="{ 'spin': loading }" />
+              Refresh
             </el-button>
           </div>
         </div>
+      </div>
+    </el-card>
 
-        <!-- Error State -->
-        <div v-if="error" class="error-state">
-          <el-alert 
-            title="Error Loading Filesystems" 
-            type="error" 
-            :description="error"
-            show-icon
-            :closable="true"
-            @close="error = null"
-          />
+    <!-- Filesystems List - NEW MODERN DESIGN -->
+    <el-card class="filesystems-list-card modern-table" shadow="hover">
+      <!-- Search & Filters -->
+      <div class="list-header modern">
+        <div class="search-section">
+          <el-input
+            v-model="searchQuery"
+            placeholder="Search filesystems..."
+            clearable
+            size="small"
+            class="search-input modern"
+          >
+            <template #prefix>
+              <Icon icon="mdi:magnify" width="14" />
+            </template>
+          </el-input>
+          
+          <el-select 
+            v-model="typeFilter" 
+            placeholder="Filesystem Type" 
+            clearable
+            size="small"
+            class="filter-select modern"
+          >
+            <el-option label="ext4" value="ext4" />
+            <el-option label="xfs" value="xfs" />
+            <el-option label="btrfs" value="btrfs" />
+            <el-option label="zfs" value="zfs" />
+            <el-option label="ntfs" value="ntfs" />
+            <el-option label="vfat" value="vfat" />
+          </el-select>
+          
+          <el-select 
+            v-model="statusFilter" 
+            placeholder="Status" 
+            clearable
+            size="small"
+            class="filter-select modern"
+          >
+            <el-option label="Active" value="active" />
+            <el-option label="Inactive" value="inactive" />
+            <el-option label="Read Only" value="readonly" />
+            <el-option label="Error" value="error" />
+          </el-select>
+        </div>
+        
+        <div class="sort-section">
+          <el-select 
+            v-model="sortBy" 
+            placeholder="Sort by"
+            size="small"
+            class="sort-select"
+          >
+            <el-option label="Name" value="device" />
+            <el-option label="Usage" value="usedPercent" />
+            <el-option label="Size" value="size" />
+            <el-option label="Status" value="status" />
+          </el-select>
+          
+          <el-button 
+            @click="sortOrder = sortOrder === 'asc' ? 'desc' : 'asc'"
+            size="small"
+            text
+            class="sort-btn"
+          >
+            <Icon :icon="sortOrder === 'asc' ? 'mdi:sort-ascending' : 'mdi:sort-descending'" width="16" />
+          </el-button>
         </div>
       </div>
-    </div>
+
+      <!-- Error Alert -->
+      <el-alert 
+        v-if="error" 
+        :title="error" 
+        type="error" 
+        show-icon 
+        closable 
+        @close="error = null"
+        size="small"
+        class="modern-alert"
+      />
+
+      <!-- Loading State -->
+      <div v-if="loading && filesystems.length === 0" class="loading-state modern">
+        <div class="spinner-container">
+          <div class="spinner"></div>
+        </div>
+        <span class="loading-text">Loading filesystems...</span>
+      </div>
+
+      <!-- Empty State -->
+      <div v-else-if="filteredFilesystems.length === 0 && !loading" class="empty-state modern">
+        <div class="empty-illustration">
+          <Icon icon="mdi:database-outline" width="64" />
+        </div>
+        <div class="empty-content">
+          <h4>No Filesystems Found</h4>
+          <p>{{ emptyMessage }}</p>
+          <el-button type="primary" size="small" @click="showMountDialog" class="empty-action-btn">
+            <Icon icon="streamline-cyber-color:harddisk-4" width="14" />
+            Mount First Device
+          </el-button>
+        </div>
+      </div>
+
+      <!-- Modern Filesystems Grid -->
+      <div v-else class="filesystems-grid">
+        <div 
+          v-for="fs in paginatedFilesystems" 
+          :key="fs.device"
+          class="filesystem-card"
+          :class="{
+            'critical': fs.usedPercent > 90,
+            'warning': fs.usedPercent > 70 && fs.usedPercent <= 90,
+            'selected': selectedFs && selectedFs.device === fs.device
+          }"
+          @click="toggleSelection(fs)"
+        >
+          <!-- Card Header -->
+          <div class="card-header">
+            <div class="device-info">
+              <div class="device-icon">
+                <el-icon :size="24" :color="getFsColor(fs.type)">
+                  <Icon :icon="getFsIcon(fs.type)" />
+                </el-icon>
+                <div class="device-status-indicator" :class="fs.status"></div>
+              </div>
+              <div class="device-details">
+                <h4 class="device-name">{{ getDeviceShortName(fs.device) }}</h4>
+                <div class="device-path">{{ fs.device }}</div>
+              </div>
+            </div>
+            
+            <div class="card-actions">
+              <el-dropdown trigger="click" placement="bottom-end">
+                <el-button size="small" text circle class="action-btn">
+                  <Icon icon="mdi:dots-vertical" width="16" />
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item @click.stop="showDeviceDetails(fs)">
+                      <Icon icon="mdi:information-outline" width="16" />
+                      Details
+                    </el-dropdown-item>
+                    <el-dropdown-item 
+                      @click.stop="unmountFilesystem(fs.mounted)"
+                      :disabled="fs.status !== 'active'"
+                    >
+                      <Icon icon="mdi:eject" width="16" />
+                      Unmount
+                    </el-dropdown-item>
+                    <el-dropdown-item @click.stop="editFstabEntry(fs)">
+                      <Icon icon="mdi:pencil" width="16" />
+                      Edit fstab
+                    </el-dropdown-item>
+                    <el-dropdown-item @click.stop="repairFilesystem(fs)" :disabled="fs.status !== 'active'">
+                      <Icon icon="mdi:wrench" width="16" />
+                      Repair
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
+          </div>
+
+          <!-- Card Tags -->
+          <div class="card-tags">
+            <el-tag v-if="isRaidDevice(fs.device)" size="mini" type="warning" effect="dark">
+              RAID
+            </el-tag>
+            <el-tag v-else-if="isLvmDevice(fs.device)" size="mini" type="success" effect="dark">
+              LVM
+            </el-tag>
+            <el-tag v-else-if="fs.type === 'zfs'" size="mini" type="info" effect="dark">
+              ZFS
+            </el-tag>
+            <el-tag v-if="fs.inFstab" size="mini" type="success" effect="plain">
+              <Icon icon="mdi:auto-fix" width="10" />
+              Auto
+            </el-tag>
+            <el-tag v-if="fs.readOnly" size="mini" type="warning" effect="plain">
+              <Icon icon="mdi:lock" width="10" />
+              RO
+            </el-tag>
+            <el-tag :type="getStatusType(fs.status)" size="mini" :effect="fs.status === 'active' ? 'dark' : 'plain'">
+              <Icon :icon="getStatusIcon(fs.status)" width="10" />
+              {{ fs.status }}
+            </el-tag>
+          </div>
+
+          <!-- Mount Info -->
+          <div v-if="fs.mounted" class="mount-info">
+            <Icon icon="mdi:folder" width="12" />
+            <span class="mount-path">{{ truncatePath(fs.mounted, 40) }}</span>
+          </div>
+
+          <!-- Usage Stats -->
+          <div class="usage-section">
+            <div class="usage-header">
+              <span class="usage-label">Storage Usage</span>
+              <span class="usage-percent">{{ fs.usedPercent }}%</span>
+            </div>
+            <el-progress 
+              :percentage="fs.usedPercent" 
+              :color="getUsageColor(fs.usedPercent)"
+              :show-text="false"
+              :stroke-width="8"
+              class="usage-bar modern"
+            />
+            <div class="usage-details">
+              <span class="used">{{ formatBytes(fs.used) }}</span>
+              <span class="separator">/</span>
+              <span class="total">{{ formatBytes(fs.size) }}</span>
+              <span class="free">({{ formatBytes(fs.size - fs.used) }} free)</span>
+            </div>
+          </div>
+
+          <!-- Filesystem Type -->
+          <div class="filesystem-type">
+            <el-tag size="mini" effect="plain" class="fs-type-tag">
+              {{ fs.type.toUpperCase() }}
+            </el-tag>
+            <span class="fs-size">{{ formatBytes(fs.size) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pagination -->
+      <div v-if="!loading && filteredFilesystems.length > 0" class="pagination modern">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :total="filteredFilesystems.length"
+          :page-sizes="[9, 18, 36, 72]"
+          layout="total, sizes, prev, pager, next"
+          size="small"
+          background
+          @current-change="handlePageChange"
+          @size-change="handleSizeChange"
+        />
+      </div>
+    </el-card>
 
     <!-- Mount Dialog -->
     <el-dialog 
       v-model="mountDialogVisible" 
       title="Mount Device" 
-      width="500px"
+      width="600px"
       class="storage-dialog"
     >
-      <el-form :model="mountForm" label-position="top">
+      <el-form :model="mountForm" label-position="top" size="small">
         <el-form-item label="Device" required>
           <el-select 
             v-model="mountForm.device" 
@@ -340,7 +462,7 @@
                 :value="device.path"
               >
                 <div class="device-select-option">
-                  <Icon :icon="getDeviceIcon(device.path)" width="16" height="16" />
+                  <Icon :icon="getDeviceIcon(device.path)" width="16" />
                   <span class="device-name">{{ device.path }}</span>
                   <span class="device-meta">{{ device.model || 'Unknown' }} • {{ formatBytes(device.size) }}</span>
                 </div>
@@ -355,9 +477,39 @@
                 :value="partition.path"
               >
                 <div class="device-select-option">
-                  <Icon icon="mdi:harddisk-partition" width="16" height="16" />
+                  <Icon icon="mdi:harddisk-partition" width="16" />
                   <span class="device-name">{{ partition.path }}</span>
                   <span class="device-meta">{{ partition.fstype || 'Unknown' }} • {{ formatBytes(partition.size) }}</span>
+                </div>
+              </el-option>
+            </el-option-group>
+            
+            <el-option-group label="RAID Arrays" v-if="raidDevices.length > 0">
+              <el-option
+                v-for="raid in raidDevices"
+                :key="raid.path"
+                :label="getDeviceLabel(raid)"
+                :value="raid.path"
+              >
+                <div class="device-select-option">
+                  <Icon icon="mdi:raid" width="16" />
+                  <span class="device-name">{{ raid.path }}</span>
+                  <span class="device-meta">RAID • {{ formatBytes(raid.size) }}</span>
+                </div>
+              </el-option>
+            </el-option-group>
+            
+            <el-option-group label="LVM Volumes" v-if="lvmVolumes.length > 0">
+              <el-option
+                v-for="lvm in lvmVolumes"
+                :key="lvm.path"
+                :label="getDeviceLabel(lvm)"
+                :value="lvm.path"
+              >
+                <div class="device-select-option">
+                  <Icon icon="mdi:layers" width="16" />
+                  <span class="device-name">{{ lvm.path }}</span>
+                  <span class="device-meta">LVM • {{ formatBytes(lvm.size) }}</span>
                 </div>
               </el-option>
             </el-option-group>
@@ -383,6 +535,10 @@
               <span class="info-label">Type:</span>
               <el-tag type="warning" size="small">RAID Device</el-tag>
             </div>
+            <div v-if="selectedDeviceInfo.isLvm" class="info-row">
+              <span class="info-label">Type:</span>
+              <el-tag type="success" size="small">LVM Volume</el-tag>
+            </div>
             <div v-if="selectedDeviceInfo.isZfs" class="info-row">
               <span class="info-label">Type:</span>
               <el-tag type="primary" size="small">ZFS Pool</el-tag>
@@ -391,22 +547,21 @@
         </div>
         
         <el-form-item 
-          v-if="!selectedDeviceInfo?.isZfs"
+          v-if="!selectedDeviceInfo?.isZfs && !selectedDeviceInfo?.isLvm"
           label="Mount Point" 
           required
         >
           <el-input 
             v-model="mountForm.mountPoint" 
             :placeholder="getDefaultMountPoint()"
-            :prefix-icon="FolderIcon"
           />
         </el-form-item>
         
         <el-form-item 
-          v-if="!selectedDeviceInfo?.fsType && !selectedDeviceInfo?.isZfs"
+          v-if="!selectedDeviceInfo?.fsType && !selectedDeviceInfo?.isZfs && !selectedDeviceInfo?.isLvm"
           label="Filesystem Type"
         >
-          <el-select v-model="mountForm.fsType" style="width: 100%">
+          <el-select v-model="mountForm.fsType" class="full-width">
             <el-option label="Auto Detect" value="auto" />
             <el-option
               v-for="fs in supportedFilesystems"
@@ -426,7 +581,14 @@
         </el-form-item>
         
         <el-form-item 
-          v-if="!selectedDeviceInfo?.isZfs"
+          v-if="selectedDeviceInfo?.isLvm"
+          label="LVM Volume Group"
+        >
+          <el-input v-model="mountForm.lvmVolumeGroup" :placeholder="getLvmVolumeGroup(selectedDeviceInfo.path)" disabled />
+        </el-form-item>
+        
+        <el-form-item 
+          v-if="!selectedDeviceInfo?.isZfs && !selectedDeviceInfo?.isLvm"
           label="Options"
         >
           <el-input v-model="mountForm.options" placeholder="defaults,nofail" />
@@ -435,7 +597,7 @@
       
       <template #footer>
         <span class="dialog-footer">
-          <el-button @click="mountDialogVisible = false">
+          <el-button @click="mountDialogVisible = false" size="small">
             Cancel
           </el-button>
           <el-button 
@@ -443,6 +605,7 @@
             @click="mountDevice" 
             :loading="mountLoading"
             :disabled="!mountForm.device || (selectedDeviceInfo?.isZfs && !mountForm.zfsPoolName)"
+            size="small"
           >
             Mount
           </el-button>
@@ -454,10 +617,10 @@
     <el-dialog 
       v-model="formatDialogVisible" 
       title="Format Device" 
-      width="500px"
+      width="550px"
       class="storage-dialog warning-dialog"
     >
-      <el-form :model="formatForm" label-position="top">
+      <el-form :model="formatForm" label-position="top" size="small">
         <el-form-item label="Device" required>
           <el-select 
             v-model="formatForm.device" 
@@ -473,7 +636,7 @@
                 :value="partition.path"
               >
                 <div class="device-select-option">
-                  <Icon icon="mdi:harddisk-partition" width="16" height="16" />
+                  <Icon icon="mdi:harddisk-partition" width="16" />
                   <span class="device-name">{{ partition.path }}</span>
                   <span class="device-meta">{{ partition.fstype || 'Raw' }} • {{ formatBytes(partition.size) }}</span>
                 </div>
@@ -488,7 +651,7 @@
                 :value="device.path"
               >
                 <div class="device-select-option">
-                  <Icon :icon="getDeviceIcon(device.path)" width="16" height="16" />
+                  <Icon :icon="getDeviceIcon(device.path)" width="16" />
                   <span class="device-name">{{ device.path }}</span>
                   <span class="device-meta">Disk • {{ formatBytes(device.size) }}</span>
                 </div>
@@ -498,7 +661,7 @@
         </el-form-item>
         
         <el-form-item label="Filesystem Type" required>
-          <el-select v-model="formatForm.fsType" style="width: 100%">
+          <el-select v-model="formatForm.fsType" class="full-width">
             <el-option
               v-for="fs in supportedFilesystems"
               :key="fs"
@@ -506,7 +669,7 @@
               :value="fs.toLowerCase()"
             >
               <div class="fs-option">
-                <Icon :icon="getFsIcon(fs)" width="16" height="16" />
+                <Icon :icon="getFsIcon(fs)" width="16" />
                 <span>{{ fs.toUpperCase() }}</span>
               </div>
             </el-option>
@@ -514,7 +677,7 @@
         </el-form-item>
         
         <div v-if="formatForm.fsType === 'zfs'" class="warning-section">
-          <el-alert type="warning" :closable="false">
+          <el-alert type="warning" :closable="false" size="small">
             <template #title>
               <strong>ZFS requires entire disk!</strong>
             </template>
@@ -541,20 +704,20 @@
           <el-switch v-model="formatForm.force" />
           <span class="switch-label">Force format even if device contains data</span>
         </el-form-item>
+        
+        <div class="warning-section">
+          <el-alert type="error" :closable="false" size="small">
+            <template #title>
+              <strong>WARNING: DATA LOSS</strong>
+            </template>
+            All data on <strong>{{ formatForm.device }}</strong> will be permanently deleted!
+          </el-alert>
+        </div>
       </el-form>
-      
-      <div class="warning-section" v-if="formatForm.device">
-        <el-alert type="error" :closable="false">
-          <template #title>
-            <strong>WARNING: DATA LOSS</strong>
-          </template>
-          All data on <strong>{{ formatForm.device }}</strong> will be permanently deleted!
-        </el-alert>
-      </div>
       
       <template #footer>
         <span class="dialog-footer">
-          <el-button @click="formatDialogVisible = false">
+          <el-button @click="formatDialogVisible = false" size="small">
             Cancel
           </el-button>
           <el-button 
@@ -562,6 +725,7 @@
             @click="formatDevice" 
             :loading="formatLoading"
             :disabled="!formatForm.device || !formatForm.fsType"
+            size="small"
           >
             Format
           </el-button>
@@ -576,11 +740,11 @@
       width="700px"
       class="storage-dialog"
     >
-      <el-form :model="partitionForm" label-position="top">
+      <el-form :model="partitionForm" label-position="top" size="small">
         <el-form-item label="Device" required>
           <el-select 
             v-model="partitionForm.device" 
-            style="width: 100%"
+            class="full-width"
             @change="checkSystemDisk"
             filterable
           >
@@ -592,7 +756,7 @@
               :disabled="isSystemDisk(device.path)"
             >
               <div class="device-select-option">
-                <Icon :icon="getDeviceIcon(device.path)" width="16" height="16" />
+                <Icon :icon="getDeviceIcon(device.path)" width="16" />
                 <span class="device-name">{{ device.path }}</span>
                 <span class="device-meta">
                   {{ device.model || 'Unknown' }} • {{ formatBytes(device.size) }}
@@ -622,7 +786,7 @@
               :percentage="diskUsagePercentage"
               :color="getUsageColor(diskUsagePercentage)"
               :show-text="false"
-              :stroke-width="16"
+              :stroke-width="12"
               class="disk-progress"
             />
             <div class="disk-percentage">
@@ -682,6 +846,8 @@
                       <el-option label="Linux Swap" value="8200" />
                       <el-option label="EFI System" value="EF00" />
                       <el-option label="Windows Data" value="0700" />
+                      <el-option label="Linux LVM" value="8E00" />
+                      <el-option label="Linux RAID" value="FD00" />
                     </el-select>
                   </div>
                   <div class="size-info">
@@ -691,17 +857,26 @@
               </div>
             </div>
             
-            <el-button @click="addPartition" type="primary" text class="add-partition-btn">
+            <el-button @click="addPartition" type="primary" text class="add-partition-btn" size="small">
               <Icon icon="mdi:plus" />
               Add Partition
             </el-button>
           </div>
         </el-form-item>
+        
+        <div class="warning-section">
+          <el-alert type="error" :closable="false" size="small">
+            <template #title>
+              <strong>WARNING: DATA LOSS</strong>
+            </template>
+            All data on <strong>{{ partitionForm.device }}</strong> will be permanently deleted!
+          </el-alert>
+        </div>
       </el-form>
       
       <template #footer>
         <span class="dialog-footer">
-          <el-button @click="partitionDialogVisible = false">
+          <el-button @click="partitionDialogVisible = false" size="small">
             Cancel
           </el-button>
           <el-button 
@@ -709,6 +884,7 @@
             @click="createPartitions" 
             :loading="partitionLoading"
             :disabled="partitionForm.partitions.length === 0"
+            size="small"
           >
             Create Partitions
           </el-button>
@@ -723,9 +899,9 @@
       width="600px"
       class="storage-dialog"
     >
-      <el-form :model="raidForm" label-position="top">
+      <el-form :model="raidForm" label-position="top" size="small">
         <el-form-item label="RAID Level" required>
-          <el-select v-model="raidForm.level" style="width: 100%" @change="updateRaidInfo">
+          <el-select v-model="raidForm.level" class="full-width" @change="updateRaidInfo">
             <el-option label="RAID 0 - Striping (Performance)" value="0" />
             <el-option label="RAID 1 - Mirroring (Redundancy)" value="1" />
             <el-option label="RAID 5 - Parity (Balance)" value="5" />
@@ -738,7 +914,7 @@
           <el-select 
             v-model="raidForm.devices" 
             multiple 
-            style="width: 100%"
+            class="full-width"
             filterable
             collapse-tags
             collapse-tags-tooltip
@@ -751,7 +927,7 @@
               :disabled="isSystemDisk(device.path)"
             >
               <div class="device-select-option">
-                <Icon :icon="getDeviceIcon(device.path)" width="16" height="16" />
+                <Icon :icon="getDeviceIcon(device.path)" width="16" />
                 <span class="device-name">{{ device.path }}</span>
                 <span class="device-meta">
                   {{ device.model || 'Unknown' }} • {{ formatBytes(device.size) }}
@@ -774,53 +950,65 @@
           v-if="['0', '5', '6', '10'].includes(raidForm.level)"
           label="Chunk Size"
         >
-          <el-select v-model="raidForm.chunkSize" style="width: 100%">
+          <el-select v-model="raidForm.chunkSize" class="full-width">
             <el-option label="64 KB" value="64" />
             <el-option label="128 KB" value="128" />
             <el-option label="256 KB" value="256" />
             <el-option label="512 KB" value="512" />
           </el-select>
         </el-form-item>
-      </el-form>
-      
-      <div class="raid-info-section">
-        <div class="info-card">
-          <div class="info-card-header">
-            <Icon :icon="raidInfo.icon" width="18" height="18" />
-            <span>{{ raidInfo.title }}</span>
-          </div>
-          <div class="info-card-content">
-            <p>{{ raidInfo.description }}</p>
-            <div class="raid-stats">
-              <div class="raid-stat">
-                <span class="raid-stat-label">Capacity:</span>
-                <span class="raid-stat-value">{{ formatBytes(raidCapacity) }}</span>
-              </div>
-              <div class="raid-stat">
-                <span class="raid-stat-label">Devices:</span>
-                <span class="raid-stat-value">{{ raidForm.devices.length }}</span>
-              </div>
-              <div class="raid-stat">
-                <span class="raid-stat-label">Redundancy:</span>
-                <span class="raid-stat-value">{{ raidInfo.redundancy }}</span>
+        
+        <el-form-item label="Filesystem Type">
+          <el-select v-model="raidForm.fsType" class="full-width">
+            <el-option label="ext4" value="ext4" />
+            <el-option label="xfs" value="xfs" />
+            <el-option label="btrfs" value="btrfs" />
+          </el-select>
+        </el-form-item>
+        
+        <el-form-item label="Start RAID after creation">
+          <el-switch v-model="raidForm.autoStart" />
+        </el-form-item>
+        
+        <div class="raid-info-section">
+          <div class="info-card">
+            <div class="info-card-header">
+              <Icon :icon="raidInfo.icon" width="18" />
+              <span>{{ raidInfo.title }}</span>
+            </div>
+            <div class="info-card-content">
+              <p>{{ raidInfo.description }}</p>
+              <div class="raid-stats">
+                <div class="raid-stat">
+                  <span class="raid-stat-label">Capacity:</span>
+                  <span class="raid-stat-value">{{ formatBytes(raidCapacity) }}</span>
+                </div>
+                <div class="raid-stat">
+                  <span class="raid-stat-label">Devices:</span>
+                  <span class="raid-stat-value">{{ raidForm.devices.length }}</span>
+                </div>
+                <div class="raid-stat">
+                  <span class="raid-stat-label">Redundancy:</span>
+                  <span class="raid-stat-value">{{ raidInfo.redundancy }}</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-      
-      <div class="warning-section" v-if="raidForm.devices.length > 0">
-        <el-alert type="error" :closable="false">
-          <template #title>
-            <strong>WARNING: DATA LOSS</strong>
-          </template>
-          All data on selected devices will be permanently deleted!
-        </el-alert>
-      </div>
+        
+        <div class="warning-section">
+          <el-alert type="error" :closable="false" size="small">
+            <template #title>
+              <strong>WARNING: DATA LOSS</strong>
+            </template>
+            All data on selected devices will be permanently deleted!
+          </el-alert>
+        </div>
+      </el-form>
       
       <template #footer>
         <span class="dialog-footer">
-          <el-button @click="raidDialogVisible = false">
+          <el-button @click="raidDialogVisible = false" size="small">
             Cancel
           </el-button>
           <el-button 
@@ -828,8 +1016,161 @@
             @click="createRaid" 
             :loading="raidLoading"
             :disabled="raidForm.devices.length < requiredDevicesForLevel"
+            size="small"
           >
             Create RAID
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
+
+    <!-- LVM Dialog -->
+    <el-dialog 
+      v-model="lvmDialogVisible" 
+      title="Create LVM Volume" 
+      width="600px"
+      class="storage-dialog"
+    >
+      <el-form :model="lvmForm" label-position="top" size="small">
+        <el-form-item label="Physical Volumes" required>
+          <el-select 
+            v-model="lvmForm.physicalVolumes" 
+            multiple 
+            class="full-width"
+            filterable
+            collapse-tags
+            collapse-tags-tooltip
+          >
+            <el-option-group label="Disks">
+              <el-option
+                v-for="device in lvmEligibleDevices"
+                :key="device.path"
+                :label="`${device.path} (${device.model || 'Unknown'})`"
+                :value="device.path"
+              >
+                <div class="device-select-option">
+                  <Icon :icon="getDeviceIcon(device.path)" width="16" />
+                  <span class="device-name">{{ device.path }}</span>
+                  <span class="device-meta">
+                    {{ device.model || 'Unknown' }} • {{ formatBytes(device.size) }}
+                  </span>
+                </div>
+              </el-option>
+            </el-option-group>
+            
+            <el-option-group label="Partitions">
+              <el-option
+                v-for="partition in lvmEligiblePartitions"
+                :key="partition.path"
+                :label="`${partition.path} (${partition.model || 'Unknown'})`"
+                :value="partition.path"
+              >
+                <div class="device-select-option">
+                  <Icon icon="mdi:harddisk-partition" width="16" />
+                  <span class="device-name">{{ partition.path }}</span>
+                  <span class="device-meta">
+                    {{ partition.model || 'Unknown' }} • {{ formatBytes(partition.size) }}
+                  </span>
+                </div>
+              </el-option>
+            </el-option-group>
+          </el-select>
+          <div class="selection-info">
+            Selected: {{ lvmForm.physicalVolumes.length }} devices
+          </div>
+        </el-form-item>
+        
+        <el-form-item label="Volume Group Name" required>
+          <el-input v-model="lvmForm.volumeGroup" placeholder="vg_data" />
+        </el-form-item>
+        
+        <el-form-item label="Logical Volume Name" required>
+          <el-input v-model="lvmForm.logicalVolume" placeholder="lv_storage" />
+        </el-form-item>
+        
+        <el-form-item label="Logical Volume Size">
+          <div class="size-control">
+            <el-input-number 
+              v-model="lvmForm.size" 
+              :min="1" 
+              :max="lvmMaxSize"
+              :step="lvmForm.unit === 'G' ? 10 : 100"
+              :precision="0"
+              size="small"
+              style="width: 120px;"
+            />
+            <el-select 
+              v-model="lvmForm.unit" 
+              size="small"
+              class="unit-select"
+            >
+              <el-option label="GB" value="G" />
+              <el-option label="%" value="%" />
+            </el-select>
+          </div>
+          <div class="size-info">
+            <span>Available: {{ formatBytes(lvmTotalSize) }}</span>
+            <span v-if="lvmForm.unit === '%'">({{ lvmForm.size }}% = {{ formatBytes((lvmTotalSize * lvmForm.size) / 100) }})</span>
+          </div>
+        </el-form-item>
+        
+        <el-form-item label="Filesystem Type">
+          <el-select v-model="lvmForm.fsType" class="full-width">
+            <el-option label="ext4" value="ext4" />
+            <el-option label="xfs" value="xfs" />
+            <el-option label="btrfs" value="btrfs" />
+          </el-select>
+        </el-form-item>
+        
+        <el-form-item label="Mount Path (optional)">
+          <el-input v-model="lvmForm.mountPath" placeholder="/mnt/lvm_storage" />
+        </el-form-item>
+        
+        <div class="lvm-info-section">
+          <div class="info-card">
+            <div class="info-card-header">
+              <Icon icon="mdi:layers" width="18" />
+              <span>LVM Information</span>
+            </div>
+            <div class="info-card-content">
+              <p>LVM (Logical Volume Manager) allows you to combine multiple physical storage devices into a single logical volume.</p>
+              <div class="lvm-stats">
+                <div class="lvm-stat">
+                  <span class="lvm-stat-label">Total Capacity:</span>
+                  <span class="lvm-stat-value">{{ formatBytes(lvmTotalSize) }}</span>
+                </div>
+                <div class="lvm-stat">
+                  <span class="lvm-stat-label">Selected Devices:</span>
+                  <span class="lvm-stat-value">{{ lvmForm.physicalVolumes.length }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="warning-section">
+          <el-alert type="error" :closable="false" size="small">
+            <template #title>
+              <strong>WARNING: DATA LOSS</strong>
+            </template>
+            All data on selected devices will be permanently deleted!
+          </el-alert>
+        </div>
+      </el-form>
+      
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="lvmDialogVisible = false" size="small">
+            Cancel
+          </el-button>
+          <el-button 
+            type="primary" 
+            @click="createLvm" 
+            :loading="lvmLoading"
+            :disabled="lvmForm.physicalVolumes.length === 0 || !lvmForm.volumeGroup || !lvmForm.logicalVolume"
+            size="small"
+          >
+            Create LVM
           </el-button>
         </span>
       </template>
@@ -843,7 +1184,7 @@
       class="storage-dialog code-dialog"
     >
       <div class="fstab-editor-container">
-        <el-alert type="warning" :closable="false" style="margin-bottom: 15px;">
+        <el-alert type="warning" :closable="false" style="margin-bottom: 15px;" size="small">
           <template #title>
             <strong>Warning</strong>
           </template>
@@ -882,10 +1223,10 @@
         />
         
         <div class="editor-actions">
-          <el-button @click="fstabDialogVisible = false">
+          <el-button @click="fstabDialogVisible = false" size="small">
             Cancel
           </el-button>
-          <el-button type="primary" @click="saveFstab" :loading="fstabLoading">
+          <el-button type="primary" @click="saveFstab" :loading="fstabLoading" size="small">
             <Icon icon="mdi:content-save" />
             Save Changes
           </el-button>
@@ -902,7 +1243,6 @@
       class="storage-dialog debug-dialog"
     >
       <el-tabs type="border-card">
-        <!-- All Devices -->
         <el-tab-pane label="All Devices">
           <div class="tab-content">
             <div class="tab-header">
@@ -922,7 +1262,7 @@
               <el-table-column prop="path" label="Path" width="150" fixed>
                 <template #default="{ row }">
                   <div class="device-path-cell">
-                    <Icon :icon="getDeviceIcon(row.path)" width="14" height="14" />
+                    <Icon :icon="getDeviceIcon(row.path)" width="14" />
                     <span>{{ row.path }}</span>
                   </div>
                 </template>
@@ -930,7 +1270,7 @@
               <el-table-column prop="model" label="Model" width="120" />
               <el-table-column prop="type" label="Type" width="80">
                 <template #default="{ row }">
-                  <el-tag size="small" :type="row.type === 'disk' ? '' : 'info'">
+                  <el-tag size="small" :type="getDeviceTagType(row.type)">
                     {{ row.type }}
                   </el-tag>
                 </template>
@@ -964,83 +1304,97 @@
           </div>
         </el-tab-pane>
 
-        <!-- Filtered Devices -->
-        <el-tab-pane label="Filtered (Visible)">
+        <el-tab-pane label="RAID Arrays">
           <div class="tab-content">
             <div class="tab-header">
-              <h4>Visible Devices (After Filtering)</h4>
-              <el-tag type="info">
-                {{ debugData.filteredDevices.length }} devices
+              <h4>RAID Arrays</h4>
+              <el-tag type="warning">
+                {{ debugData.raidDevices.length }} arrays
               </el-tag>
             </div>
             <el-table 
-              :data="debugData.filteredDevices" 
+              :data="debugData.raidDevices" 
               stripe 
               border
               height="400"
               size="small"
               class="debug-table"
             >
-              <el-table-column prop="path" label="Path" width="150" fixed>
+              <el-table-column prop="device" label="Device" width="150">
                 <template #default="{ row }">
                   <div class="device-path-cell">
-                    <Icon :icon="getDeviceIcon(row.path)" width="14" height="14" />
-                    <span>{{ row.path }}</span>
+                    <Icon icon="mdi:raid" width="14" />
+                    <span>{{ row.device }}</span>
                   </div>
                 </template>
               </el-table-column>
-              <el-table-column prop="model" label="Model" width="120" />
-              <el-table-column prop="type" label="Type" width="80" />
-              <el-table-column prop="fstype" label="Filesystem" width="100" />
-              <el-table-column prop="mountpoint" label="Mount Point" width="200" show-overflow-tooltip />
-              <el-table-column prop="size" label="Size" width="100" sortable>
+              <el-table-column prop="level" label="RAID Level" width="100">
+                <template #default="{ row }">
+                  <el-tag type="warning" size="small">RAID {{ row.level }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="devices" label="Devices" width="200">
+                <template #default="{ row }">
+                  <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                    <el-tag v-for="dev in row.devices" :key="dev" size="mini" type="info">
+                      {{ dev }}
+                    </el-tag>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column prop="size" label="Size" width="100">
                 <template #default="{ row }">
                   {{ formatBytes(row.size) }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="state" label="State" width="100">
+                <template #default="{ row }">
+                  <el-tag :type="row.state === 'active' ? 'success' : 'danger'" size="small">
+                    {{ row.state }}
+                  </el-tag>
                 </template>
               </el-table-column>
             </el-table>
           </div>
         </el-tab-pane>
 
-        <!-- Hidden Overlay -->
-        <el-tab-pane label="Hidden Overlay Devices">
+        <el-tab-pane label="LVM Volumes">
           <div class="tab-content">
             <div class="tab-header">
-              <h4>Overlay/Docker Devices (Hidden from UI)</h4>
-              <el-tag type="danger">
-                {{ debugData.overlayDevices.length }} hidden devices
+              <h4>LVM Volumes</h4>
+              <el-tag type="success">
+                {{ debugData.lvmVolumes.length }} volumes
               </el-tag>
             </div>
             <el-table 
-              :data="debugData.overlayDevices" 
+              :data="debugData.lvmVolumes" 
               stripe 
               border
               height="400"
               size="small"
               class="debug-table"
             >
-              <el-table-column prop="path" label="Path" width="150" fixed>
+              <el-table-column prop="path" label="Path" width="150">
                 <template #default="{ row }">
                   <div class="device-path-cell">
-                    <Icon icon="mdi:layers" width="14" height="14" />
+                    <Icon icon="mdi:layers" width="14" />
                     <span>{{ row.path }}</span>
                   </div>
                 </template>
               </el-table-column>
-              <el-table-column prop="model" label="Model" width="120" />
-              <el-table-column prop="type" label="Type" width="80" />
-              <el-table-column prop="fstype" label="Filesystem" width="100" />
-              <el-table-column prop="mountpoint" label="Mount Point" width="200" show-overflow-tooltip />
+              <el-table-column prop="volumeGroup" label="Volume Group" width="150" />
+              <el-table-column prop="logicalVolume" label="Logical Volume" width="150" />
               <el-table-column prop="size" label="Size" width="100">
                 <template #default="{ row }">
                   {{ formatBytes(row.size) }}
                 </template>
               </el-table-column>
-              <el-table-column label="Hidden Reason" width="150">
+              <el-table-column prop="fstype" label="Filesystem" width="100">
                 <template #default="{ row }">
-                  <el-tag type="danger" size="small" effect="plain">
-                    {{ getOverlayReason(row) }}
+                  <el-tag v-if="row.fstype" size="small" :type="getFsTagType(row.fstype)" effect="plain">
+                    {{ row.fstype }}
                   </el-tag>
+                  <span v-else>-</span>
                 </template>
               </el-table-column>
             </el-table>
@@ -1051,14 +1405,14 @@
       <template #footer>
         <div class="debug-footer">
           <div class="debug-actions">
-            <el-button @click="debugDialogVisible = false">
+            <el-button @click="debugDialogVisible = false" size="small">
               Close
             </el-button>
-            <el-button type="primary" @click="copyDebugData">
+            <el-button type="primary" @click="copyDebugData" size="small">
               <Icon icon="mdi:content-copy" />
               Copy JSON
             </el-button>
-            <el-button type="warning" @click="exportDebugData">
+            <el-button type="warning" @click="exportDebugData" size="small">
               <Icon icon="mdi:download" />
               Export File
             </el-button>
@@ -1071,7 +1425,69 @@
         </div>
       </template>
     </el-dialog>
-  </el-card>
+
+    <!-- Device Details Dialog -->
+    <el-dialog 
+      v-model="detailsDialogVisible" 
+      :title="`Device Details: ${selectedFs?.device}`" 
+      width="700px"
+      class="storage-dialog details-dialog"
+    >
+      <div v-if="selectedFs" class="device-details">
+        <div class="details-grid">
+          <div class="detail-item">
+            <span class="detail-label">Device:</span>
+            <span class="detail-value">{{ selectedFs.device }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Type:</span>
+            <span class="detail-value">{{ selectedFs.type.toUpperCase() }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Size:</span>
+            <span class="detail-value">{{ formatBytes(selectedFs.size) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Used:</span>
+            <span class="detail-value">{{ formatBytes(selectedFs.used) }} ({{ selectedFs.usedPercent }}%)</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Free:</span>
+            <span class="detail-value">{{ formatBytes(selectedFs.size - selectedFs.used) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Mount Point:</span>
+            <span class="detail-value">{{ selectedFs.mounted || 'Not mounted' }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Status:</span>
+            <span class="detail-value">{{ selectedFs.status }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Read Only:</span>
+            <span class="detail-value">{{ selectedFs.readOnly ? 'Yes' : 'No' }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Auto-mount:</span>
+            <span class="detail-value">{{ selectedFs.inFstab ? 'Yes' : 'No' }}</span>
+          </div>
+        </div>
+        
+        <div v-if="selectedFs.inFstab" class="fstab-info">
+          <h4>Fstab Entry</h4>
+          <pre>{{ getFstabEntry(selectedFs) }}</pre>
+        </div>
+      </div>
+      
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="detailsDialogVisible = false" size="small">
+            Close
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
+  </div>
 </template>
 
 <script>
@@ -1082,13 +1498,16 @@ export default {
 </script>
 
 <script setup>
-import { ref, onMounted, computed, onUnmounted, watch, h } from 'vue'
+import { ref, onMounted, computed, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@iconify/vue'
 import axios from 'axios'
 import { ElMessage, ElNotification, ElMessageBox } from 'element-plus'
+import { useTheme } from '@/composables/useTheme.js'
 
 const { t } = useI18n()
+const { isDarkMode, toggleTheme } = useTheme()
+
 const abortController = ref(new AbortController())
 
 const api = axios.create({
@@ -1096,14 +1515,15 @@ const api = axios.create({
   signal: abortController.value.signal
 })
 
-// Define FolderIcon for prefix-icon
-const FolderIcon = h('i', { class: 'el-icon el-icon-folder' })
-
 // Reactive state
 const filesystems = ref([])
 const allDevices = ref([])
+const raidDevices = ref([])
+const lvmVolumes = ref([])
 const loading = ref(false)
 const error = ref(null)
+const sortBy = ref('device')
+const sortOrder = ref('asc')
 
 // Dialog states
 const mountDialogVisible = ref(false)
@@ -1114,10 +1534,14 @@ const partitionDialogVisible = ref(false)
 const partitionLoading = ref(false)
 const raidDialogVisible = ref(false)
 const raidLoading = ref(false)
+const lvmDialogVisible = ref(false)
+const lvmLoading = ref(false)
 const fstabDialogVisible = ref(false)
 const fstabLoading = ref(false)
-const fstabContent = ref('')
+const detailsDialogVisible = ref(false)
 const debugDialogVisible = ref(false)
+const fstabContent = ref('')
+const fstabEntries = ref([])
 
 // Form models
 const mountForm = ref({
@@ -1125,7 +1549,9 @@ const mountForm = ref({
   mountPoint: '',
   fsType: 'auto',
   options: 'defaults,nofail',
-  zfsPoolName: ''
+  zfsPoolName: '',
+  lvmVolumeGroup: '',
+  raidStart: true
 })
 
 const formatForm = ref({
@@ -1146,46 +1572,64 @@ const raidForm = ref({
   level: '1',
   devices: [],
   name: 'md0',
-  chunkSize: '128'
+  chunkSize: '128',
+  fsType: 'ext4',
+  autoStart: true
 })
 
-const selectedDeviceInfo = ref(null)
-const fstabEntries = ref([])
-const debugData = ref({
-  allDevices: [],
-  filteredDevices: [],
-  overlayDevices: []
+const lvmForm = ref({
+  physicalVolumes: [],
+  volumeGroup: 'vg_data',
+  logicalVolume: 'lv_storage',
+  size: 100,
+  unit: '%',
+  fsType: 'ext4',
+  mountPath: '/mnt/lvm_storage'
 })
+
+// UI State
+const currentPage = ref(1)
+const pageSize = ref(9)
+const viewFilter = ref('all')
+const searchQuery = ref('')
+const typeFilter = ref('')
+const statusFilter = ref('')
+const selectedFs = ref(null)
+const selectedDeviceInfo = ref(null)
 
 // Disk size for partition dialog
 const totalDiskSize = ref(0)
 const usedDiskSpace = ref(0)
 const diskUsagePercentage = ref(0)
 
+// Debug data
+const debugData = ref({
+  allDevices: [],
+  raidDevices: [],
+  lvmVolumes: [],
+  filteredDevices: [],
+  overlayDevices: []
+})
+
 // Computed properties
 const supportedFilesystems = ref([
   'bcachefs', 'btrfs', 'ext4', 'f2fs', 'jfs', 'xfs', 'zfs', 'ntfs', 'vfat', 'exfat'
 ])
 
-const allAvailableDevices = computed(() => {
-  return filterSystemDevices(allDevices.value.filter(device => 
-    device.type === 'disk' && 
-    !device.path.includes('loop')
-  ))
+const getThemeIcon = computed(() => {
+  return isDarkMode.value ? 'mdi:weather-night' : 'mdi:weather-sunny'
 })
 
-const allAvailablePartitions = computed(() => {
-  return allDevices.value.flatMap(device => 
-    (device.partitions || []).map(part => ({
-      ...part,
-      model: device.model || 'Unknown',
-      size: part.size ? parseInt(part.size) : 0
-    }))
-  ).filter(part => !part.path.includes('loop'))
+const darkMode = computed({
+  get: () => isDarkMode.value,
+  set: (val) => {
+    if (val !== isDarkMode.value) {
+      toggleTheme()
+    }
+  }
 })
 
 const isMobile = computed(() => window.innerWidth < 768)
-const tableHeight = computed(() => window.innerHeight - 320)
 
 const totalUsedPercent = computed(() => {
   if (filesystems.value.length === 0) return 0
@@ -1205,16 +1649,39 @@ const fstabLines = computed(() => {
   return fstabContent.value.split('\n').length
 })
 
+const allAvailableDevices = computed(() => {
+  return filterSystemDevices(allDevices.value.filter(device => 
+    device.type === 'disk' && 
+    !device.path.includes('loop') &&
+    !isRaidMember(device)
+  ))
+})
+
+const allAvailablePartitions = computed(() => {
+  return allDevices.value.flatMap(device => 
+    (device.children || []).map(part => ({
+      ...part,
+      model: device.model || 'Unknown',
+      size: part.size ? parseInt(part.size) : 0
+    }))
+  ).filter(part => 
+    !part.path.includes('loop') &&
+    !isRaidMember(part) &&
+    !isLvmMember(part)
+  )
+})
+
 const mountableDevices = computed(() => {
   const mountedPaths = filesystems.value.map(fs => fs.device)
   
   const devices = allDevices.value.filter(device => 
     !mountedPaths.includes(device.path) && 
-    device.type === 'disk'
+    device.type === 'disk' &&
+    !isRaidMember(device)
   )
   
   const partitions = allDevices.value.flatMap(device => 
-    (device.partitions || [])
+    (device.children || [])
       .filter(part => !mountedPaths.includes(part.path))
       .map(part => ({
         ...part,
@@ -1222,14 +1689,37 @@ const mountableDevices = computed(() => {
       }))
   )
 
-  return filterSystemDevices([...devices, ...partitions])
+  const raids = raidDevices.value.filter(raid => 
+    !mountedPaths.includes(raid.device)
+  ).map(raid => ({
+    path: raid.device,
+    model: 'RAID Array',
+    size: raid.size,
+    fstype: raid.fstype || '',
+    label: raid.name,
+    isRaid: true
+  }))
+
+  const lvms = lvmVolumes.value.filter(lvm => 
+    !mountedPaths.includes(lvm.path)
+  ).map(lvm => ({
+    path: lvm.path,
+    model: 'LVM Volume',
+    size: lvm.size,
+    fstype: lvm.fstype || '',
+    label: lvm.logicalVolume,
+    isLvm: true
+  }))
+
+  return filterSystemDevices([...devices, ...partitions, ...raids, ...lvms])
 })
 
 const partitionableDevices = computed(() => {
   return allDevices.value.filter(device => 
     (device.type === 'disk' || device.path.includes('/dev/md')) && 
     !device.path.includes('loop') &&
-    !isSystemDisk(device.path)
+    !isSystemDisk(device.path) &&
+    !isRaidMember(device)
   )
 })
 
@@ -1239,7 +1729,31 @@ const raidEligibleDevices = computed(() => {
     !device.path.includes('loop') &&
     !isSystemDisk(device.path) &&
     !device.path.includes('md') &&
-    !device.model?.includes('RAID')
+    !device.model?.includes('RAID') &&
+    !isLvmMember(device)
+  )
+})
+
+const lvmEligibleDevices = computed(() => {
+  return allDevices.value.filter(device => 
+    device.type === 'disk' && 
+    !device.path.includes('loop') &&
+    !isSystemDisk(device.path) &&
+    !device.path.includes('md') &&
+    !isRaidMember(device)
+  )
+})
+
+const lvmEligiblePartitions = computed(() => {
+  return allDevices.value.flatMap(device => 
+    (device.children || []).filter(part => 
+      part.type === 'part' &&
+      !isRaidMember(part) &&
+      !isLvmMember(part)
+    ).map(part => ({
+      ...part,
+      model: device.model || 'Unknown'
+    }))
   )
 })
 
@@ -1259,6 +1773,18 @@ const raidCapacity = computed(() => {
     case '10': return totalSize / 2
     default: return 0
   }
+})
+
+const lvmTotalSize = computed(() => {
+  return lvmForm.value.physicalVolumes.reduce((total, devicePath) => {
+    const device = [...allDevices.value, ...allAvailablePartitions.value].find(d => d.path === devicePath)
+    return total + (device?.size || 0)
+  }, 0)
+})
+
+const lvmMaxSize = computed(() => {
+  if (lvmForm.value.unit === '%') return 100
+  return Math.floor(lvmTotalSize.value / (1024 * 1024 * 1024))
 })
 
 const requiredDevicesForLevel = computed(() => {
@@ -1309,58 +1835,82 @@ const raidInfo = computed(() => {
   return info[raidForm.value.level] || info['1']
 })
 
-// Methods
-const showDeviceActions = (row) => {
-  ElMessageBox({
-    title: `Device: ${row.device}`,
-    message: `Mount point: ${row.mounted}`,
-    showCancelButton: true,
-    showClose: true,
+const filteredFilesystems = computed(() => {
+  let result = [...filesystems.value]
+  
+  if (viewFilter.value === 'raid') {
+    result = result.filter(fs => isRaidDevice(fs.device))
+  } else if (viewFilter.value === 'lvm') {
+    result = result.filter(fs => isLvmDevice(fs.device))
+  } else if (viewFilter.value === 'critical') {
+    result = result.filter(fs => fs.usedPercent > 90)
+  }
+  
+  if (typeFilter.value) {
+    result = result.filter(fs => fs.type === typeFilter.value)
+  }
+  
+  if (statusFilter.value) {
+    result = result.filter(fs => fs.status === statusFilter.value)
+  }
+  
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    result = result.filter(fs => 
+      fs.device.toLowerCase().includes(query) ||
+      (fs.mounted && fs.mounted.toLowerCase().includes(query)) ||
+      fs.type.toLowerCase().includes(query)
+    )
+  }
+  
+  // Sorting
+  result.sort((a, b) => {
+    const aValue = a[sortBy.value]
+    const bValue = b[sortBy.value]
+    
+    if (typeof aValue === 'string') {
+      return sortOrder.value === 'asc' 
+        ? aValue.localeCompare(bValue)
+        : bValue.localeCompare(aValue)
+    } else {
+      return sortOrder.value === 'asc'
+        ? aValue - bValue
+        : bValue - aValue
+    }
   })
-}
-
-const checkDevice = (row) => {
-  ElNotification.info(`Checking device ${row.device}...`)
-}
-
-const editFstabEntry = (row) => {
-  ElNotification.info(`Editing fstab entry for ${row.device}`)
-}
-
-const onDeviceSelected = async (devicePath) => {
-  const device = mountableDevices.value.find(d => d.path === devicePath)
-  if (!device) return
-
-  selectedDeviceInfo.value = {
-    path: device.path,
-    fsType: device.fstype,
-    size: device.size,
-    label: device.label,
-    isRaid: device.path.includes('/dev/md'),
-    isZfs: device.fstype === 'zfs' || device.path.includes('zfs')
-  }
-
-  if (!selectedDeviceInfo.value.isZfs) {
-    mountForm.value.mountPoint = getDefaultMountPoint()
-  }
-
-  if (selectedDeviceInfo.value.fsType) {
-    mountForm.value.fsType = selectedDeviceInfo.value.fsType
-  } else if (selectedDeviceInfo.value.isZfs) {
-    mountForm.value.fsType = 'zfs'
-  }
-}
-
-const getDefaultMountPoint = () => {
-  const device = selectedDeviceInfo.value
-  if (!device) return '/mnt/new_disk'
   
-  let baseName = device.path.split('/').pop()
-  if (device.label) {
-    baseName = device.label.toLowerCase().replace(/\s+/g, '_')
+  return result
+})
+
+const paginatedFilesystems = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  const end = start + pageSize.value
+  return filteredFilesystems.value.slice(start, end)
+})
+
+const emptyMessage = computed(() => {
+  if (viewFilter.value !== 'all' || searchQuery.value || typeFilter.value || statusFilter.value) {
+    return 'No filesystems match the current filters'
   }
-  
-  return `/mnt/${baseName}`
+  return 'No mounted filesystems detected. Mount a device to get started.'
+})
+
+// Helper methods
+const formatBytes = (bytes, decimals = 2) => {
+  if (!bytes || bytes === 0) return '0 Bytes'
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i]
+}
+
+const truncatePath = (path, maxLength) => {
+  if (!path || path.length <= maxLength) return path
+  return '...' + path.slice(-maxLength + 3)
+}
+
+const getDeviceShortName = (path) => {
+  return path.split('/').pop()
 }
 
 const getDeviceLabel = (device) => {
@@ -1374,15 +1924,32 @@ const getDeviceLabel = (device) => {
   return label
 }
 
-const getDeviceShortName = (path) => {
-  return path.split('/').pop()
-}
-
 const getDeviceTagType = (device) => {
   if (device.includes('nvme')) return 'primary'
-  if (device.includes('md')) return 'warning'
-  if (device.includes('zfs')) return 'success'
+  if (device.includes('md') || isRaidDevice(device)) return 'warning'
+  if (device.includes('mapper') || isLvmDevice(device)) return 'success'
+  if (device.includes('zfs')) return 'info'
   return ''
+}
+
+const isRaidDevice = (device) => {
+  return device.includes('/dev/md') || device.includes('raid') || 
+         raidDevices.value.some(raid => raid.device === device)
+}
+
+const isLvmDevice = (device) => {
+  return device.includes('/dev/mapper') || device.includes('/dev/dm-') ||
+         lvmVolumes.value.some(lvm => lvm.path === device)
+}
+
+const isRaidMember = (device) => {
+  return raidDevices.value.some(raid => 
+    raid.devices?.includes(device.path)
+  )
+}
+
+const isLvmMember = (device) => {
+  return device.fstype === 'LVM2_member' || device.fstype === 'LVM'
 }
 
 const getFsTagType = (type) => {
@@ -1393,15 +1960,18 @@ const getFsTagType = (type) => {
     btrfs: 'info',
     ntfs: '',
     vfat: '',
-    exfat: ''
+    exfat: '',
+    lvm2_member: 'success',
+    lvm: 'success'
   }
-  return types[type.toLowerCase()] || ''
+  return types[type?.toLowerCase()] || ''
 }
 
 const getDeviceIcon = (device) => {
   if (device?.includes('nvme')) return 'mdi:memory'
   if (device?.includes('sd')) return 'mdi:harddisk'
-  if (device?.includes('md')) return 'mdi:raid'
+  if (device?.includes('md') || isRaidDevice(device)) return 'mdi:raid'
+  if (device?.includes('mapper') || isLvmDevice(device)) return 'mdi:layers'
   if (device?.includes('zfs')) return 'mdi:database'
   return 'mdi:harddisk'
 }
@@ -1418,9 +1988,23 @@ const getFsIcon = (type) => {
     btrfs: 'mdi:database',
     bcachefs: 'mdi:database',
     f2fs: 'mdi:flash',
-    jfs: 'mdi:file-tree'
+    jfs: 'mdi:file-tree',
+    lvm2_member: 'mdi:layers',
+    lvm: 'mdi:layers'
   }
-  return icons[type.toLowerCase()] || 'mdi:file-question'
+  return icons[type?.toLowerCase()] || 'mdi:file-question'
+}
+
+const getFsColor = (type) => {
+  const colors = {
+    ext4: '#67c23a',
+    xfs: '#409eff',
+    zfs: '#e6a23c',
+    btrfs: '#f56c6c',
+    ntfs: '#909399',
+    vfat: '#909399'
+  }
+  return colors[type?.toLowerCase()] || '#909399'
 }
 
 const getStatusIcon = (status) => {
@@ -1431,7 +2015,7 @@ const getStatusIcon = (status) => {
     error: 'mdi:alert-circle',
     unknown: 'mdi:help-circle'
   }
-  return icons[status.toLowerCase()] || 'mdi:help-circle'
+  return icons[status?.toLowerCase()] || 'mdi:help-circle'
 }
 
 const getStatusType = (status) => {
@@ -1442,26 +2026,13 @@ const getStatusType = (status) => {
     error: 'danger',
     unknown: ''
   }
-  return types[status.toLowerCase()] || ''
+  return types[status?.toLowerCase()] || ''
 }
 
 const getUsageColor = (percent) => {
   if (percent > 90) return '#f56c6c'
   if (percent > 70) return '#e6a23c'
   return '#67c23a'
-}
-
-const formatBytes = (bytes, decimals = 2) => {
-  if (!bytes || bytes === 0) return '0 Bytes'
-  const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i]
-}
-
-const truncatePath = (path, maxLength) => {
-  if (path.length <= maxLength) return path
-  return '...' + path.slice(-maxLength + 3)
 }
 
 const isSystemDisk = (devicePath) => {
@@ -1518,6 +2089,27 @@ const filterSystemDevices = (devices) => {
 
     return !isOverlay
   })
+}
+
+const getDefaultMountPoint = () => {
+  const device = selectedDeviceInfo.value
+  if (!device) return '/mnt/new_disk'
+  
+  let baseName = device.path.split('/').pop()
+  if (device.label) {
+    baseName = device.label.toLowerCase().replace(/[^a-z0-9]/g, '_')
+  }
+  
+  return `/mnt/${baseName}`
+}
+
+const getLvmVolumeGroup = (path) => {
+  const match = path.match(/\/dev\/mapper\/(.+)-(.+)/)
+  return match ? match[1] : 'unknown'
+}
+
+const getFstabEntry = (fs) => {
+  return `${fs.device} ${fs.mounted} ${fs.type} defaults,nofail 0 0`
 }
 
 // Partition methods
@@ -1587,11 +2179,35 @@ const updateRaidInfo = () => {
   // Method triggered when RAID level changes
 }
 
+const toggleSelection = (fs) => {
+  if (selectedFs.value && selectedFs.value.device === fs.device) {
+    selectedFs.value = null
+  } else {
+    selectedFs.value = fs
+  }
+}
+
 // API methods
 const fetchDevices = async () => {
   try {
     const response = await axios.get('/api/storage/devices')
     allDevices.value = response.data.data || []
+    
+    // Fetch RAID devices
+    try {
+      const raidResponse = await axios.get('/api/storage/raid')
+      raidDevices.value = raidResponse.data.data || []
+    } catch (raidError) {
+      console.warn('Error fetching RAID devices:', raidError)
+    }
+    
+    // Fetch LVM volumes
+    try {
+      const lvmResponse = await axios.get('/api/storage/lvm')
+      lvmVolumes.value = lvmResponse.data.data || []
+    } catch (lvmError) {
+      console.warn('Error fetching LVM volumes:', lvmError)
+    }
   } catch (err) {
     console.error('Error fetching devices:', err)
     throw err
@@ -1616,7 +2232,8 @@ const refreshFilesystems = async () => {
       filesystems.value = fsResponse.data.data.map(fs => ({
         ...fs,
         inFstab: isAutoMounted(fs.device, fs.mounted),
-        fstabLoading: false
+        fstabLoading: false,
+        usedPercent: fs.usedPercent || Math.round((fs.used / fs.size) * 100)
       }))
     }
     
@@ -1648,7 +2265,9 @@ const showMountDialog = async () => {
       mountPoint: '',
       fsType: 'auto',
       options: 'defaults,nofail',
-      zfsPoolName: ''
+      zfsPoolName: '',
+      lvmVolumeGroup: '',
+      raidStart: true
     }
     selectedDeviceInfo.value = null
   } catch (err) {
@@ -1656,6 +2275,33 @@ const showMountDialog = async () => {
     console.error('Error loading devices:', err)
   } finally {
     loading.value = false
+  }
+}
+
+const onDeviceSelected = async (devicePath) => {
+  const device = mountableDevices.value.find(d => d.path === devicePath)
+  if (!device) return
+
+  selectedDeviceInfo.value = {
+    path: device.path,
+    fsType: device.fstype,
+    size: device.size,
+    label: device.label,
+    isRaid: device.isRaid || device.path.includes('/dev/md'),
+    isLvm: device.isLvm || device.path.includes('/dev/mapper'),
+    isZfs: device.fstype === 'zfs' || device.path.includes('zfs')
+  }
+
+  if (!selectedDeviceInfo.value.isZfs && !selectedDeviceInfo.value.isLvm) {
+    mountForm.value.mountPoint = getDefaultMountPoint()
+  }
+
+  if (selectedDeviceInfo.value.fsType) {
+    mountForm.value.fsType = selectedDeviceInfo.value.fsType
+  } else if (selectedDeviceInfo.value.isZfs) {
+    mountForm.value.fsType = 'zfs'
+  } else if (selectedDeviceInfo.value.isLvm) {
+    mountForm.value.fsType = 'auto'
   }
 }
 
@@ -1668,13 +2314,27 @@ const mountDevice = async () => {
       throw new Error('Please select a device')
     }
     
-    const response = await axios.post('/api/storage/mount', {
+    // Special handling for RAID arrays
+    if (isRaidDevice(mountForm.value.device)) {
+      // Ensure RAID array is started
+      if (mountForm.value.raidStart) {
+        try {
+          await axios.post('/api/storage/raid/start', { device: mountForm.value.device })
+        } catch (raidError) {
+          console.warn('Could not start RAID array:', raidError)
+        }
+      }
+    }
+    
+    const mountData = {
       device: mountForm.value.device,
       mountPoint: mountForm.value.mountPoint,
       fsType: mountForm.value.fsType,
       options: mountForm.value.options,
       zfsPoolName: mountForm.value.zfsPoolName
-    })
+    }
+    
+    const response = await axios.post('/api/storage/mount', mountData)
 
     if (response.data.success) {
       ElNotification({
@@ -1687,10 +2347,19 @@ const mountDevice = async () => {
     }
   } catch (err) {
     error.value = err.response?.data?.details || err.message
+    
+    // Special error handling for RAID/LVM
+    if (error.value.includes('RAID') || error.value.includes('mdadm')) {
+      error.value += '. Try starting the RAID array first using the RAID management tools.'
+    } else if (error.value.includes('LVM') || error.value.includes('mapper')) {
+      error.value += '. Try activating the LVM volume first using the LVM management tools.'
+    }
+    
     ElNotification({
       title: 'Mount Error',
       message: error.value,
-      type: 'error'
+      type: 'error',
+      duration: 5000
     })
   } finally {
     mountLoading.value = false
@@ -1814,20 +2483,35 @@ const createPartitions = async () => {
       }
     )
     
-    // TODO: Implement actual partitioning API call
-    ElNotification.success({
-      title: 'Success',
-      message: 'Partitions created successfully',
+    const partitions = partitionForm.value.partitions.map(part => ({
+      size: part.unit === '%' ? `${part.size}%` : `${part.size}${part.unit}`,
+      type: part.type
+    }))
+    
+    const response = await axios.post('/api/storage/partition', {
+      device: partitionForm.value.device,
+      scheme: partitionForm.value.scheme,
+      partitions: partitions
     })
     
-    partitionDialogVisible.value = false
-    await fetchDevices()
-    await refreshFilesystems()
+    if (response.data.success) {
+      ElNotification.success({
+        title: 'Success',
+        message: 'Partitions created successfully',
+      })
+      
+      partitionDialogVisible.value = false
+      await fetchDevices()
+      await refreshFilesystems()
+    }
+    
   } catch (error) {
     if (error === 'cancel') return
+    
+    const message = error.response?.data?.details || error.message
     ElNotification.error({
       title: 'Error',
-      message: error.message,
+      message: message,
     })
   } finally {
     partitionLoading.value = false
@@ -1843,7 +2527,9 @@ const showRaidDialog = async () => {
       level: '1',
       devices: [],
       name: 'md0',
-      chunkSize: '128'
+      chunkSize: '128',
+      fsType: 'ext4',
+      autoStart: true
     }
   } catch (err) {
     error.value = 'Error loading devices'
@@ -1872,24 +2558,247 @@ const createRaid = async () => {
       }
     )
     
-    // TODO: Implement actual RAID creation API call
-    ElNotification.success({
-      title: 'Success',
-      message: `RAID ${raidForm.value.level} created successfully`,
-      duration: 5000
+    const response = await axios.post('/api/storage/raid/create', {
+      level: raidForm.value.level,
+      devices: raidForm.value.devices,
+      name: raidForm.value.name,
+      chunkSize: raidForm.value.chunkSize,
+      fsType: raidForm.value.fsType,
+      autoStart: raidForm.value.autoStart
     })
     
-    raidDialogVisible.value = false
-    await refreshFilesystems()
+    if (response.data.success) {
+      ElNotification.success({
+        title: 'Success',
+        message: `RAID ${raidForm.value.level} created successfully`,
+        duration: 5000
+      })
+      
+      raidDialogVisible.value = false
+      await fetchDevices()
+      await refreshFilesystems()
+    }
+    
   } catch (error) {
     if (error === 'cancel') return
+    
+    const message = error.response?.data?.details || error.message
     ElNotification.error({
       title: 'RAID Error',
-      message: error.message,
+      message: message,
       duration: 0
     })
   } finally {
     raidLoading.value = false
+  }
+}
+
+const showLvmDialog = async () => {
+  try {
+    loading.value = true
+    await fetchDevices()
+    lvmDialogVisible.value = true
+    lvmForm.value = {
+      physicalVolumes: [],
+      volumeGroup: 'vg_data',
+      logicalVolume: 'lv_storage',
+      size: 100,
+      unit: '%',
+      fsType: 'ext4',
+      mountPath: '/mnt/lvm_storage'
+    }
+  } catch (err) {
+    error.value = 'Error loading devices'
+    console.error('Error loading devices:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
+const createLvm = async () => {
+  try {
+    lvmLoading.value = true
+    
+    if (lvmForm.value.physicalVolumes.length === 0) {
+      throw new Error('Please select at least one physical volume')
+    }
+    
+    await ElMessageBox.confirm(
+      `Creating LVM volume with ${lvmForm.value.physicalVolumes.length} devices. All data will be lost. Continue?`,
+      'Confirm LVM Creation',
+      {
+        confirmButtonText: 'Create LVM',
+        cancelButtonText: 'Cancel',
+        type: 'error',
+        dangerouslyUseHTMLString: true
+      }
+    )
+    
+    const size = lvmForm.value.unit === '%' 
+      ? `${lvmForm.value.size}%` 
+      : `${lvmForm.value.size}G`
+    
+    const response = await axios.post('/api/storage/lvm/create', {
+      physicalVolumes: lvmForm.value.physicalVolumes,
+      volumeGroup: lvmForm.value.volumeGroup,
+      logicalVolume: lvmForm.value.logicalVolume,
+      size: size,
+      fsType: lvmForm.value.fsType,
+      mountPath: lvmForm.value.mountPath
+    })
+    
+    if (response.data.success) {
+      ElNotification.success({
+        title: 'Success',
+        message: 'LVM volume created successfully',
+        duration: 5000
+      })
+      
+      lvmDialogVisible.value = false
+      await fetchDevices()
+      await refreshFilesystems()
+    }
+    
+  } catch (error) {
+    if (error === 'cancel') return
+    
+    const message = error.response?.data?.details || error.message
+    ElNotification.error({
+      title: 'LVM Error',
+      message: message,
+      duration: 0
+    })
+  } finally {
+    lvmLoading.value = false
+  }
+}
+
+const showDeviceDetails = (fs) => {
+  selectedFs.value = fs
+  detailsDialogVisible.value = true
+}
+
+const checkDevice = async (fs) => {
+  try {
+    loading.value = true
+    const response = await axios.post('/api/storage/check-device', { device: fs.device })
+    
+    if (response.data.success) {
+      ElNotification.success({
+        title: 'Device Check',
+        message: `Device ${fs.device} is ${response.data.exists ? 'available' : 'not available'}`,
+      })
+    }
+  } catch (error) {
+    ElNotification.error({
+      title: 'Device Check Error',
+      message: error.message,
+    })
+  } finally {
+    loading.value = false
+  }
+}
+
+const repairFilesystem = async (fs) => {
+  try {
+    await ElMessageBox.confirm(
+      `Repair filesystem on ${fs.device}? This may take some time.`,
+      'Confirm Repair',
+      {
+        confirmButtonText: 'Repair',
+        cancelButtonText: 'Cancel',
+        type: 'warning'
+      }
+    )
+    
+    loading.value = true
+    const response = await axios.post('/api/storage/repair-filesystem', { 
+      device: fs.device,
+      fsType: fs.type
+    })
+    
+    if (response.data.success) {
+      ElNotification.success({
+        title: 'Repair Complete',
+        message: response.data.message || 'Filesystem repaired successfully',
+      })
+      await refreshFilesystems()
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElNotification.error({
+        title: 'Repair Error',
+        message: error.response?.data?.details || error.message,
+      })
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+const editFstabEntry = (fs) => {
+  ElNotification.info(`Editing fstab entry for ${fs.device}`)
+  openFstabEditor()
+}
+
+const toggleFstabEntry = async (fs) => {
+  try {
+    const response = await axios.post('/api/storage/fstab', {
+      action: fs.inFstab ? 'remove' : 'add',
+      device: fs.device,
+      mountPoint: fs.mounted,
+      fsType: fs.type,
+      options: 'defaults,nofail'
+    })
+    
+    if (response.data.success) {
+      fs.inFstab = !fs.inFstab
+      ElNotification.success({
+        title: 'Success',
+        message: response.data.message,
+      })
+      await refreshFilesystems()
+    }
+  } catch (error) {
+    ElNotification.error({
+      title: 'Error',
+      message: error.response?.data?.details || error.message,
+    })
+  }
+}
+
+const unmountFilesystem = async (mountPoint) => {
+  try {
+    await ElMessageBox.confirm(
+      `Unmount filesystem at ${mountPoint}?`,
+      'Confirm Unmount',
+      {
+        confirmButtonText: 'Unmount',
+        cancelButtonText: 'Cancel',
+        type: 'warning'
+      }
+    )
+    
+    loading.value = true
+    const response = await axios.post('/api/storage/unmount', { mountPoint })
+    
+    ElNotification.success({
+      title: 'Success',
+      message: response.data.isZfs ?
+        'ZFS pool unmounted successfully' :
+        'Filesystem unmounted successfully',
+    })
+    
+    await refreshFilesystems()
+  } catch (err) {
+    if (err === 'cancel') return
+    error.value = err.response?.data?.details || err.message
+    ElNotification.error({
+      title: 'Unmount Error',
+      message: error.value,
+    })
+  } finally {
+    loading.value = false
   }
 }
 
@@ -1961,6 +2870,8 @@ const insertFstabTemplate = () => {
 # <file system> <mount point>   <type>  <options>       <dump>  <pass>
 # /dev/sda1     /               ext4    defaults,noatime 0       1
 # UUID=xxxx-xxxx /boot           vfat    defaults        0       2
+# /dev/md0      /mnt/raid       ext4    defaults        0       2
+# /dev/mapper/vg_data-lv_storage /mnt/lvm ext4 defaults 0       2
 `
   fstabContent.value += (fstabContent.value ? '\n\n' : '') + template
 }
@@ -1990,85 +2901,15 @@ const validateFstab = async () => {
   }
 }
 
-const unmountFilesystem = async (mountPoint) => {
-  try {
-    await ElMessageBox.confirm(
-      `Unmount filesystem at ${mountPoint}?`,
-      'Confirm Unmount',
-      {
-        confirmButtonText: 'Unmount',
-        cancelButtonText: 'Cancel',
-        type: 'warning'
-      }
-    )
-    
-    loading.value = true
-    const response = await axios.post('/api/storage/unmount', { mountPoint })
-    
-    ElNotification.success({
-      title: 'Success',
-      message: response.data.isZfs ?
-        'ZFS pool unmounted successfully' :
-        'Filesystem unmounted successfully',
-    })
-    
-    await refreshFilesystems()
-  } catch (err) {
-    if (err === 'cancel') return
-    error.value = err.response?.data?.details || err.message
-    ElNotification.error({
-      title: 'Unmount Error',
-      message: error.value,
-    })
-  } finally {
-    loading.value = false
-  }
-}
-
-const toggleFstabEntry = async (device, mountPoint, fsType, options, enabled) => {
-  try {
-    const response = await axios.post('/api/storage/fstab', {
-      action: enabled ? 'add' : 'remove',
-      device,
-      mountPoint,
-      fsType,
-      options
-    })
-    
-    if (response.data.success) {
-      const fsIndex = filesystems.value.findIndex(fs => 
-        fs.device === device && fs.mounted === mountPoint
-      )
-      
-      if (fsIndex !== -1) {
-        filesystems.value[fsIndex].inFstab = enabled
-      }
-      
-      ElNotification.success({
-        title: 'Success',
-        message: response.data.message,
-      })
-      return true
-    }
-    return false
-  } catch (error) {
-    ElNotification.error({
-      title: 'Error',
-      message: error.response?.data?.details || error.message,
-    })
-    return false
-  }
-}
-
 const debugDevices = async () => {
   try {
     debugDialogVisible.value = true
     
     const response = await axios.get('/api/storage/debug-devices')
-    const allDevices = response.data.data || []
+    const allDevicesData = response.data.data || []
     
-    const formattedDevices = allDevices.map(dev => ({
-      path: `/dev/${dev.name}`,
+    const formattedDevices = allDevicesData.map(dev => ({
+      path: dev.path,
       model: dev.model || 'Unknown',
       mountpoint: dev.mountpoint || '',
       fstype: dev.fstype || '',
@@ -2085,7 +2926,9 @@ const debugDevices = async () => {
     debugData.value = {
       allDevices: formattedDevices,
       filteredDevices: filteredDevices,
-      overlayDevices: overlayDevices
+      overlayDevices: overlayDevices,
+      raidDevices: raidDevices.value,
+      lvmVolumes: lvmVolumes.value
     }
 
   } catch (error) {
@@ -2137,6 +2980,15 @@ const exportDebugData = () => {
   }
 }
 
+const handlePageChange = (page) => {
+  currentPage.value = page
+}
+
+const handleSizeChange = (size) => {
+  pageSize.value = size
+  currentPage.value = 1
+}
+
 // Watch for device changes to update disk size
 watch(() => partitionForm.value.device, (newVal) => {
   if (newVal) {
@@ -2185,474 +3037,779 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* Reset and base styles */
-.filesystems-widget {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  background: #ffffff;
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-  overflow: hidden;
+.filesystems-dashboard {
+  padding: 16px;
+  min-height: 100vh;
 }
 
-:deep(.el-card__header) {
-  padding: 0;
-  border-bottom: 1px solid #e4e7ed;
-  background: #f8f9fa;
+:root[data-theme="dark"] .filesystems-dashboard {
+  background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
 }
 
-:deep(.el-card__body) {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  padding: 0;
-}
-
-/* Header Styles */
-.widget-header {
-  padding: 20px 24px;
-}
-
-.header-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+/* Compact Header */
+.dashboard-header.compact {
+  border-radius: 16px;
   margin-bottom: 20px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
 }
 
-.header-main {
+:root[data-theme="dark"] .dashboard-header.compact {
+  background: rgba(45, 55, 72, 0.9);
+}
+
+.dashboard-header.compact .header-content {
+  padding: 20px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 30px;
+  flex-wrap: nowrap;
 }
 
-.header-icon {
-  color: #409eff;
-  background: rgba(64, 158, 255, 0.1);
-  padding: 8px;
-  border-radius: 8px;
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 240px;
+}
+
+.header-icon.small {
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  color: white;
+  font-size: 24px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
 .header-text {
-  display: flex;
-  flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 
-.header-title {
+.header-text h2 {
   margin: 0;
   font-size: 20px;
-  font-weight: 600;
-  color: #303133;
-  line-height: 1.4;
+  font-weight: 700;
+  color: #2d3748;
+  line-height: 1.2;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
-.header-subtitle {
-  margin: 4px 0 0;
-  font-size: 14px;
-  color: #909399;
-  line-height: 1.4;
+:root[data-theme="dark"] .header-text h2 {
+  background: linear-gradient(135deg, #63b3ed 0%, #4299e1 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
-.header-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 12px;
-}
-
-.main-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.main-actions :deep(.el-button) {
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-weight: 500;
-}
-
-.button-text {
-  margin-left: 6px;
+.header-text .subtitle {
+  margin: 6px 0 0;
   font-size: 13px;
+  color: #718096;
+  line-height: 1.4;
 }
 
-.tool-actions {
-  display: flex;
-  gap: 6px;
+:root[data-theme="dark"] .header-text .subtitle {
+  color: #a0aec0;
 }
 
-.tool-actions :deep(.el-button) {
-  width: 36px;
-  height: 36px;
-}
-
-/* Stats Container */
-.stats-container {
-  margin-top: 16px;
-  padding-top: 20px;
-  border-top: 1px solid #e4e7ed;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
-}
-
-.stat-card {
+.header-stats {
   display: flex;
   align-items: center;
-  padding: 16px;
-  background: #ffffff;
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
+  gap: 30px;
+  margin: 0 30px;
+  flex: 1;
+  justify-content: center;
+}
+
+.stat-item.small {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 110px;
+  padding: 12px 16px;
+  background: rgba(247, 250, 252, 0.8);
+  border-radius: 12px;
+  border: 1px solid rgba(226, 232, 240, 0.6);
   transition: all 0.3s ease;
-  cursor: default;
 }
 
-.stat-card:hover {
-  border-color: #409eff;
-  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.1);
+.stat-item.small:hover {
   transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+  border-color: #c3dafe;
 }
 
-.stat-icon {
+:root[data-theme="dark"] .stat-item.small {
+  background: rgba(74, 85, 104, 0.6);
+  border-color: rgba(113, 128, 150, 0.4);
+}
+
+.stat-item.small .stat-icon {
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  background: rgba(64, 158, 255, 0.1);
-  border-radius: 8px;
-  margin-right: 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 10px;
+  color: white;
+  font-size: 18px;
 }
 
-.stat-icon .iconify {
-  color: #409eff;
+:root[data-theme="dark"] .stat-item.small .stat-icon {
+  background: linear-gradient(135deg, #4c51bf 0%, #805ad5 100%);
 }
 
-.stat-details {
-  flex: 1;
-}
-
-.stat-value {
-  font-size: 20px;
-  font-weight: 600;
-  color: #303133;
+.stat-item.small .stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #2d3748;
   line-height: 1.2;
 }
 
-.stat-label {
-  font-size: 13px;
-  color: #909399;
-  margin-top: 4px;
+:root[data-theme="dark"] .stat-item.small .stat-value {
+  color: #f7fafc;
 }
 
-/* Content Area - FIXED */
-.widget-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  position: relative;
-  width: 100%;
-}
-
-.content-container {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  width: 100%;
-  height: 100%;
-}
-
-.table-container {
-  flex: 1;
-  overflow: auto;
-  width: 100%;
-  height: 100%;
-  position: relative;
-}
-
-.filesystems-table {
-  width: 100% !important;
-  min-width: 100% !important;
-  table-layout: auto !important;
-  height: 100%;
-}
-
-.filesystems-table :deep(.el-table__header-wrapper) {
-  background: #f5f7fa;
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  width: 100% !important;
-}
-
-.filesystems-table :deep(.el-table__header) {
-  width: 100% !important;
-}
-
-.filesystems-table :deep(.el-table__header th) {
-  background: #f5f7fa;
-  color: #606266;
-  font-weight: 600;
-  padding: 12px 16px;
-  border-bottom: 1px solid #e4e7ed;
-  white-space: nowrap;
-}
-
-.filesystems-table :deep(.el-table__body-wrapper) {
-  width: 100% !important;
-  flex: 1;
-}
-
-.filesystems-table :deep(.el-table__body) {
-  width: 100% !important;
-}
-
-.filesystems-table :deep(.el-table__row) {
-  transition: background-color 0.3s ease;
-  width: 100% !important;
-}
-
-.filesystems-table :deep(.el-table__row:hover) {
-  background-color: #f5f7fa !important;
-}
-
-.filesystems-table :deep(.el-table__cell) {
-  padding: 12px 16px;
-  border-bottom: 1px solid #e4e7ed;
-  vertical-align: middle;
-  white-space: nowrap;
-}
-
-.filesystems-table :deep(.el-table__empty-block) {
-  width: 100% !important;
-  min-height: 300px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Table Cell Styles */
-.device-cell {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.device-tag {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-}
-
-.device-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.device-path {
-  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+.stat-item.small .stat-label {
   font-size: 12px;
-  color: #606266;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: #718096;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 4px;
+  font-weight: 500;
 }
 
-.device-tags {
+:root[data-theme="dark"] .stat-item.small .stat-label {
+  color: #cbd5e0;
+}
+
+.header-actions.compact {
+  display: flex;
+  align-items: center;
   flex-shrink: 0;
 }
 
-.fs-type {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+/* Combined Card */
+.combined-card {
+  border-radius: 16px;
+  margin-bottom: 20px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
 }
 
-.mount-cell {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
+:root[data-theme="dark"] .combined-card {
+  background: rgba(45, 55, 72, 0.9);
 }
 
-.mount-icon {
-  color: #909399;
-  flex-shrink: 0;
+.combined-content {
+  padding: 20px;
 }
 
-.mount-path {
-  flex: 1;
-  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
-  font-size: 13px;
-  color: #303133;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.usage-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.usage-info {
+.quick-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 12px;
+  flex-wrap: wrap;
+  gap: 16px;
 }
 
-.usage-percent {
-  font-weight: 600;
-  color: #303133;
+.right-actions {
+  display: flex;
+  gap: 12px;
 }
 
-.usage-size {
-  color: #909399;
+/* Modern Filesystems List Card */
+.filesystems-list-card.modern-table {
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  border: none;
 }
 
-.usage-bar {
-  margin: 0;
-  width: 100%;
+:root[data-theme="dark"] .filesystems-list-card.modern-table {
+  background: rgba(45, 55, 72, 0.9);
 }
 
-.usage-bar :deep(.el-progress-bar__outer) {
-  border-radius: 4px;
-  background-color: #ebeef5;
-  width: 100%;
+.list-header.modern {
+  padding: 20px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
 }
 
-.usage-bar :deep(.el-progress-bar__inner) {
-  border-radius: 4px;
-  transition: width 0.6s ease;
+:root[data-theme="dark"] .list-header.modern {
+  border-bottom-color: rgba(113, 128, 150, 0.4);
 }
 
-.status-tag {
+.search-section {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.search-input.modern {
+  width: 240px;
+}
+
+.search-input.modern :deep(.el-input__wrapper) {
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: rgba(247, 250, 252, 0.8);
+  transition: all 0.3s ease;
+}
+
+.search-input.modern :deep(.el-input__wrapper:hover) {
+  border-color: #c3dafe;
+  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+}
+
+.search-input.modern :deep(.el-input__wrapper.is-focus) {
+  border-color: #4299e1;
+  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.2);
+}
+
+.filter-select.modern,
+.sort-select {
+  width: 140px;
+}
+
+.filter-select.modern :deep(.el-input__wrapper),
+.sort-select :deep(.el-input__wrapper) {
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: rgba(247, 250, 252, 0.8);
+}
+
+:root[data-theme="dark"] .filter-select.modern :deep(.el-input__wrapper),
+:root[data-theme="dark"] .sort-select :deep(.el-input__wrapper) {
+  background: rgba(74, 85, 104, 0.6);
+  border-color: rgba(113, 128, 150, 0.4);
+  color: #f7fafc;
+}
+
+.sort-section {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
+  gap: 8px;
 }
 
-.status-text {
-  font-size: 12px;
-  text-transform: capitalize;
+.sort-btn {
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: rgba(247, 250, 252, 0.8);
 }
 
-.read-only-badge {
-  font-size: 10px;
-  padding: 1px 4px;
-  background: rgba(0, 0, 0, 0.1);
-  border-radius: 2px;
-  margin-left: 4px;
+:root[data-theme="dark"] .sort-btn {
+  background: rgba(74, 85, 104, 0.6);
+  border-color: rgba(113, 128, 150, 0.4);
+  color: #f7fafc;
 }
 
-.auto-mount-cell {
+/* Modern Alert */
+.modern-alert {
+  margin: 0 20px 20px;
+  border-radius: 10px;
+  border: none;
+}
+
+/* Modern Loading State */
+.loading-state.modern {
   display: flex;
+  align-items: center;
   justify-content: center;
-  align-items: center;
+  padding: 60px 0;
+  color: #718096;
+  font-size: 15px;
+  gap: 16px;
+  flex-direction: column;
+}
+
+:root[data-theme="dark"] .loading-state.modern {
+  color: #a0aec0;
+}
+
+.spinner-container {
+  position: relative;
+  width: 60px;
+  height: 60px;
+}
+
+.spinner {
+  width: 100%;
   height: 100%;
+  border: 4px solid rgba(102, 126, 234, 0.1);
+  border-top-color: #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
 }
 
-.action-buttons {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+@keyframes spin {
+  100% { transform: rotate(360deg); }
 }
 
-.action-btn {
-  width: 32px;
-  height: 32px;
-  padding: 0;
+.loading-text {
+  margin-top: 12px;
+  font-weight: 500;
 }
 
-/* Empty State */
-.empty-state {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+/* Modern Empty State */
+.empty-state.modern {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 60px 20px;
-  background: #ffffff;
-  z-index: 1;
+  padding: 60px 0;
+  gap: 30px;
+  text-align: center;
+  flex-direction: column;
 }
 
-.empty-content {
-  text-align: center;
+.empty-illustration {
+  width: 120px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+  border-radius: 20px;
+  color: #667eea;
+}
+
+:root[data-theme="dark"] .empty-illustration {
+  background: rgba(99, 179, 237, 0.1);
+  color: #63b3ed;
+}
+
+.empty-content h4 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+:root[data-theme="dark"] .empty-content h4 {
+  color: #f7fafc;
+}
+
+.empty-content p {
+  margin: 0 0 20px;
+  font-size: 14px;
+  color: #718096;
   max-width: 400px;
 }
 
-.empty-icon {
-  color: #dcdfe6;
+:root[data-theme="dark"] .empty-content p {
+  color: #a0aec0;
+}
+
+.empty-action-btn {
+  padding: 10px 24px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+/* Modern Filesystems Grid */
+.filesystems-grid {
+  padding: 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+.filesystem-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 20px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.filesystem-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
+  border-color: #c3dafe;
+}
+
+.filesystem-card.selected {
+  border-color: #4299e1;
+  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.2);
+  background: rgba(66, 153, 225, 0.02);
+}
+
+.filesystem-card.critical {
+  border-left: 4px solid #f56565;
+}
+
+.filesystem-card.warning {
+  border-left: 4px solid #ed8936;
+}
+
+:root[data-theme="dark"] .filesystem-card {
+  background: #2d3748;
+  border-color: #4a5568;
+}
+
+:root[data-theme="dark"] .filesystem-card:hover {
+  border-color: #63b3ed;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}
+
+/* Card Header */
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.device-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.device-icon {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.device-status-indicator {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid white;
+}
+
+.device-status-indicator.active {
+  background: #48bb78;
+}
+
+.device-status-indicator.inactive {
+  background: #a0aec0;
+}
+
+.device-status-indicator.readonly {
+  background: #ed8936;
+}
+
+.device-status-indicator.error {
+  background: #f56565;
+}
+
+.device-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.device-name {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #2d3748;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:root[data-theme="dark"] .device-name {
+  color: #f7fafc;
+}
+
+.device-path {
+  font-size: 12px;
+  color: #718096;
+  font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:root[data-theme="dark"] .device-path {
+  color: #a0aec0;
+}
+
+.card-actions {
+  flex-shrink: 0;
+}
+
+.action-btn {
+  padding: 6px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: rgba(247, 250, 252, 0.8);
+}
+
+:root[data-theme="dark"] .action-btn {
+  background: rgba(74, 85, 104, 0.6);
+  border-color: rgba(113, 128, 150, 0.4);
+  color: #f7fafc;
+}
+
+/* Card Tags */
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.card-tags .el-tag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+
+/* Mount Info */
+.mount-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  background: rgba(247, 250, 252, 0.8);
+  border-radius: 10px;
+  margin-bottom: 16px;
+  border: 1px solid #e2e8f0;
+}
+
+:root[data-theme="dark"] .mount-info {
+  background: rgba(74, 85, 104, 0.6);
+  border-color: rgba(113, 128, 150, 0.4);
+}
+
+.mount-info .iconify {
+  color: #718096;
+  flex-shrink: 0;
+}
+
+:root[data-theme="dark"] .mount-info .iconify {
+  color: #a0aec0;
+}
+
+.mount-path {
+  font-size: 13px;
+  color: #4a5568;
+  font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:root[data-theme="dark"] .mount-path {
+  color: #cbd5e0;
+}
+
+/* Usage Section */
+.usage-section {
   margin-bottom: 20px;
 }
 
-.empty-state h3 {
-  margin: 0 0 8px;
-  font-size: 18px;
+.usage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.usage-label {
+  font-size: 13px;
+  color: #718096;
   font-weight: 500;
-  color: #303133;
 }
 
-.empty-state p {
-  margin: 0 0 20px;
+:root[data-theme="dark"] .usage-label {
+  color: #a0aec0;
+}
+
+.usage-percent {
   font-size: 14px;
-  color: #909399;
-  line-height: 1.5;
+  font-weight: 600;
+  color: #2d3748;
 }
 
-/* Error State */
-.error-state {
+:root[data-theme="dark"] .usage-percent {
+  color: #f7fafc;
+}
+
+.usage-bar.modern {
+  margin: 0 0 8px;
+}
+
+.usage-bar.modern :deep(.el-progress-bar__outer) {
+  border-radius: 10px;
+  background: rgba(237, 242, 247, 0.8);
+}
+
+:root[data-theme="dark"] .usage-bar.modern :deep(.el-progress-bar__outer) {
+  background: rgba(74, 85, 104, 0.6);
+}
+
+.usage-details {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #718096;
+}
+
+.usage-details .used {
+  font-weight: 600;
+  color: #2d3748;
+}
+
+:root[data-theme="dark"] .usage-details .used {
+  color: #f7fafc;
+}
+
+.usage-details .separator {
+  color: #cbd5e0;
+}
+
+.usage-details .total {
+  color: #4a5568;
+}
+
+:root[data-theme="dark"] .usage-details .total {
+  color: #cbd5e0;
+}
+
+.usage-details .free {
+  margin-left: auto;
+  color: #a0aec0;
+}
+
+/* Filesystem Type */
+.filesystem-type {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
+}
+
+:root[data-theme="dark"] .filesystem-type {
+  border-top-color: #4a5568;
+}
+
+.fs-type-tag {
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgba(247, 250, 252, 0.8);
+  border: 1px solid #e2e8f0;
+}
+
+:root[data-theme="dark"] .fs-type-tag {
+  background: rgba(74, 85, 104, 0.6);
+  border-color: rgba(113, 128, 150, 0.4);
+  color: #f7fafc;
+}
+
+.fs-size {
+  font-size: 13px;
+  color: #718096;
+  font-weight: 500;
+}
+
+:root[data-theme="dark"] .fs-size {
+  color: #a0aec0;
+}
+
+/* Modern Pagination */
+.pagination.modern {
   padding: 20px;
-  background: #ffffff;
+  border-top: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+:root[data-theme="dark"] .pagination.modern {
+  border-top-color: rgba(113, 128, 150, 0.4);
+}
+
+.pagination.modern :deep(.el-pagination) {
+  justify-content: center;
+}
+
+.pagination.modern :deep(.btn-prev),
+.pagination.modern :deep(.btn-next),
+.pagination.modern :deep(.el-pager li) {
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: rgba(247, 250, 252, 0.8);
+  margin: 0 4px;
+}
+
+:root[data-theme="dark"] .pagination.modern :deep(.btn-prev),
+:root[data-theme="dark"] .pagination.modern :deep(.btn-next),
+:root[data-theme="dark"] .pagination.modern :deep(.el-pager li) {
+  background: rgba(74, 85, 104, 0.6);
+  border-color: rgba(113, 128, 150, 0.4);
+  color: #f7fafc;
+}
+
+.pagination.modern :deep(.el-pager li.is-active) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-color: transparent;
+  color: white;
+  font-weight: 600;
 }
 
 /* Dialog Styles */
 .storage-dialog :deep(.el-dialog) {
-  border-radius: 12px;
+  border-radius: 16px;
   overflow: hidden;
-  max-width: 90vw;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+}
+
+:root[data-theme="dark"] .storage-dialog :deep(.el-dialog) {
+  background: rgba(45, 55, 72, 0.95);
 }
 
 .storage-dialog :deep(.el-dialog__header) {
-  padding: 20px 24px;
-  background: #f5f7fa;
-  border-bottom: 1px solid #e4e7ed;
+  padding: 24px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
   margin: 0;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+:root[data-theme="dark"] .storage-dialog :deep(.el-dialog__header) {
+  border-bottom-color: rgba(113, 128, 150, 0.4);
 }
 
 .storage-dialog :deep(.el-dialog__title) {
-  font-size: 18px;
-  font-weight: 600;
-  color: #303133;
+  font-size: 20px;
+  font-weight: 700;
+  color: white;
 }
 
 .storage-dialog :deep(.el-dialog__body) {
   padding: 24px;
 }
 
-.storage-dialog :deep(.el-form-item__label) {
-  font-weight: 500;
-  color: #606266;
-  padding-bottom: 8px;
+:root[data-theme="dark"] .storage-dialog :deep(.el-dialog__body) {
+  color: #f7fafc;
 }
 
 .full-width {
@@ -2668,34 +3825,51 @@ onUnmounted(() => {
 }
 
 .device-name {
-  font-weight: 500;
-  color: #303133;
+  font-weight: 600;
+  color: #2d3748;
   flex: 1;
+}
+
+:root[data-theme="dark"] .device-name {
+  color: #f7fafc;
 }
 
 .device-meta {
   font-size: 12px;
-  color: #909399;
+  color: #718096;
+}
+
+:root[data-theme="dark"] .device-meta {
+  color: #a0aec0;
 }
 
 .device-info-card {
-  background: #f8f9fa;
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  padding: 16px;
-  margin: 16px 0;
+  background: rgba(247, 250, 252, 0.8);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 20px;
+  margin: 20px 0;
+}
+
+:root[data-theme="dark"] .device-info-card {
+  background: rgba(74, 85, 104, 0.6);
+  border-color: rgba(113, 128, 150, 0.4);
 }
 
 .device-info-card h4 {
-  margin: 0 0 12px;
+  margin: 0 0 16px;
   font-size: 16px;
-  font-weight: 500;
-  color: #303133;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+:root[data-theme="dark"] .device-info-card h4 {
+  color: #f7fafc;
 }
 
 .info-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px;
 }
 
@@ -2707,14 +3881,22 @@ onUnmounted(() => {
 
 .info-label {
   font-size: 13px;
-  color: #606266;
+  color: #718096;
   min-width: 80px;
+}
+
+:root[data-theme="dark"] .info-label {
+  color: #a0aec0;
 }
 
 .info-value {
   font-size: 13px;
-  color: #303133;
+  color: #2d3748;
   font-weight: 500;
+}
+
+:root[data-theme="dark"] .info-value {
+  color: #f7fafc;
 }
 
 .fs-option {
@@ -2724,303 +3906,29 @@ onUnmounted(() => {
 }
 
 .warning-section {
-  margin: 16px 0;
+  margin: 20px 0;
 }
 
 .switch-label {
   margin-left: 8px;
   font-size: 13px;
-  color: #606266;
+  color: #718096;
 }
 
-/* Partition Dialog Specific */
-.disk-usage-container {
-  background: #f8f9fa;
-  padding: 16px;
-  border-radius: 8px;
-  border: 1px solid #e4e7ed;
-}
-
-.disk-info {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.disk-stat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.disk-stat-label {
-  font-size: 13px;
-  color: #6c757d;
-}
-
-.disk-stat-value {
-  font-weight: 600;
-  color: #2c3e50;
-}
-
-.disk-progress {
-  margin: 8px 0;
-}
-
-.disk-percentage {
-  text-align: center;
-  font-size: 14px;
-  color: #495057;
-  margin-top: 8px;
-}
-
-.partitions-section {
-  background: #f8f9fa;
-  padding: 16px;
-  border-radius: 8px;
-  border: 1px solid #e4e7ed;
-}
-
-.partition-list {
-  margin-bottom: 16px;
-}
-
-.partition-item {
-  background: white;
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  padding: 12px;
-  margin-bottom: 8px;
-  transition: all 0.3s ease;
-}
-
-.partition-item:hover {
-  border-color: #409eff;
-  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.1);
-}
-
-.partition-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.partition-number {
-  font-weight: 600;
-  color: #303133;
-}
-
-.partition-controls {
-  display: grid;
-  grid-template-columns: 1fr 1fr auto;
-  gap: 12px;
-  align-items: center;
-}
-
-.size-control {
-  display: flex;
-  gap: 8px;
-}
-
-.unit-select {
-  width: 80px;
-}
-
-.type-control, .size-info {
-  display: flex;
-  align-items: center;
-}
-
-.size-info {
-  font-size: 14px;
-  color: #495057;
-  min-width: 100px;
-}
-
-.add-partition-btn {
-  width: 100%;
-  margin-top: 8px;
-}
-
-/* RAID Info */
-.raid-info-section {
-  margin: 16px 0;
-}
-
-.info-card {
-  background: #f8f9fa;
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  padding: 16px;
-}
-
-.info-card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #2c3e50;
-  font-weight: 600;
-  margin-bottom: 12px;
-}
-
-.info-card-content {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.info-card-content p {
-  margin: 0;
-  color: #495057;
-  line-height: 1.5;
-  font-size: 14px;
-}
-
-.raid-stats {
-  display: flex;
-  gap: 24px;
-  margin-top: 8px;
-}
-
-.raid-stat {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.raid-stat-label {
-  font-size: 13px;
-  color: #6c757d;
-}
-
-.raid-stat-value {
-  font-weight: 600;
-  color: #2c3e50;
-  font-size: 14px;
-}
-
-.selection-info {
-  font-size: 13px;
-  color: #909399;
-  margin-top: 8px;
-}
-
-/* Fstab Editor */
-.code-dialog :deep(.el-dialog) {
-  max-width: 900px;
-}
-
-.editor-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.editor-info {
-  display: flex;
-  gap: 12px;
-}
-
-.line-count {
-  font-size: 14px;
-  color: #6c757d;
-  font-family: 'Monaco', 'Menlo', monospace;
-}
-
-.code-editor {
-  font-family: 'Monaco', 'Menlo', monospace;
-  font-size: 14px;
-  line-height: 1.4;
-}
-
-.code-editor :deep(.el-textarea__inner) {
-  font-family: inherit;
-  font-size: inherit;
-  line-height: inherit;
-  white-space: pre;
-  tab-size: 4;
-}
-
-.editor-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 20px;
-}
-
-/* Debug Dialog */
-.debug-dialog :deep(.el-tabs__header) {
-  background: #2c3e50;
-  margin: 0;
-}
-
-.debug-dialog :deep(.el-tabs__item) {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.debug-dialog :deep(.el-tabs__item.is-active) {
-  color: white;
-  font-weight: 500;
-}
-
-.tab-content {
-  padding: 0;
-}
-
-.tab-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px;
-  background: #f8f9fa;
-  border-bottom: 1px solid #e4e7ed;
-}
-
-.tab-header h4 {
-  margin: 0;
-  color: #2c3e50;
-  font-weight: 600;
-}
-
-.device-path-cell {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.debug-table {
-  width: 100%;
-}
-
-.debug-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-}
-
-.debug-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.debug-info {
-  display: flex;
-  gap: 12px;
-}
-
-.debug-timestamp {
-  font-size: 14px;
-  color: #6c757d;
+:root[data-theme="dark"] .switch-label {
+  color: #a0aec0;
 }
 
 /* Dialog Footer */
 .storage-dialog :deep(.el-dialog__footer) {
-  padding: 16px 24px;
-  background: #f8f9fa;
-  border-top: 1px solid #e4e7ed;
+  padding: 20px 24px;
+  background: rgba(247, 250, 252, 0.8);
+  border-top: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+:root[data-theme="dark"] .storage-dialog :deep(.el-dialog__footer) {
+  background: rgba(74, 85, 104, 0.6);
+  border-top-color: rgba(113, 128, 150, 0.4);
 }
 
 .dialog-footer {
@@ -3030,735 +3938,203 @@ onUnmounted(() => {
   width: 100%;
 }
 
-/* Spinner animation */
-.spin {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  100% { transform: rotate(360deg); }
-}
-
 /* Responsive Design */
+@media (max-width: 1400px) {
+  .filesystems-grid {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  }
+}
+
 @media (max-width: 1200px) {
-  .header-content {
+  .filesystems-grid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+  
+  .header-stats {
+    gap: 20px;
+  }
+  
+  .stat-item.small {
+    min-width: 100px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .dashboard-header.compact .header-content {
     flex-direction: column;
+    align-items: stretch;
+    gap: 20px;
+  }
+  
+  .header-left {
+    min-width: auto;
+  }
+  
+  .header-stats {
+    order: 2;
+    justify-content: space-around;
     gap: 16px;
   }
   
-  .header-actions {
+  .stat-item.small {
+    flex-direction: column;
+    text-align: center;
+    gap: 8px;
+    min-width: 90px;
+  }
+  
+  .header-actions.compact {
+    order: 3;
     width: 100%;
+    justify-content: center;
+  }
+  
+  .quick-actions {
+    flex-direction: column;
     align-items: stretch;
   }
   
-  .main-actions {
+  .right-actions {
     justify-content: center;
   }
   
-  .tool-actions {
-    justify-content: center;
+  .filesystems-grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .filesystems-dashboard {
+    padding: 12px;
   }
   
-  .stats-grid {
+  .filesystems-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .list-header.modern {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .search-section {
+    width: 100%;
+  }
+  
+  .search-input.modern {
+    flex: 1;
+  }
+  
+  .header-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  
+  .stat-item.small {
+    min-width: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .header-stats {
     grid-template-columns: repeat(2, 1fr);
   }
+  
+  .search-section {
+    flex-direction: column;
+  }
+  
+  .search-input.modern,
+  .filter-select.modern,
+  .sort-select {
+    width: 100%;
+  }
 }
 
-@media (max-width: 768px) {
-  .widget-header {
-    padding: 16px;
-  }
-  
-  .main-actions {
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-  
-  .stats-grid {
+@media (max-width: 480px) {
+  .header-stats {
     grid-template-columns: 1fr;
   }
   
-  .partition-controls {
-    grid-template-columns: 1fr;
-    gap: 8px;
+  .device-info {
+    flex-direction: column;
   }
   
-  .raid-stats {
+  .card-header {
     flex-direction: column;
     gap: 12px;
   }
   
-  .debug-footer {
-    flex-direction: column;
-    gap: 12px;
-    align-items: stretch;
-  }
-  
-  .debug-info {
-    justify-content: center;
-  }
-}
-
-/* Hide less important columns on small screens */
-@media (max-width: 1024px) {
-  .filesystems-table :deep(.el-table__header-wrapper th:nth-child(5)),
-  .filesystems-table :deep(.el-table__body-wrapper td:nth-child(5)) {
-    display: none;
-  }
-}
-
-@media (max-width: 768px) {
-  .filesystems-table :deep(.el-table__header-wrapper th:nth-child(3)),
-  .filesystems-table :deep(.el-table__body-wrapper td:nth-child(3)),
-  .filesystems-table :deep(.el-table__header-wrapper th:nth-child(4)),
-  .filesystems-table :deep(.el-table__body-wrapper td:nth-child(4)) {
-    display: none;
+  .card-actions {
+    align-self: flex-end;
   }
 }
 
 /* Custom scrollbar */
-:deep(::-webkit-scrollbar) {
+::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-:deep(::-webkit-scrollbar-track) {
-  background: #f1f1f1;
+::-webkit-scrollbar-track {
+  background: rgba(247, 250, 252, 0.8);
   border-radius: 4px;
 }
 
-:deep(::-webkit-scrollbar-thumb) {
-  background: #c1c1c1;
+:root[data-theme="dark"] ::-webkit-scrollbar-track {
+  background: rgba(74, 85, 104, 0.6);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e0;
   border-radius: 4px;
 }
 
-:deep(::-webkit-scrollbar-thumb:hover) {
-  background: #a8a8a8;
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #718096;
 }
 
-/* Force table to take full width */
-:deep(.el-table) {
-  width: 100% !important;
+::-webkit-scrollbar-thumb:hover {
+  background: #a0aec0;
 }
 
-:deep(.el-table__header) {
-  width: 100% !important;
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #4a5568;
 }
 
-:deep(.el-table__body) {
-  width: 100% !important;
+/* Smooth transitions */
+.filesystem-card,
+.stat-item.small,
+.search-input.modern :deep(.el-input__wrapper),
+.filter-select.modern :deep(.el-input__wrapper),
+.action-btn {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Ensure table cells don't wrap unnecessarily */
-.filesystems-table :deep(.el-table__cell) {
-  max-width: none !important;
+/* Glass morphism effects */
+.glass-effect {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-/* Fix for table header alignment */
-.filesystems-table :deep(.el-table__header th .cell) {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  width: 100%;
+:root[data-theme="dark"] .glass-effect {
+  background: rgba(45, 55, 72, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-/* Make sure the table container fills available space */
-.table-container {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
-.filesystems-table {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.filesystems-table :deep(.el-table__body-wrapper) {
-  flex: 1;
-}
-
-/* Fix for fixed columns */
-.filesystems-table :deep(.el-table__fixed),
-.filesystems-table :deep(.el-table__fixed-right) {
-  height: 100% !important;
-}
-
-/* Ensure proper column widths */
-.filesystems-table :deep(.el-table__header colgroup col),
-.filesystems-table :deep(.el-table__body colgroup col) {
-  width: auto !important;
-}
-
-/* Table column auto sizing */
-.filesystems-table :deep(.el-table__header-wrapper) {
-  table-layout: auto !important;
-}
-
-.filesystems-table :deep(.el-table__body-wrapper) {
-  table-layout: auto !important;
-}
-
-/* Warning dialog header */
-.warning-dialog :deep(.el-dialog__header) {
-  background: linear-gradient(90deg, #f56c6c, #e6a23c);
-}
-
-.warning-dialog :deep(.el-dialog__title) {
-  color: white;
-}
-
-.warning-dialog :deep(.el-dialog__headerbtn .el-dialog__close) {
-  color: white;
-}
-
-/* Fix for dropdown in table */
-:deep(.el-dropdown-menu__item) {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* =========================================== */
-/* DARK MODE STYLES - POPRAWIONE */
-/* =========================================== */
-
-/* Base dark mode styles */
-:root.dark .filesystems-widget,
-.dark-mode .filesystems-widget,
-[data-theme="dark"] .filesystems-widget {
-  background: #1a1a1a !important;
-  color: #e0e0e0 !important;
-  border-color: #404040 !important;
-}
-
-:root.dark .filesystems-widget :deep(.el-card__header),
-.dark-mode .filesystems-widget :deep(.el-card__header),
-[data-theme="dark"] .filesystems-widget :deep(.el-card__header) {
-  background: #2d2d2d !important;
-  border-bottom-color: #404040 !important;
-}
-
-:root.dark .filesystems-widget .header-title,
-.dark-mode .filesystems-widget .header-title,
-[data-theme="dark"] .filesystems-widget .header-title {
-  color: #ffffff !important;
-}
-
-:root.dark .filesystems-widget .header-subtitle,
-.dark-mode .filesystems-widget .header-subtitle,
-[data-theme="dark"] .filesystems-widget .header-subtitle {
-  color: #b0b0b0 !important;
-}
-
-:root.dark .filesystems-widget .stat-card,
-.dark-mode .filesystems-widget .stat-card,
-[data-theme="dark"] .filesystems-widget .stat-card {
-  background: #2d2d2d !important;
-  border-color: #404040 !important;
-  color: #e0e0e0 !important;
-}
-
-:root.dark .filesystems-widget .stat-card:hover,
-.dark-mode .filesystems-widget .stat-card:hover,
-[data-theme="dark"] .filesystems-widget .stat-card:hover {
-  border-color: #409eff !important;
-  background: #363636 !important;
-}
-
-:root.dark .filesystems-widget .stat-value,
-.dark-mode .filesystems-widget .stat-value,
-[data-theme="dark"] .filesystems-widget .stat-value {
-  color: #ffffff !important;
-}
-
-:root.dark .filesystems-widget .stat-label,
-.dark-mode .filesystems-widget .stat-label,
-[data-theme="dark"] .filesystems-widget .stat-label {
-  color: #b0b0b0 !important;
-}
-
-/* Table in dark mode */
-:root.dark .filesystems-widget :deep(.el-table),
-.dark-mode .filesystems-widget :deep(.el-table),
-[data-theme="dark"] .filesystems-widget :deep(.el-table) {
-  background: #1a1a1a !important;
-  color: #e0e0e0 !important;
-}
-
-:root.dark .filesystems-widget :deep(.el-table__header-wrapper),
-.dark-mode .filesystems-widget :deep(.el-table__header-wrapper),
-[data-theme="dark"] .filesystems-widget :deep(.el-table__header-wrapper) {
-  background: #2d2d2d !important;
-}
-
-:root.dark .filesystems-widget :deep(.el-table__header th),
-.dark-mode .filesystems-widget :deep(.el-table__header th),
-[data-theme="dark"] .filesystems-widget :deep(.el-table__header th) {
-  background: #2d2d2d !important;
-  color: #ffffff !important;
-  border-bottom-color: #404040 !important;
-}
-
-:root.dark .filesystems-widget :deep(.el-table__row),
-.dark-mode .filesystems-widget :deep(.el-table__row),
-[data-theme="dark"] .filesystems-widget :deep(.el-table__row) {
-  background: #1a1a1a !important;
-  color: #e0e0e0 !important;
-}
-
-:root.dark .filesystems-widget :deep(.el-table__row:hover),
-.dark-mode .filesystems-widget :deep(.el-table__row:hover),
-[data-theme="dark"] .filesystems-widget :deep(.el-table__row:hover) {
-  background: #2d2d2d !important;
-}
-
-:root.dark .filesystems-widget :deep(.el-table__cell),
-.dark-mode .filesystems-widget :deep(.el-table__cell),
-[data-theme="dark"] .filesystems-widget :deep(.el-table__cell) {
-  background: #1a1a1a !important;
-  color: #e0e0e0 !important;
-  border-bottom-color: #404040 !important;
-}
-
-/* Table cell content in dark mode */
-:root.dark .filesystems-widget .device-path,
-.dark-mode .filesystems-widget .device-path,
-[data-theme="dark"] .filesystems-widget .device-path {
-  color: #b0b0b0 !important;
-}
-
-:root.dark .filesystems-widget .mount-path,
-.dark-mode .filesystems-widget .mount-path,
-[data-theme="dark"] .filesystems-widget .mount-path {
-  color: #ffffff !important;
-}
-
-:root.dark .filesystems-widget .usage-percent,
-.dark-mode .filesystems-widget .usage-percent,
-[data-theme="dark"] .filesystems-widget .usage-percent {
-  color: #ffffff !important;
-}
-
-:root.dark .filesystems-widget .usage-size,
-.dark-mode .filesystems-widget .usage-size,
-[data-theme="dark"] .filesystems-widget .usage-size {
-  color: #b0b0b0 !important;
-}
-
-:root.dark .filesystems-widget .empty-state,
-.dark-mode .filesystems-widget .empty-state,
-[data-theme="dark"] .filesystems-widget .empty-state {
-  background: #1a1a1a !important;
-}
-
-:root.dark .filesystems-widget .empty-state h3,
-.dark-mode .filesystems-widget .empty-state h3,
-[data-theme="dark"] .filesystems-widget .empty-state h3 {
-  color: #ffffff !important;
-}
-
-:root.dark .filesystems-widget .empty-state p,
-.dark-mode .filesystems-widget .empty-state p,
-[data-theme="dark"] .filesystems-widget .empty-state p {
-  color: #b0b0b0 !important;
-}
-
-/* Dialogs in dark mode */
-:root.dark .storage-dialog :deep(.el-dialog),
-.dark-mode .storage-dialog :deep(.el-dialog),
-[data-theme="dark"] .storage-dialog :deep(.el-dialog) {
-  background: #2d2d2d !important;
-  color: #e0e0e0 !important;
-}
-
-:root.dark .storage-dialog :deep(.el-dialog__header),
-.dark-mode .storage-dialog :deep(.el-dialog__header),
-[data-theme="dark"] .storage-dialog :deep(.el-dialog__header) {
-  background: #363636 !important;
-  border-bottom-color: #404040 !important;
-}
-
-:root.dark .storage-dialog :deep(.el-dialog__title),
-.dark-mode .storage-dialog :deep(.el-dialog__title),
-[data-theme="dark"] .storage-dialog :deep(.el-dialog__title) {
-  color: #ffffff !important;
-}
-
-:root.dark .storage-dialog :deep(.el-form-item__label),
-.dark-mode .storage-dialog :deep(.el-form-item__label),
-[data-theme="dark"] .storage-dialog :deep(.el-form-item__label) {
-  color: #d0d0d0 !important;
-}
-
-:root.dark .storage-dialog .device-info-card,
-.dark-mode .storage-dialog .device-info-card,
-[data-theme="dark"] .storage-dialog .device-info-card {
-  background: #363636 !important;
-  border-color: #404040 !important;
-  color: #e0e0e0 !important;
-}
-
-:root.dark .storage-dialog .info-label,
-.dark-mode .storage-dialog .info-label,
-[data-theme="dark"] .storage-dialog .info-label {
-  color: #b0b0b0 !important;
-}
-
-:root.dark .storage-dialog .info-value,
-.dark-mode .storage-dialog .info-value,
-[data-theme="dark"] .storage-dialog .info-value {
-  color: #ffffff !important;
-}
-
-/* Progress bars in dark mode */
-:root.dark .usage-bar :deep(.el-progress-bar__outer),
-.dark-mode .usage-bar :deep(.el-progress-bar__outer),
-[data-theme="dark"] .usage-bar :deep(.el-progress-bar__outer) {
-  background-color: #363636 !important;
-}
-
-/* Empty icon in dark mode */
-:root.dark .empty-icon,
-.dark-mode .empty-icon,
-[data-theme="dark"] .empty-icon {
-  color: #404040 !important;
-}
-
-/* Card borders in dark mode */
-:root.dark .filesystems-widget,
-.dark-mode .filesystems-widget,
-[data-theme="dark"] .filesystems-widget {
-  border: 1px solid #404040 !important;
-}
-
-/* Stats container border in dark mode */
-:root.dark .stats-container,
-.dark-mode .stats-container,
-[data-theme="dark"] .stats-container {
-  border-top-color: #404040 !important;
-}
-
-/* Icon colors in dark mode */
-:root.dark .header-icon,
-.dark-mode .header-icon,
-[data-theme="dark"] .header-icon {
-  background: rgba(64, 158, 255, 0.2) !important;
-  color: #409eff !important;
-}
-
-/* Mount icon in dark mode */
-:root.dark .mount-icon,
-.dark-mode .mount-icon,
-[data-theme="dark"] .mount-icon {
-  color: #b0b0b0 !important;
-}
-
-/* Status text in dark mode */
-:root.dark .status-text,
-.dark-mode .status-text,
-[data-theme="dark"] .status-text {
-  color: inherit !important;
-}
-
-/* Error state in dark mode */
-:root.dark .error-state,
-.dark-mode .error-state,
-[data-theme="dark"] .error-state {
-  background: #1a1a1a !important;
-}
-
-/* Dialog footer in dark mode */
-:root.dark .storage-dialog :deep(.el-dialog__footer),
-.dark-mode .storage-dialog :deep(.el-dialog__footer),
-[data-theme="dark"] .storage-dialog :deep(.el-dialog__footer) {
-  background: #363636 !important;
-  border-top-color: #404040 !important;
-}
-
-/* Fstab editor in dark mode */
-:root.dark .code-editor :deep(.el-textarea__inner),
-.dark-mode .code-editor :deep(.el-textarea__inner),
-[data-theme="dark"] .code-editor :deep(.el-textarea__inner) {
-  background: #1a1a1a !important;
-  color: #e0e0e0 !important;
-  border-color: #404040 !important;
-}
-
-/* Debug dialog tabs in dark mode */
-:root.dark .debug-dialog :deep(.el-tabs__header),
-.dark-mode .debug-dialog :deep(.el-tabs__header),
-[data-theme="dark"] .debug-dialog :deep(.el-tabs__header) {
-  background: #2d2d2d !important;
-}
-
-:root.dark .debug-dialog :deep(.el-tabs__item),
-.dark-mode .debug-dialog :deep(.el-tabs__item),
-[data-theme="dark"] .debug-dialog :deep(.el-tabs__item) {
-  color: rgba(255, 255, 255, 0.8) !important;
-}
-
-:root.dark .debug-dialog :deep(.el-tabs__item.is-active),
-.dark-mode .debug-dialog :deep(.el-tabs__item.is-active),
-[data-theme="dark"] .debug-dialog :deep(.el-tabs__item.is-active) {
-  color: white !important;
-  background: #1a1a1a !important;
-}
-
-/* Tab header in dark mode */
-:root.dark .tab-header,
-.dark-mode .tab-header,
-[data-theme="dark"] .tab-header {
-  background: #2d2d2d !important;
-  border-bottom-color: #404040 !important;
-}
-
-:root.dark .tab-header h4,
-.dark-mode .tab-header h4,
-[data-theme="dark"] .tab-header h4 {
-  color: #ffffff !important;
-}
-
-/* Debug table in dark mode */
-:root.dark .debug-table :deep(.el-table),
-.dark-mode .debug-table :deep(.el-table),
-[data-theme="dark"] .debug-table :deep(.el-table) {
-  background: #1a1a1a !important;
-}
-
-:root.dark .debug-table :deep(.el-table__header-wrapper),
-.dark-mode .debug-table :deep(.el-table__header-wrapper),
-[data-theme="dark"] .debug-table :deep(.el-table__header-wrapper) {
-  background: #2d2d2d !important;
-}
-
-:root.dark .debug-table :deep(.el-table__header th),
-.dark-mode .debug-table :deep(.el-table__header th),
-[data-theme="dark"] .debug-table :deep(.el-table__header th) {
-  background: #2d2d2d !important;
-  color: #ffffff !important;
-}
-
-/* Scrollbar in dark mode */
-:root.dark :deep(::-webkit-scrollbar-track),
-.dark-mode :deep(::-webkit-scrollbar-track),
-[data-theme="dark"] :deep(::-webkit-scrollbar-track) {
-  background: #2d2d2d !important;
-}
-
-:root.dark :deep(::-webkit-scrollbar-thumb),
-.dark-mode :deep(::-webkit-scrollbar-thumb),
-[data-theme="dark"] :deep(::-webkit-scrollbar-thumb) {
-  background: #404040 !important;
-}
-
-:root.dark :deep(::-webkit-scrollbar-thumb:hover),
-.dark-mode :deep(::-webkit-scrollbar-thumb:hover),
-[data-theme="dark"] :deep(::-webkit-scrollbar-thumb:hover) {
-  background: #505050 !important;
-}
-
-/* Disabled state in dark mode */
-:root.dark :deep(.el-button.is-disabled),
-.dark-mode :deep(.el-button.is-disabled),
-[data-theme="dark"] :deep(.el-button.is-disabled) {
-  background: #363636 !important;
-  border-color: #404040 !important;
-  color: #808080 !important;
-}
-
-/* Loading spinner in dark mode */
-:root.dark .spin,
-.dark-mode .spin,
-[data-theme="dark"] .spin {
-  color: #409eff !important;
-}
-
-/* Form inputs in dark mode */
-:root.dark :deep(.el-input__inner),
-.dark-mode :deep(.el-input__inner),
-[data-theme="dark"] :deep(.el-input__inner) {
-  background: #2d2d2d !important;
-  border-color: #404040 !important;
-  color: #e0e0e0 !important;
-}
-
-:root.dark :deep(.el-input__inner::placeholder),
-.dark-mode :deep(.el-input__inner::placeholder),
-[data-theme="dark"] :deep(.el-input__inner::placeholder) {
-  color: #808080 !important;
-}
-
-/* Select dropdown in dark mode */
-:root.dark :deep(.el-select-dropdown),
-.dark-mode :deep(.el-select-dropdown),
-[data-theme="dark"] :deep(.el-select-dropdown) {
-  background: #2d2d2d !important;
-  border-color: #404040 !important;
-}
-
-:root.dark :deep(.el-select-dropdown__item),
-.dark-mode :deep(.el-select-dropdown__item),
-[data-theme="dark"] :deep(.el-select-dropdown__item) {
-  color: #e0e0e0 !important;
-}
-
-:root.dark :deep(.el-select-dropdown__item.hover),
-.dark-mode :deep(.el-select-dropdown__item.hover),
-[data-theme="dark"] :deep(.el-select-dropdown__item.hover),
-:root.dark :deep(.el-select-dropdown__item:hover),
-.dark-mode :deep(.el-select-dropdown__item:hover),
-[data-theme="dark"] :deep(.el-select-dropdown__item:hover) {
-  background: #363636 !important;
-}
-
-/* Switch in dark mode */
-:root.dark :deep(.el-switch__core),
-.dark-mode :deep(.el-switch__core),
-[data-theme="dark"] :deep(.el-switch__core) {
-  background: #404040 !important;
-  border-color: #505050 !important;
-}
-
-/* Button default in dark mode */
-:root.dark :deep(.el-button--default),
-.dark-mode :deep(.el-button--default),
-[data-theme="dark"] :deep(.el-button--default) {
-  background: #363636 !important;
-  border-color: #404040 !important;
-  color: #e0e0e0 !important;
-}
-
-:root.dark :deep(.el-button--default:hover),
-.dark-mode :deep(.el-button--default:hover),
-[data-theme="dark"] :deep(.el-button--default:hover) {
-  background: #404040 !important;
-  border-color: #505050 !important;
-}
-
-/* Button primary in dark mode */
-:root.dark :deep(.el-button--primary),
-.dark-mode :deep(.el-button--primary),
-[data-theme="dark"] :deep(.el-button--primary) {
-  background: #409eff !important;
-  border-color: #409eff !important;
-}
-
-:root.dark :deep(.el-button--primary:hover),
-.dark-mode :deep(.el-button--primary:hover),
-[data-theme="dark"] :deep(.el-button--primary:hover) {
-  background: #66b1ff !important;
-  border-color: #66b1ff !important;
-}
-
-/* Button danger in dark mode */
-:root.dark :deep(.el-button--danger),
-.dark-mode :deep(.el-button--danger),
-[data-theme="dark"] :deep(.el-button--danger) {
-  background: #f56c6c !important;
-  border-color: #f56c6c !important;
-}
-
-:root.dark :deep(.el-button--danger:hover),
-.dark-mode :deep(.el-button--danger:hover),
-[data-theme="dark"] :deep(.el-button--danger:hover) {
-  background: #f78989 !important;
-  border-color: #f78989 !important;
-}
-
-/* Button warning in dark mode */
-:root.dark :deep(.el-button--warning),
-.dark-mode :deep(.el-button--warning),
-[data-theme="dark"] :deep(.el-button--warning) {
-  background: #e6a23c !important;
-  border-color: #e6a23c !important;
-}
-
-:root.dark :deep(.el-button--warning:hover),
-.dark-mode :deep(.el-button--warning:hover),
-[data-theme="dark"] :deep(.el-button--warning:hover) {
-  background: #ebb563 !important;
-  border-color: #ebb563 !important;
-}
-
-/* Button plain in dark mode */
-:root.dark :deep(.el-button.is-plain),
-.dark-mode :deep(.el-button.is-plain),
-[data-theme="dark"] :deep(.el-button.is-plain) {
-  background: transparent !important;
-  border-color: #404040 !important;
-  color: #e0e0e0 !important;
-}
-
-:root.dark :deep(.el-button.is-plain:hover),
-.dark-mode :deep(.el-button.is-plain:hover),
-[data-theme="dark"] :deep(.el-button.is-plain:hover) {
-  background: #363636 !important;
-  border-color: #505050 !important;
-}
-
-/* Input number in dark mode */
-:root.dark :deep(.el-input-number),
-.dark-mode :deep(.el-input-number),
-[data-theme="dark"] :deep(.el-input-number) {
-  background: #2d2d2d !important;
-}
-
-:root.dark :deep(.el-input-number .el-input__inner),
-.dark-mode :deep(.el-input-number .el-input__inner),
-[data-theme="dark"] :deep(.el-input-number .el-input__inner) {
-  background: #2d2d2d !important;
-  border-color: #404040 !important;
-  color: #e0e0e0 !important;
-}
-
-/* Radio button in dark mode */
-:root.dark :deep(.el-radio-button__inner),
-.dark-mode :deep(.el-radio-button__inner),
-[data-theme="dark"] :deep(.el-radio-button__inner) {
-  background: #2d2d2d !important;
-  border-color: #404040 !important;
-  color: #e0e0e0 !important;
-}
-
-:root.dark :deep(.el-radio-button__inner:hover),
-.dark-mode :deep(.el-radio-button__inner:hover),
-[data-theme="dark"] :deep(.el-radio-button__inner:hover) {
-  color: #409eff !important;
-}
-
-/* Tabs in dark mode */
-:root.dark :deep(.el-tabs__nav-wrap::after),
-.dark-mode :deep(.el-tabs__nav-wrap::after),
-[data-theme="dark"] :deep(.el-tabs__nav-wrap::after) {
-  background-color: #404040 !important;
-}
-
-/* Alert in dark mode */
-:root.dark :deep(.el-alert),
-.dark-mode :deep(.el-alert),
-[data-theme="dark"] :deep(.el-alert) {
-  background: #2d2d2d !important;
-  border-color: #404040 !important;
-}
-
-:root.dark :deep(.el-alert__title),
-.dark-mode :deep(.el-alert__title),
-[data-theme="dark"] :deep(.el-alert__title) {
-  color: #e0e0e0 !important;
-}
-
-/* Stats icon in dark mode */
-:root.dark .stat-icon,
-.dark-mode .stat-icon,
-[data-theme="dark"] .stat-icon {
-  background: rgba(64, 158, 255, 0.2) !important;
-}
-
-:root.dark .stat-icon .iconify,
-.dark-mode .stat-icon .iconify,
-[data-theme="dark"] .stat-icon .iconify {
-  color: #409eff !important;
+:root[data-theme="dark"] .gradient-text {
+  background: linear-gradient(135deg, #63b3ed 0%, #4299e1 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 </style>

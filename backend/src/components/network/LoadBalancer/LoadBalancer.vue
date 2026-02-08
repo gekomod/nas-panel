@@ -13,6 +13,14 @@
           </div>
         </div>
         <div class="header-actions">
+          <el-tag 
+            :type="overallStatus === 'operational' ? 'success' : overallStatus === 'degraded' ? 'warning' : 'danger'"
+            size="large"
+            class="status-tag"
+          >
+            <Icon :icon="overallStatus === 'operational' ? 'mdi:check-circle' : 'mdi:alert-circle'" />
+            {{ overallStatusText }}
+          </el-tag>
           <el-button-group>
             <el-button 
               type="primary" 
@@ -32,10 +40,86 @@
               <Icon :icon="testing ? 'mdi:loading' : 'mdi:play'" />
               {{ testing ? 'Testowanie...' : 'Testuj konfigurację' }}
             </el-button>
+            <el-button 
+              type="info" 
+              @click="refreshAll"
+              :loading="refreshing"
+            >
+              <Icon :icon="refreshing ? 'mdi:loading' : 'mdi:refresh'" />
+              Odśwież
+            </el-button>
           </el-button-group>
         </div>
       </div>
     </el-card>
+
+    <!-- Stats Overview -->
+    <div class="stats-overview">
+      <el-card class="stat-card" shadow="hover">
+        <div class="stat-content">
+          <Icon icon="mdi:server" class="stat-icon" />
+          <div class="stat-info">
+            <div class="stat-value">{{ totalServers }}</div>
+            <div class="stat-label">Aktywnych serwerów</div>
+            <div class="stat-sub">
+              <el-tag size="small" type="success">{{ healthyServers }} zdrowych</el-tag>
+              <el-tag v-if="totalServers - healthyServers > 0" size="small" type="warning">{{ totalServers - healthyServers }} z problemami</el-tag>
+            </div>
+          </div>
+        </div>
+      </el-card>
+
+      <el-card class="stat-card" shadow="hover">
+        <div class="stat-content">
+          <Icon icon="mdi:chart-line" class="stat-icon" />
+          <div class="stat-info">
+            <div class="stat-value">{{ totalRequests.toLocaleString() }}/min</div>
+            <div class="stat-label">Żądań na minutę</div>
+            <div class="stat-trend">
+              <Icon 
+                :icon="statsTrends.requestTrend > 0 ? 'mdi:arrow-up' : 'mdi:arrow-down'" 
+                :class="statsTrends.requestTrend > 0 ? 'trend-up' : 'trend-down'"
+              />
+              <span>{{ Math.abs(statsTrends.requestTrend) }}%</span>
+            </div>
+          </div>
+        </div>
+      </el-card>
+
+      <el-card class="stat-card" shadow="hover">
+        <div class="stat-content">
+          <Icon icon="mdi:timer-outline" class="stat-icon" />
+          <div class="stat-info">
+            <div class="stat-value">{{ avgResponseTime }}ms</div>
+            <div class="stat-label">Średni czas odpowiedzi</div>
+            <div class="stat-trend">
+              <Icon 
+                :icon="statsTrends.responseTrend < 0 ? 'mdi:arrow-down' : 'mdi:arrow-up'" 
+                :class="statsTrends.responseTrend < 0 ? 'trend-up' : 'trend-down'"
+              />
+              <span>{{ Math.abs(statsTrends.responseTrend) }}%</span>
+            </div>
+          </div>
+        </div>
+      </el-card>
+
+      <el-card class="stat-card" shadow="hover">
+        <div class="stat-content">
+          <Icon icon="mdi:alert-circle" class="stat-icon" />
+          <div class="stat-info">
+            <div class="stat-value">{{ errorRate.toFixed(2) }}%</div>
+            <div class="stat-label">Wskaźnik błędów</div>
+            <div class="stat-trend">
+              <Icon 
+                :icon="statsTrends.errorTrend < 0 ? 'mdi:arrow-down' : 'mdi:arrow-up'" 
+                :class="statsTrends.errorTrend < 0 ? 'trend-up' : 'trend-down'"
+              />
+              <span>{{ Math.abs(statsTrends.errorTrend) }}%</span>
+            </div>
+          </div>
+        </div>
+      </el-card>
+    </div>
 
     <!-- Main Content -->
     <div class="load-balancer-content">
@@ -51,7 +135,7 @@
               <el-button 
                 type="primary" 
                 @click="addServer"
-                :disabled="servers.length >= 4"
+                :disabled="servers.length >= 10"
               >
                 <Icon icon="mdi:plus" />
                 Dodaj serwer
@@ -65,19 +149,44 @@
             v-for="(server, index) in servers" 
             :key="server.id"
             class="server-item"
+            :class="`status-${server.status}`"
           >
             <div class="server-header">
-              <h3>
-                <Icon icon="mdi:server" />
-                Serwer {{ index + 1 }}
-              </h3>
+              <div class="server-title">
+                <h3>
+                  <Icon :icon="getServerStatusIcon(server.status)" />
+                  {{ server.name || `Serwer ${index + 1}` }}
+                  <el-tag 
+                    v-if="server.status !== 'healthy'" 
+                    :type="server.status === 'degraded' ? 'warning' : 'danger'"
+                    size="small"
+                    class="status-tag-inline"
+                  >
+                    {{ getStatusText(server.status) }}
+                  </el-tag>
+                </h3>
+                <div class="server-address">
+                  <Icon icon="mdi:ip-network" />
+                  {{ server.ip }}:{{ server.port }}
+                  <span class="server-protocol">{{ server.protocol?.toUpperCase() }}</span>
+                </div>
+              </div>
               <div class="server-actions">
                 <el-button 
                   size="small" 
                   circle 
                   @click="editServer(index)"
+                  :disabled="server.status === 'down'"
                 >
                   <Icon icon="mdi:pencil" />
+                </el-button>
+                <el-button 
+                  size="small" 
+                  circle 
+                  @click="checkServerHealth(index)"
+                  :loading="server.healthCheckLoading"
+                >
+                  <Icon icon="mdi:heart-pulse" />
                 </el-button>
                 <el-button 
                   size="small" 
@@ -92,45 +201,48 @@
             </div>
             
             <div class="server-config">
-              <div class="config-row">
-                <div class="config-item">
-                  <label>Adres IP:</label>
-                  <span class="config-value">{{ server.ip || 'Nie skonfigurowano' }}</span>
-                </div>
-                <div class="config-item">
-                  <label>Port:</label>
-                  <span class="config-value">{{ server.port || '-' }}</span>
-                </div>
-              </div>
-              
-              <div class="config-row">
+              <div class="config-grid">
                 <div class="config-item">
                   <label>Waga:</label>
                   <span class="config-value">{{ server.weight }}%</span>
                 </div>
                 <div class="config-item">
-                  <label>Status:</label>
-                  <el-tag 
-                    :type="server.status === 'healthy' ? 'success' : server.status === 'degraded' ? 'warning' : 'danger'"
-                    size="small"
-                  >
-                    {{ getStatusText(server.status) }}
-                  </el-tag>
+                  <label>Max połączeń:</label>
+                  <span class="config-value">{{ server.maxConnections?.toLocaleString() || '1000' }}</span>
+                </div>
+                <div class="config-item">
+                  <label>Timeout:</label>
+                  <span class="config-value">{{ server.timeout }}ms</span>
+                </div>
+                <div class="config-item">
+                  <label>Ostatnie sprawdzenie:</label>
+                  <span class="config-value">{{ formatTime(server.lastChecked) }}</span>
                 </div>
               </div>
               
-              <div class="weight-slider">
+              <div class="weight-control">
                 <label>Rozkład obciążenia:</label>
-                <el-slider
-                  v-model="server.weight"
-                  :min="1"
-                  :max="100"
-                  :step="1"
-                  show-stops
-                  show-input
-                  :disabled="server.status === 'down'"
-                  @change="updateWeights(index)"
-                />
+                <div class="weight-slider-container">
+                  <el-slider
+                    v-model="server.weight"
+                    :min="1"
+                    :max="100"
+                    :step="1"
+                    show-stops
+                    show-input
+                    :disabled="server.status === 'down'"
+                    @change="updateWeights(index)"
+                  />
+                  <el-tooltip content="Automatyczne równoważenie wag" placement="top">
+                    <el-button 
+                      size="small" 
+                      circle 
+                      @click="autoBalanceWeights"
+                    >
+                      <Icon icon="mdi:scale-balance" />
+                    </el-button>
+                  </el-tooltip>
+                </div>
               </div>
             </div>
             
@@ -139,7 +251,7 @@
                 <div class="stat-item">
                   <Icon icon="mdi:chart-line" class="stat-icon" />
                   <div class="stat-info">
-                    <div class="stat-value">{{ server.requestsPerMinute || 0 }}</div>
+                    <div class="stat-value">{{ server.requestsPerMinute?.toLocaleString() || 0 }}</div>
                     <div class="stat-label">Żądań/min</div>
                   </div>
                 </div>
@@ -182,6 +294,7 @@
               </span>
               <span v-else>
                 Suma wag musi wynosić 100%. Aktualnie: {{ totalWeight }}%
+                <el-button type="text" @click="autoBalanceWeights">Automatycznie równoważ</el-button>
               </span>
             </template>
           </el-alert>
@@ -196,13 +309,21 @@
               <Icon icon="mdi:algorithm" />
               Algorytm równoważenia
             </h2>
+            <div class="card-header-actions">
+              <el-switch
+                v-model="algorithm.enabled"
+                active-text="Włączony"
+                inactive-text="Wyłączony"
+                @change="toggleLoadBalancer"
+              />
+            </div>
           </div>
         </template>
 
         <div class="algorithm-config">
           <el-form :model="algorithm" label-width="200px">
             <el-form-item label="Typ algorytmu">
-              <el-radio-group v-model="algorithm.type">
+              <el-radio-group v-model="algorithm.type" :disabled="!algorithm.enabled">
                 <el-radio label="round-robin">
                   <div class="algorithm-option">
                     <Icon icon="mdi:refresh" class="option-icon" />
@@ -243,17 +364,17 @@
             </el-form-item>
 
             <el-form-item label="Sprawdzanie zdrowia">
-              <el-switch v-model="algorithm.healthCheck" />
+              <el-switch v-model="algorithm.healthCheck" :disabled="!algorithm.enabled" />
               <span class="hint">Automatycznie wykrywaj i omijaj uszkodzone serwery</span>
             </el-form-item>
 
             <template v-if="algorithm.healthCheck">
               <el-form-item label="Interwał sprawdzania">
-                <el-select v-model="algorithm.healthCheckInterval" style="width: 200px">
+                <el-select v-model="algorithm.healthCheckInterval" style="width: 200px" :disabled="!algorithm.enabled">
+                  <el-option label="Co 10 sekund" value="10s" />
                   <el-option label="Co 30 sekund" value="30s" />
                   <el-option label="Co 1 minutę" value="1m" />
                   <el-option label="Co 5 minut" value="5m" />
-                  <el-option label="Co 10 minut" value="10m" />
                 </el-select>
               </el-form-item>
 
@@ -265,13 +386,14 @@
                   :step="1"
                   show-stops
                   show-input
+                  :disabled="!algorithm.enabled"
                 />
                 <span class="hint">{{ algorithm.failThreshold }} nieudanych prób z rzędu oznacza awarię</span>
               </el-form-item>
             </template>
 
             <el-form-item label="Sticky sessions">
-              <el-switch v-model="algorithm.stickySessions" />
+              <el-switch v-model="algorithm.stickySessions" :disabled="!algorithm.enabled" />
               <span class="hint">Zachowaj sesję użytkownika na tym samym serwerze</span>
             </el-form-item>
 
@@ -283,6 +405,7 @@
                   :max="120"
                   :step="1"
                   controls-position="right"
+                  :disabled="!algorithm.enabled"
                 />
                 <span class="hint">minut</span>
               </el-form-item>
@@ -308,6 +431,13 @@
                 <Icon :icon="refreshing ? 'mdi:loading' : 'mdi:refresh'" />
                 Odśwież
               </el-button>
+              <el-button 
+                type="default" 
+                @click="showLogsDialog = true"
+              >
+                <Icon icon="mdi:text-box-outline" />
+                Pokaż logi
+              </el-button>
             </div>
           </div>
         </template>
@@ -325,7 +455,7 @@
                   width: `${server.weight}%`,
                   backgroundColor: getServerColor(server)
                 }"
-                :title="`Serwer ${server.ip}: ${server.weight}%`"
+                :title="`${server.name || server.ip}: ${server.weight}%`"
               >
                 <span class="bar-label">{{ server.weight }}%</span>
               </div>
@@ -340,95 +470,89 @@
                   class="legend-color" 
                   :style="{ backgroundColor: getServerColor(server) }"
                 />
-                <span class="legend-text">{{ server.ip || 'Serwer ' + server.id }}</span>
+                <span class="legend-text">{{ server.name || server.ip }}</span>
                 <span class="legend-value">{{ server.weight }}%</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Performance Metrics -->
-          <div class="metrics-grid">
-            <div class="metric-card">
-              <div class="metric-header">
-                <Icon icon="mdi:swap-horizontal" class="metric-icon" />
-                <h4>Całkowity ruch</h4>
-              </div>
-              <div class="metric-value">{{ totalRequests.toLocaleString() }}</div>
-              <div class="metric-label">żądań dzisiaj</div>
-              <div class="metric-trend">
-                <Icon 
-                  :icon="requestTrend > 0 ? 'mdi:arrow-up' : 'mdi:arrow-down'" 
-                  :class="requestTrend > 0 ? 'trend-up' : 'trend-down'"
-                />
-                <span>{{ Math.abs(requestTrend) }}% w porównaniu do wczoraj</span>
-              </div>
-            </div>
-
-            <div class="metric-card">
-              <div class="metric-header">
-                <Icon icon="mdi:timer-outline" class="metric-icon" />
-                <h4>Średni czas odpowiedzi</h4>
-              </div>
-              <div class="metric-value">{{ avgResponseTime }}ms</div>
-              <div class="metric-label">średnio na żądanie</div>
-              <div class="metric-trend">
-                <Icon 
-                  :icon="responseTrend < 0 ? 'mdi:arrow-down' : 'mdi:arrow-up'" 
-                  :class="responseTrend < 0 ? 'trend-up' : 'trend-down'"
-                />
-                <span>{{ Math.abs(responseTrend) }}% w porównaniu do wczoraj</span>
-              </div>
-            </div>
-
-            <div class="metric-card">
-              <div class="metric-header">
-                <Icon icon="mdi:alert-circle" class="metric-icon" />
-                <h4>Wskaźnik błędów</h4>
-              </div>
-              <div class="metric-value">{{ errorRate }}%</div>
-              <div class="metric-label">nieudanych żądań</div>
-              <div class="metric-trend">
-                <Icon 
-                  :icon="errorTrend < 0 ? 'mdi:arrow-down' : 'mdi:arrow-up'" 
-                  :class="errorTrend < 0 ? 'trend-up' : 'trend-down'"
-                />
-                <span>{{ Math.abs(errorTrend) }}% w porównaniu do wczoraj</span>
-              </div>
-            </div>
-
-            <div class="metric-card">
-              <div class="metric-header">
-                <Icon icon="mdi:server-network" class="metric-icon" />
-                <h4>Wykorzystanie zasobów</h4>
-              </div>
-              <div class="metric-value">{{ avgResourceUsage }}%</div>
-              <div class="metric-label">średnie CPU/RAM</div>
-              <div class="progress-container">
-                <el-progress 
-                  :percentage="avgResourceUsage" 
-                  :color="getResourceColor(avgResourceUsage)"
-                  :show-text="false"
-                />
+                <el-tag 
+                  size="small"
+                  :type="server.status === 'healthy' ? 'success' : server.status === 'degraded' ? 'warning' : 'danger'"
+                >
+                  {{ getStatusText(server.status) }}
+                </el-tag>
               </div>
             </div>
           </div>
 
           <!-- Server Status Timeline -->
           <div class="timeline-container">
-            <h3>Historia statusów serwerów</h3>
+            <h3>Historia statusów</h3>
             <div class="timeline">
               <div 
                 v-for="event in statusHistory" 
                 :key="event.id"
                 class="timeline-event"
-                :class="`status-${event.status}`"
+                :class="`status-${event.status || 'info'}`"
               >
                 <div class="event-time">{{ formatTime(event.timestamp) }}</div>
                 <div class="event-details">
-                  <Icon :icon="getStatusIcon(event.status)" class="event-icon" />
+                  <Icon :icon="getStatusIcon(event.status || 'info')" class="event-icon" />
                   <span class="event-text">{{ event.message }}</span>
                 </div>
+                <el-tag 
+                  v-if="event.type" 
+                  size="small" 
+                  :type="getEventTypeColor(event.type)"
+                  class="event-type"
+                >
+                  {{ event.type }}
+                </el-tag>
               </div>
+              <div v-if="statusHistory.length === 0" class="no-events">
+                <Icon icon="mdi:information-outline" />
+                <span>Brak historii zdarzeń</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Test Results -->
+          <div v-if="testResults" class="test-results">
+            <h3>Ostatni test konfiguracji</h3>
+            <div class="results-grid">
+              <div 
+                v-for="result in testResults.results" 
+                :key="result.ip"
+                class="result-card"
+                :class="`result-${result.status}`"
+              >
+                <div class="result-header">
+                  <Icon :icon="getTestResultIcon(result.status)" />
+                  <span class="result-server">{{ result.ip }}:{{ result.port }}</span>
+                </div>
+                <div class="result-stats">
+                  <div class="result-stat">
+                    <span class="stat-label">Sukces:</span>
+                    <span class="stat-value">{{ result.successRate.toFixed(1) }}%</span>
+                  </div>
+                  <div class="result-stat">
+                    <span class="stat-label">Średni czas:</span>
+                    <span class="stat-value">{{ result.avgResponseTime }}ms</span>
+                  </div>
+                  <div class="result-stat">
+                    <span class="stat-label">Testy:</span>
+                    <span class="stat-value">{{ result.successful }}/{{ result.successful + result.failed }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="results-summary">
+              <el-tag 
+                :type="testResults.summary.overallStatus === 'PASS' ? 'success' : 'danger'"
+                size="large"
+              >
+                {{ testResults.summary.overallStatus === 'PASS' ? 'TEST PRZESZŁY' : 'TEST NIEUDANY' }}
+              </el-tag>
+              <span class="summary-text">
+                {{ testResults.summary.serversPassing }}/{{ testResults.summary.totalServers }} serwerów działa poprawnie
+              </span>
             </div>
           </div>
         </div>
@@ -441,13 +565,20 @@
       :title="editingServerIndex !== null ? 'Edytuj serwer' : 'Dodaj nowy serwer'"
       width="500px"
     >
-      <el-form :model="serverForm" label-width="120px" ref="serverFormRef">
+      <el-form :model="serverForm" label-width="120px" ref="serverFormRef" :rules="serverRules">
         <el-form-item label="Nazwa serwera" prop="name">
           <el-input v-model="serverForm.name" placeholder="np. Serwer produkcyjny 1" />
         </el-form-item>
         
         <el-form-item label="Adres IP" prop="ip" required>
-          <el-input v-model="serverForm.ip" placeholder="192.168.1.100" />
+          <el-input v-model="serverForm.ip" placeholder="192.168.1.100">
+            <template #append>
+              <el-button @click="testServerConnection" :loading="testingConnection">
+                <Icon :icon="testingConnection ? 'mdi:loading' : 'mdi:connection'" />
+                Testuj
+              </el-button>
+            </template>
+          </el-input>
         </el-form-item>
         
         <el-form-item label="Port" prop="port" required>
@@ -464,7 +595,6 @@
           <el-select v-model="serverForm.protocol" style="width: 100%">
             <el-option label="HTTP" value="http" />
             <el-option label="HTTPS" value="https" />
-            <el-option label="TCP" value="tcp" />
           </el-select>
         </el-form-item>
         
@@ -488,16 +618,94 @@
             style="width: 100%"
           />
         </el-form-item>
+
+        <el-form-item label="Waga początkowa">
+          <el-slider
+            v-model="serverForm.weight"
+            :min="1"
+            :max="100"
+            :step="1"
+            show-input
+            :disabled="editingServerIndex === null"
+          />
+        </el-form-item>
       </el-form>
       
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="showServerDialog = false">Anuluj</el-button>
-          <el-button type="primary" @click="saveServer">
+          <el-button type="primary" @click="saveServer" :loading="savingServer">
             {{ editingServerIndex !== null ? 'Zapisz zmiany' : 'Dodaj serwer' }}
           </el-button>
         </span>
       </template>
+    </el-dialog>
+
+    <!-- Logs Dialog -->
+    <el-dialog
+      v-model="showLogsDialog"
+      title="Logi Load Balancera"
+      width="800px"
+      top="5vh"
+    >
+      <div class="logs-container">
+        <div class="logs-header">
+          <el-input
+            v-model="logFilter"
+            placeholder="Filtruj logi..."
+            clearable
+            style="width: 300px"
+          >
+            <template #prefix>
+              <Icon icon="mdi:magnify" />
+            </template>
+          </el-input>
+          <el-select v-model="logTypeFilter" placeholder="Filtruj typ" clearable style="width: 150px">
+            <el-option label="INFO" value="INFO" />
+            <el-option label="WARNING" value="WARNING" />
+            <el-option label="ERROR" value="ERROR" />
+            <el-option label="CONFIG" value="CONFIG" />
+          </el-select>
+          <el-button @click="loadLogs" :loading="loadingLogs">
+            <Icon :icon="loadingLogs ? 'mdi:loading' : 'mdi:refresh'" />
+            Odśwież
+          </el-button>
+          <el-button type="danger" @click="clearLogs" :disabled="logs.length === 0">
+            <Icon icon="mdi:delete" />
+            Wyczyść logi
+          </el-button>
+        </div>
+
+        <div class="logs-content">
+          <div 
+            v-for="log in filteredLogs" 
+            :key="log.timestamp"
+            class="log-entry"
+            :class="`log-${log.type?.toLowerCase()}`"
+          >
+            <div class="log-timestamp">{{ formatTime(log.timestamp) }}</div>
+            <div class="log-type">
+              <el-tag :type="getLogTypeColor(log.type)" size="small">
+                {{ log.type }}
+              </el-tag>
+            </div>
+            <div class="log-message">{{ log.message }}</div>
+            <el-button 
+              v-if="log.details" 
+              size="small" 
+              type="text"
+              @click="showLogDetails(log)"
+            >
+              <Icon icon="mdi:information-outline" />
+              Szczegóły
+            </el-button>
+          </div>
+          <div v-if="filteredLogs.length === 0" class="no-logs">
+            <Icon icon="mdi:text-box-remove-outline" />
+            <span>Brak logów do wyświetlenia</span>
+          </div>
+        </div>
+      </div>
     </el-dialog>
   </div>
 </template>
@@ -506,42 +714,12 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { Icon } from '@iconify/vue'
 import { ElNotification, ElMessage, ElMessageBox } from 'element-plus'
+import axios from 'axios'
 
 // Stan komponentu
-const servers = ref([
-  {
-    id: 1,
-    ip: '192.168.1.100',
-    port: 8080,
-    weight: 50,
-    status: 'healthy',
-    name: 'Serwer główny',
-    protocol: 'http',
-    maxConnections: 1000,
-    timeout: 5000,
-    requestsPerMinute: 1200,
-    responseTime: 45,
-    cpuUsage: 65,
-    memoryUsage: 70
-  },
-  {
-    id: 2,
-    ip: '192.168.1.101',
-    port: 8080,
-    weight: 50,
-    status: 'healthy',
-    name: 'Serwer zapasowy',
-    protocol: 'http',
-    maxConnections: 1000,
-    timeout: 5000,
-    requestsPerMinute: 1100,
-    responseTime: 50,
-    cpuUsage: 60,
-    memoryUsage: 65
-  }
-])
-
+const servers = ref([])
 const algorithm = ref({
+  enabled: false,
   type: 'weighted',
   healthCheck: true,
   healthCheckInterval: '30s',
@@ -554,51 +732,99 @@ const applying = ref(false)
 const testing = ref(false)
 const refreshing = ref(false)
 const showServerDialog = ref(false)
+const showLogsDialog = ref(false)
 const editingServerIndex = ref(null)
+const savingServer = ref(false)
+const testingConnection = ref(false)
+const loadingLogs = ref(false)
+
 const serverForm = ref({
   name: '',
   ip: '',
   port: 8080,
   protocol: 'http',
   maxConnections: 1000,
-  timeout: 5000
+  timeout: 5000,
+  weight: 50
 })
 
-const statusHistory = ref([
-  { id: 1, timestamp: new Date(Date.now() - 3600000), status: 'healthy', message: 'Serwer 1: Wszystkie testy zdrowia przeszły pomyślnie' },
-  { id: 2, timestamp: new Date(Date.now() - 1800000), status: 'warning', message: 'Serwer 2: Wysokie użycie CPU (85%)' },
-  { id: 3, timestamp: new Date(Date.now() - 900000), status: 'healthy', message: 'Serwer 2: CPU wróciło do normalnego poziomu' },
-  { id: 4, timestamp: new Date(Date.now() - 300000), status: 'info', message: 'Zmieniono wagę serwera 1 na 60%' }
-])
+const statusHistory = ref([])
+const logs = ref([])
+const logFilter = ref('')
+const logTypeFilter = ref('')
+const testResults = ref(null)
+const overallStatus = ref('unknown')
+const statsTrends = ref({
+  requestTrend: 0,
+  responseTrend: 0,
+  errorTrend: 0
+})
 
 // Computed properties
 const totalWeight = computed(() => {
-  return servers.value.reduce((sum, server) => sum + server.weight, 0)
+  return servers.value.reduce((sum, server) => sum + (server.weight || 0), 0)
 })
 
 const serversReady = computed(() => {
-  return servers.value.length >= 2 && totalWeight.value === 100
+  return servers.value.length >= 2 && totalWeight.value === 100 && algorithm.value.enabled
 })
 
-const totalRequests = computed(() => {
-  return servers.value.reduce((sum, server) => sum + (server.requestsPerMinute || 0) * 60 * 24, 0)
-})
-
+const totalServers = computed(() => servers.value.length)
+const healthyServers = computed(() => servers.value.filter(s => s.status === 'healthy').length)
+const totalRequests = computed(() => servers.value.reduce((sum, s) => sum + (s.requestsPerMinute || 0), 0))
 const avgResponseTime = computed(() => {
-  const total = servers.value.reduce((sum, server) => sum + (server.responseTime || 0), 0)
-  return Math.round(total / servers.value.length)
+  const healthyServersList = servers.value.filter(s => s.status === 'healthy' && s.responseTime)
+  if (healthyServersList.length === 0) return 0
+  return Math.round(healthyServersList.reduce((sum, s) => sum + s.responseTime, 0) / healthyServersList.length)
+})
+const errorRate = computed(() => {
+  if (servers.value.length === 0) return 0
+  const errorCount = servers.value.filter(s => s.status !== 'healthy').length
+  return (errorCount / servers.value.length) * 100
 })
 
-const avgResourceUsage = computed(() => {
-  const total = servers.value.reduce((sum, server) => sum + (server.cpuUsage || 0) + (server.memoryUsage || 0), 0)
-  return Math.round(total / (servers.value.length * 2))
+const overallStatusText = computed(() => {
+  switch (overallStatus.value) {
+    case 'operational': return 'Działa poprawnie'
+    case 'degraded': return 'Obniżona wydajność'
+    case 'failed': return 'Awaria'
+    default: return 'Nieznany'
+  }
 })
 
-// Symulowane trendy
-const requestTrend = ref(12)
-const responseTrend = ref(-5)
-const errorTrend = ref(-2)
-const errorRate = ref(0.5)
+const filteredLogs = computed(() => {
+  return logs.value.filter(log => {
+    const matchesText = !logFilter.value || 
+      log.message.toLowerCase().includes(logFilter.value.toLowerCase()) ||
+      JSON.stringify(log.details).toLowerCase().includes(logFilter.value.toLowerCase())
+    const matchesType = !logTypeFilter.value || log.type === logTypeFilter.value
+    return matchesText && matchesType
+  }).slice(0, 100) // Limit to 100 logs
+})
+
+// Validation rules
+const serverRules = {
+  name: [
+    { required: true, message: 'Nazwa serwera jest wymagana', trigger: 'blur' }
+  ],
+  ip: [
+    { required: true, message: 'Adres IP jest wymagany', trigger: 'blur' },
+    { 
+      validator: (rule, value, callback) => {
+        const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/
+        if (!ipRegex.test(value)) {
+          callback(new Error('Nieprawidłowy adres IP'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur'
+    }
+  ],
+  port: [
+    { required: true, message: 'Port jest wymagany', trigger: 'blur' }
+  ]
+}
 
 // Funkcje pomocnicze
 function getStatusText(status) {
@@ -612,6 +838,17 @@ function getStatusText(status) {
   return statuses[status] || status
 }
 
+function getServerStatusIcon(status) {
+  const icons = {
+    'healthy': 'mdi:server',
+    'degraded': 'mdi:server-network',
+    'down': 'mdi:server-off',
+    'warning': 'mdi:server-alert',
+    'info': 'mdi:server-security'
+  }
+  return icons[status] || 'mdi:help-circle'
+}
+
 function getStatusIcon(status) {
   const icons = {
     'healthy': 'mdi:check-circle',
@@ -623,33 +860,65 @@ function getStatusIcon(status) {
   return icons[status] || 'mdi:help-circle'
 }
 
+function getEventTypeColor(type) {
+  const colors = {
+    'INFO': 'info',
+    'WARNING': 'warning',
+    'ERROR': 'danger',
+    'CONFIG': 'success',
+    'SERVER_ADD': 'success',
+    'SERVER_REMOVE': 'danger',
+    'SERVER_UPDATE': 'warning'
+  }
+  return colors[type] || 'default'
+}
+
+function getLogTypeColor(type) {
+  const colors = {
+    'INFO': 'info',
+    'WARNING': 'warning',
+    'ERROR': 'danger',
+    'CONFIG': 'success',
+    'TEST': 'primary'
+  }
+  return colors[type] || 'default'
+}
+
+function getTestResultIcon(status) {
+  const icons = {
+    'excellent': 'mdi:check-circle',
+    'good': 'mdi:check',
+    'degraded': 'mdi:alert-circle',
+    'poor': 'mdi:close-circle'
+  }
+  return icons[status] || 'mdi:help-circle'
+}
+
 function getServerColor(server) {
   const colors = {
-    1: '#3b82f6',
-    2: '#10b981',
-    3: '#8b5cf6',
-    4: '#f59e0b'
+    'healthy': '#10b981',
+    'degraded': '#f59e0b',
+    'down': '#ef4444',
+    'warning': '#f59e0b',
+    'info': '#3b82f6'
   }
-  return colors[server.id] || '#64748b'
+  return colors[server.status] || '#64748b'
 }
 
-function getResourceColor(percentage) {
-  if (percentage < 50) return '#10b981'
-  if (percentage < 75) return '#f59e0b'
-  return '#ef4444'
-}
-
-function formatTime(date) {
+function formatTime(dateString) {
+  if (!dateString) return '-'
+  const date = new Date(dateString)
   return date.toLocaleTimeString('pl-PL', {
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    second: '2-digit'
   })
 }
 
 // Funkcje zarządzania serwerami
 function addServer() {
-  if (servers.value.length >= 4) {
-    ElMessage.warning('Maksymalnie można dodać 4 serwery')
+  if (servers.value.length >= 10) {
+    ElMessage.warning('Maksymalnie można dodać 10 serwerów')
     return
   }
   
@@ -660,7 +929,8 @@ function addServer() {
     port: 8080,
     protocol: 'http',
     maxConnections: 1000,
-    timeout: 5000
+    timeout: 5000,
+    weight: Math.floor(100 / (servers.value.length + 1))
   }
   showServerDialog.value = true
 }
@@ -668,65 +938,157 @@ function addServer() {
 function editServer(index) {
   editingServerIndex.value = index
   const server = servers.value[index]
-  serverForm.value = { ...server }
+  serverForm.value = { 
+    name: server.name,
+    ip: server.ip,
+    port: server.port,
+    protocol: server.protocol || 'http',
+    maxConnections: server.maxConnections || 1000,
+    timeout: server.timeout || 5000,
+    weight: server.weight
+  }
   showServerDialog.value = true
 }
 
-function removeServer(index) {
+async function testServerConnection() {
+  if (!serverForm.value.ip || !serverForm.value.port) {
+    ElMessage.warning('Podaj adres IP i port serwera')
+    return
+  }
+
+  testingConnection.value = true
+  try {
+    const response = await axios.get(`/api/loadbalancer/test-server`, {
+      params: {
+        ip: serverForm.value.ip,
+        port: serverForm.value.port
+      }
+    })
+
+    if (response.data.success) {
+      ElMessage.success('Serwer odpowiada poprawnie')
+    } else {
+      ElMessage.warning('Serwer nie odpowiada lub zwraca błąd')
+    }
+  } catch (error) {
+    ElMessage.error('Nie udało się połączyć z serwerem')
+  } finally {
+    testingConnection.value = false
+  }
+}
+
+async function checkServerHealth(index) {
+  const server = servers.value[index]
+  server.healthCheckLoading = true
+  
+  try {
+    const response = await axios.get(`/api/loadbalancer/check-health`, {
+      params: {
+        ip: server.ip,
+        port: server.port
+      }
+    })
+
+    if (response.data.healthy) {
+      server.status = 'healthy'
+      server.responseTime = response.data.responseTime
+      server.lastChecked = new Date().toISOString()
+      ElMessage.success('Serwer działa poprawnie')
+    } else {
+      server.status = 'down'
+      ElMessage.warning('Serwer nie odpowiada')
+    }
+  } catch (error) {
+    server.status = 'down'
+    ElMessage.error('Błąd podczas sprawdzania zdrowia serwera')
+  } finally {
+    server.healthCheckLoading = false
+  }
+}
+
+async function removeServer(index) {
   if (servers.value.length <= 2) {
     ElMessage.warning('Musisz mieć co najmniej 2 serwery dla load balancingu')
     return
   }
   
-  ElMessageBox.confirm(
-    `Czy na pewno chcesz usunąć serwer ${servers.value[index].name || 'Serwer ' + (index + 1)}?`,
-    'Potwierdzenie usunięcia',
-    {
-      type: 'warning',
-      confirmButtonText: 'Usuń',
-      cancelButtonText: 'Anuluj'
+  const server = servers.value[index]
+  
+  try {
+    const result = await ElMessageBox.confirm(
+      `Czy na pewno chcesz usunąć serwer "${server.name || server.ip}"?`,
+      'Potwierdzenie usunięcia',
+      {
+        type: 'warning',
+        confirmButtonText: 'Usuń',
+        cancelButtonText: 'Anuluj',
+        distinguishCancelAndClose: true
+      }
+    )
+
+    if (result === 'confirm') {
+      const response = await axios.delete(`/api/loadbalancer/servers/${server.id}`)
+      
+      if (response.data.success) {
+        servers.value.splice(index, 1)
+        ElMessage.success('Serwer został usunięty')
+        normalizeWeights()
+      } else {
+        throw new Error(response.data.error)
+      }
     }
-  ).then(() => {
-    servers.value.splice(index, 1)
-    ElMessage.success('Serwer został usunięty')
-    normalizeWeights()
-  })
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error('Błąd podczas usuwania serwera: ' + error.message)
+    }
+  }
 }
 
-function saveServer() {
-  if (!serverForm.value.ip) {
-    ElMessage.error('Adres IP jest wymagany')
-    return
-  }
-  
-  if (editingServerIndex.value !== null) {
-    // Aktualizuj istniejący serwer
-    const server = {
-      ...servers.value[editingServerIndex.value],
-      ...serverForm.value,
-      weight: servers.value[editingServerIndex.value].weight || 50,
-      status: 'healthy'
+async function saveServer() {
+  try {
+    savingServer.value = true
+    
+    if (!serverForm.value.ip) {
+      ElMessage.error('Adres IP jest wymagany')
+      return
     }
-    servers.value[editingServerIndex.value] = server
-    ElMessage.success('Serwer zaktualizowany')
-  } else {
-    // Dodaj nowy serwer
-    const newServer = {
-      id: Date.now(),
-      ...serverForm.value,
-      weight: Math.floor(100 / (servers.value.length + 1)),
-      status: 'healthy',
-      requestsPerMinute: Math.floor(Math.random() * 500) + 500,
-      responseTime: Math.floor(Math.random() * 50) + 30,
-      cpuUsage: Math.floor(Math.random() * 30) + 40,
-      memoryUsage: Math.floor(Math.random() * 30) + 40
+
+    if (editingServerIndex.value !== null) {
+      // Aktualizuj istniejący serwer
+      const response = await axios.put(`/api/loadbalancer/servers/${servers.value[editingServerIndex.value].id}`, serverForm.value)
+      
+      if (response.data.success) {
+        servers.value[editingServerIndex.value] = {
+          ...servers.value[editingServerIndex.value],
+          ...serverForm.value
+        }
+        ElMessage.success('Serwer zaktualizowany')
+      }
+    } else {
+      // Dodaj nowy serwer
+      const response = await axios.post('/api/loadbalancer/servers', { server: serverForm.value })
+      
+      if (response.data.success) {
+        servers.value.push({
+          ...response.data.server,
+          status: 'healthy',
+          requestsPerMinute: Math.floor(Math.random() * 500) + 500,
+          responseTime: Math.floor(Math.random() * 50) + 30,
+          cpuUsage: Math.floor(Math.random() * 30) + 40,
+          memoryUsage: Math.floor(Math.random() * 30) + 40,
+          lastChecked: new Date().toISOString()
+        })
+        ElMessage.success('Nowy serwer dodany')
+        normalizeWeights()
+      }
     }
-    servers.value.push(newServer)
-    ElMessage.success('Nowy serwer dodany')
-    normalizeWeights()
+    
+    showServerDialog.value = false
+  } catch (error) {
+    ElMessage.error('Błąd podczas zapisywania serwera: ' + (error.response?.data?.error || error.message))
+  } finally {
+    savingServer.value = false
   }
-  
-  showServerDialog.value = false
 }
 
 function updateWeights(changedIndex) {
@@ -756,6 +1118,19 @@ function updateWeights(changedIndex) {
   }
 }
 
+function autoBalanceWeights() {
+  if (servers.value.length === 0) return
+  
+  const weightPerServer = Math.floor(100 / servers.value.length)
+  const remainder = 100 - (weightPerServer * servers.value.length)
+  
+  servers.value.forEach((server, index) => {
+    server.weight = weightPerServer + (index < remainder ? 1 : 0)
+  })
+  
+  ElMessage.success('Wagi automatycznie zrównoważone')
+}
+
 function normalizeWeights() {
   if (servers.value.length === 0) return
   
@@ -768,30 +1143,80 @@ function normalizeWeights() {
 }
 
 // Funkcje load balancingu
+async function toggleLoadBalancer(enabled) {
+  try {
+    const config = {
+      ...algorithm.value,
+      enabled,
+      servers: servers.value.map(s => ({
+        ip: s.ip,
+        port: s.port,
+        weight: s.weight,
+        name: s.name
+      }))
+    }
+
+    const response = await axios.post('/api/loadbalancer/config', { config })
+    
+    if (response.data.success) {
+      algorithm.value.enabled = enabled
+      ElNotification({
+        title: enabled ? 'Włączono' : 'Wyłączono',
+        message: enabled ? 'Load balancer został włączony' : 'Load balancer został wyłączony',
+        type: 'success',
+        duration: 3000
+      })
+    }
+  } catch (error) {
+    algorithm.value.enabled = !enabled // Revert
+    ElNotification({
+      title: 'Błąd',
+      message: 'Nie udało się zmienić stanu load balancera',
+      type: 'error',
+      duration: 3000
+    })
+  }
+}
+
 async function applyLoadBalancing() {
   try {
     applying.value = true
     
-    // Symulacja zapisu konfiguracji
-    await new Promise(resolve => setTimeout(resolve, 1500))
+    const config = {
+      ...algorithm.value,
+      servers: servers.value.map(s => ({
+        ip: s.ip,
+        port: s.port,
+        weight: s.weight,
+        name: s.name,
+        protocol: s.protocol,
+        maxConnections: s.maxConnections,
+        timeout: s.timeout
+      }))
+    }
+
+    const response = await axios.post('/api/loadbalancer/apply', { config })
     
-    // Aktualizuj statusy
-    statusHistory.value.unshift({
-      id: Date.now(),
-      timestamp: new Date(),
-      status: 'info',
-      message: `Zastosowano konfigurację load balancingu (${algorithm.value.type})`
-    })
-    
-    ElNotification({
-      title: 'Sukces',
-      message: 'Konfiguracja load balancingu została zastosowana',
-      type: 'success',
-      duration: 3000
-    })
-    
+    if (response.data.success) {
+      // Aktualizuj statusy
+      statusHistory.value.unshift({
+        id: Date.now(),
+        timestamp: new Date().toISOString(),
+        status: 'info',
+        type: 'CONFIG',
+        message: `Zastosowano konfigurację load balancingu (${algorithm.value.type})`
+      })
+      
+      ElNotification({
+        title: 'Sukces',
+        message: 'Konfiguracja load balancingu została zastosowana',
+        type: 'success',
+        duration: 3000
+      })
+      
+      await refreshAll()
+    }
   } catch (error) {
-    console.error('Error applying load balancing:', error)
     ElNotification({
       title: 'Błąd',
       message: 'Nie udało się zastosować konfiguracji',
@@ -807,37 +1232,49 @@ async function testLoadBalancing() {
   try {
     testing.value = true
     
-    // Symulacja testów
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    const config = {
+      ...algorithm.value,
+      servers: servers.value.map(s => ({
+        ip: s.ip,
+        port: s.port,
+        weight: s.weight
+      }))
+    }
+
+    const response = await axios.post('/api/loadbalancer/test', { config })
     
-    // Aktualizuj statystyki serwerów
-    servers.value.forEach(server => {
-      server.requestsPerMinute = Math.floor(Math.random() * 300) + 800
-      server.responseTime = Math.floor(Math.random() * 40) + 30
-      server.cpuUsage = Math.floor(Math.random() * 30) + 40
-      server.memoryUsage = Math.floor(Math.random() * 30) + 40
-    })
-    
-    statusHistory.value.unshift({
-      id: Date.now(),
-      timestamp: new Date(),
-      status: 'info',
-      message: 'Przeprowadzono test load balancingu'
-    })
-    
-    ElNotification({
-      title: 'Test zakończony',
-      message: 'Wszystkie serwery odpowiadają poprawnie',
-      type: 'success',
-      duration: 3000
-    })
-    
+    if (response.data.success) {
+      testResults.value = response.data
+      
+      // Aktualizuj statystyki serwerów
+      response.data.results.forEach((result, index) => {
+        if (servers.value[index]) {
+          servers.value[index].responseTime = result.avgResponseTime
+          servers.value[index].status = result.successRate >= 95 ? 'healthy' : 
+                                       result.successRate >= 80 ? 'degraded' : 'down'
+        }
+      })
+      
+      statusHistory.value.unshift({
+        id: Date.now(),
+        timestamp: new Date().toISOString(),
+        status: testResults.value.summary.overallStatus === 'PASS' ? 'healthy' : 'warning',
+        type: 'TEST',
+        message: `Przeprowadzono test load balancingu: ${testResults.value.summary.overallStatus}`
+      })
+      
+      ElNotification({
+        title: 'Test zakończony',
+        message: response.data.message,
+        type: testResults.value.summary.overallStatus === 'PASS' ? 'success' : 'warning',
+        duration: 3000
+      })
+    }
   } catch (error) {
-    console.error('Error testing load balancing:', error)
     ElNotification({
       title: 'Błąd testu',
-      message: 'Niektóre serwery nie odpowiadają',
-      type: 'warning',
+      message: 'Nie udało się przeprowadzić testu',
+      type: 'error',
       duration: 3000
     })
   } finally {
@@ -845,24 +1282,34 @@ async function testLoadBalancing() {
   }
 }
 
+async function refreshAll() {
+  await Promise.all([
+    refreshStats(),
+    loadLogs(),
+    fetchLoadBalancerStatus()
+  ])
+}
+
 async function refreshStats() {
   try {
     refreshing.value = true
     
-    // Symulacja odświeżania statystyk
-    await new Promise(resolve => setTimeout(resolve, 800))
+    const response = await axios.get('/api/loadbalancer/stats')
     
-    // Losowe zmiany statystyk dla realizmu
+    if (response.data.success) {
+      statusHistory.value = response.data.history || []
+      statsTrends.value = response.data.trends || {}
+    }
+    
+    // Aktualizuj statystyki serwerów
     servers.value.forEach(server => {
       const change = Math.random() * 0.2 - 0.1 // -10% do +10%
-      server.requestsPerMinute = Math.max(100, Math.round(server.requestsPerMinute * (1 + change)))
-      server.responseTime = Math.max(10, Math.round(server.responseTime * (1 + change)))
-      server.cpuUsage = Math.max(10, Math.min(95, Math.round(server.cpuUsage * (1 + change))))
-      server.memoryUsage = Math.max(10, Math.min(95, Math.round(server.memoryUsage * (1 + change))))
-    })
-    
-    // Sprawdź statusy na podstawie metryk
-    servers.value.forEach(server => {
+      server.requestsPerMinute = Math.max(100, Math.round((server.requestsPerMinute || 500) * (1 + change)))
+      server.responseTime = Math.max(10, Math.round((server.responseTime || 50) * (1 + change)))
+      server.cpuUsage = Math.max(10, Math.min(95, Math.round((server.cpuUsage || 50) * (1 + change))))
+      server.memoryUsage = Math.max(10, Math.min(95, Math.round((server.memoryUsage || 50) * (1 + change))))
+      
+      // Sprawdź statusy na podstawie metryk
       if (server.cpuUsage > 80 || server.memoryUsage > 85) {
         server.status = 'degraded'
       } else if (server.cpuUsage > 90 || server.memoryUsage > 95) {
@@ -873,19 +1320,116 @@ async function refreshStats() {
     })
     
     ElMessage.success('Statystyki odświeżone')
-    
   } catch (error) {
-    console.error('Error refreshing stats:', error)
     ElMessage.error('Błąd podczas odświeżania statystyk')
   } finally {
     refreshing.value = false
   }
 }
 
+async function fetchLoadBalancerStatus() {
+  try {
+    const response = await axios.get('/api/loadbalancer/status')
+    
+    if (response.data.success) {
+      servers.value = response.data.config.servers || []
+      algorithm.value = {
+        enabled: response.data.config.enabled || false,
+        type: response.data.config.algorithm || 'weighted',
+        healthCheck: response.data.config.healthCheck || true,
+        healthCheckInterval: response.data.config.healthCheckInterval || '30s',
+        failThreshold: response.data.config.failThreshold || 3,
+        stickySessions: response.data.config.stickySessions || true,
+        sessionTimeout: response.data.config.sessionTimeout || 30
+      }
+      
+      overallStatus.value = response.data.overallStatus || 'unknown'
+    }
+  } catch (error) {
+    console.error('Failed to fetch load balancer status:', error)
+  }
+}
+
+async function loadLogs() {
+  try {
+    loadingLogs.value = true
+    
+    const response = await axios.get('/api/loadbalancer/logs')
+    
+    if (response.data.success) {
+      logs.value = response.data.logs || []
+    }
+  } catch (error) {
+    ElMessage.error('Błąd podczas ładowania logów')
+  } finally {
+    loadingLogs.value = false
+  }
+}
+
+async function clearLogs() {
+  try {
+    const result = await ElMessageBox.confirm(
+      'Czy na pewno chcesz wyczyścić wszystkie logi?',
+      'Potwierdzenie',
+      {
+        type: 'warning',
+        confirmButtonText: 'Wyczyść',
+        cancelButtonText: 'Anuluj'
+      }
+    )
+
+    if (result === 'confirm') {
+      const response = await axios.delete('/api/loadbalancer/logs')
+      
+      if (response.data.success) {
+        logs.value = []
+        ElMessage.success('Logi zostały wyczyszczone')
+      }
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('Błąd podczas czyszczenia logów')
+    }
+  }
+}
+
+function showLogDetails(log) {
+  ElMessageBox.alert(
+    `<pre>${JSON.stringify(log.details, null, 2)}</pre>`,
+    'Szczegóły logu',
+    {
+      dangerouslyUseHTMLString: true,
+      confirmButtonText: 'OK',
+      customClass: 'log-details-dialog'
+    }
+  )
+}
+
 // Inicjalizacja
-onMounted(() => {
-  // Uruchom cykliczne odświeżanie statystyk
-  setInterval(refreshStats, 30000)
+onMounted(async () => {
+  await fetchLoadBalancerStatus()
+  await loadLogs()
+  
+  // Uruchom cykliczne odświeżanie co 30 sekund
+  setInterval(async () => {
+    if (!refreshing.value) {
+      await fetchLoadBalancerStatus()
+    }
+  }, 30000)
+})
+
+// Watch for algorithm changes
+watch(() => algorithm.value, (newAlgorithm) => {
+  if (newAlgorithm.enabled) {
+    ElMessage.info('Load balancer włączony')
+  }
+}, { deep: true })
+
+// Watch for total weight changes
+watch(totalWeight, (newTotal) => {
+  if (newTotal !== 100 && servers.value.length > 0) {
+    ElMessage.warning(`Suma wag musi wynosić 100% (aktualnie: ${newTotal}%)`)
+  }
 })
 </script>
 
@@ -945,10 +1489,101 @@ onMounted(() => {
   font-size: 14px;
 }
 
+.status-tag {
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 16px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
 .header-actions .el-button-group {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.stats-overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  transition: all 0.3s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+}
+
+.stat-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+}
+
+.stat-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  border-radius: 12px;
+  color: white;
+  font-size: 24px;
+}
+
+.stat-info {
+  flex: 1;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1e293b;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.stat-label {
+  font-size: 13px;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+
+.stat-sub {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.stat-trend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.trend-up {
+  color: #10b981;
+}
+
+.trend-down {
+  color: #ef4444;
 }
 
 .load-balancer-content {
@@ -963,6 +1598,14 @@ onMounted(() => {
   border-radius: 16px;
   border: 1px solid #e2e8f0;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+}
+
+.servers-card:hover,
+.algorithm-card:hover,
+.statistics-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
 }
 
 .card-header {
@@ -998,26 +1641,72 @@ onMounted(() => {
 .server-item {
   padding: 20px 0;
   border-bottom: 1px solid #f1f5f9;
+  transition: all 0.3s ease;
 }
 
 .server-item:last-child {
   border-bottom: none;
 }
 
+.server-item:hover {
+  background-color: #f8fafc;
+  border-radius: 8px;
+  margin: 0 -24px;
+  padding: 20px 24px;
+}
+
+.server-item.status-degraded {
+  border-left: 4px solid #f59e0b;
+  padding-left: 20px;
+}
+
+.server-item.status-down {
+  border-left: 4px solid #ef4444;
+  padding-left: 20px;
+}
+
 .server-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
-.server-header h3 {
+.server-title {
+  flex: 1;
+}
+
+.server-title h3 {
   margin: 0;
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 16px;
   color: #1e293b;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.status-tag-inline {
+  margin-left: 8px;
+}
+
+.server-address {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.server-protocol {
+  background-color: #e2e8f0;
+  color: #475569;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -1033,48 +1722,59 @@ onMounted(() => {
   margin-bottom: 16px;
 }
 
-.config-row {
-  display: flex;
-  gap: 32px;
-  margin-bottom: 12px;
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
 }
 
 .config-item {
-  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .config-item label {
-  display: block;
-  font-size: 13px;
+  font-size: 12px;
   color: #64748b;
   margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .config-value {
-  font-weight: 500;
+  font-weight: 600;
   color: #1e293b;
+  font-size: 14px;
 }
 
-.weight-slider {
-  margin-top: 20px;
+.weight-control {
+  margin-top: 16px;
 }
 
-.weight-slider label {
+.weight-control label {
   display: block;
   font-size: 13px;
   color: #64748b;
   margin-bottom: 8px;
 }
 
+.weight-slider-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .server-stats {
-  background-color: #f8fafc;
+  background-color: white;
+  border: 1px solid #e2e8f0;
   border-radius: 8px;
   padding: 16px;
 }
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 16px;
 }
 
@@ -1085,16 +1785,15 @@ onMounted(() => {
 }
 
 .stat-icon {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: white;
+  background-color: #f1f5f9;
   border-radius: 8px;
   color: #3b82f6;
-  font-size: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  font-size: 18px;
 }
 
 .stat-info {
@@ -1102,16 +1801,18 @@ onMounted(() => {
 }
 
 .stat-value {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
   color: #1e293b;
   line-height: 1;
 }
 
 .stat-label {
-  font-size: 12px;
+  font-size: 11px;
   color: #64748b;
   margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .total-weight-info {
@@ -1126,13 +1827,21 @@ onMounted(() => {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  padding: 8px;
+  padding: 12px;
   border-radius: 8px;
-  transition: background-color 0.2s;
+  border: 1px solid #e2e8f0;
+  transition: all 0.3s ease;
+  cursor: pointer;
 }
 
 .algorithm-option:hover {
   background-color: #f8fafc;
+  border-color: #3b82f6;
+}
+
+.el-radio.is-checked .algorithm-option {
+  background-color: #eff6ff;
+  border-color: #3b82f6;
 }
 
 .option-icon {
@@ -1185,6 +1894,7 @@ onMounted(() => {
   border-radius: 8px;
   overflow: hidden;
   margin-bottom: 12px;
+  border: 1px solid #e2e8f0;
 }
 
 .traffic-bar {
@@ -1193,41 +1903,47 @@ onMounted(() => {
   justify-content: center;
   transition: all 0.3s ease;
   position: relative;
+  min-width: 20px;
 }
 
 .traffic-bar:hover {
   opacity: 0.9;
   transform: scale(1.02);
+  z-index: 1;
 }
 
 .bar-label {
   color: white;
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12px;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .traffic-legend {
   display: flex;
-  gap: 24px;
   flex-wrap: wrap;
+  gap: 16px;
 }
 
 .legend-item {
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 4px 8px;
+  background-color: #f8fafc;
+  border-radius: 6px;
 }
 
 .legend-color {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
 }
 
 .legend-text {
-  font-size: 14px;
+  font-size: 13px;
   color: #1e293b;
+  font-weight: 500;
 }
 
 .legend-value {
@@ -1235,79 +1951,8 @@ onMounted(() => {
   color: #1e293b;
 }
 
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 20px;
-  margin: 32px 0;
-}
-
-.metric-card {
-  background-color: #f8fafc;
-  border-radius: 12px;
-  padding: 20px;
-  transition: all 0.3s ease;
-}
-
-.metric-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.metric-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.metric-icon {
-  font-size: 24px;
-  color: #3b82f6;
-}
-
-.metric-header h4 {
-  margin: 0;
-  font-size: 14px;
-  color: #64748b;
-  font-weight: 500;
-}
-
-.metric-value {
-  font-size: 32px;
-  font-weight: 700;
-  color: #1e293b;
-  line-height: 1;
-  margin-bottom: 8px;
-}
-
-.metric-label {
-  font-size: 13px;
-  color: #64748b;
-  margin-bottom: 12px;
-}
-
-.metric-trend {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-}
-
-.trend-up {
-  color: #10b981;
-}
-
-.trend-down {
-  color: #ef4444;
-}
-
-.progress-container {
-  margin-top: 12px;
-}
-
 .timeline-container {
-  margin-top: 32px;
+  margin: 32px 0;
 }
 
 .timeline-container h3 {
@@ -1326,6 +1971,9 @@ onMounted(() => {
 .timeline-event {
   position: relative;
   padding: 12px 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
 }
 
 .timeline-event::before {
@@ -1337,6 +1985,7 @@ onMounted(() => {
   height: 12px;
   border-radius: 50%;
   border: 2px solid white;
+  z-index: 1;
 }
 
 .timeline-event.status-healthy::before {
@@ -1359,10 +2008,11 @@ onMounted(() => {
 .event-time {
   font-size: 12px;
   color: #64748b;
-  margin-bottom: 4px;
+  min-width: 80px;
 }
 
 .event-details {
+  flex: 1;
   display: flex;
   align-items: flex-start;
   gap: 8px;
@@ -1380,13 +2030,201 @@ onMounted(() => {
   line-height: 1.4;
 }
 
+.event-type {
+  flex-shrink: 0;
+}
+
+.no-events {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 20px;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.test-results {
+  margin-top: 32px;
+  padding: 20px;
+  background-color: #f8fafc;
+  border-radius: 8px;
+}
+
+.test-results h3 {
+  margin: 0 0 16px;
+  font-size: 16px;
+  color: #1e293b;
+  font-weight: 600;
+}
+
+.results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.result-card {
+  padding: 16px;
+  background-color: white;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.result-card.result-excellent {
+  border-color: #10b981;
+}
+
+.result-card.result-good {
+  border-color: #3b82f6;
+}
+
+.result-card.result-degraded {
+  border-color: #f59e0b;
+}
+
+.result-card.result-poor {
+  border-color: #ef4444;
+}
+
+.result-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.result-server {
+  color: #1e293b;
+}
+
+.result-stats {
+  display: grid;
+  gap: 8px;
+}
+
+.result-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.stat-label {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.stat-value {
+  font-weight: 600;
+  color: #1e293b;
+  font-size: 13px;
+}
+
+.results-summary {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.summary-text {
+  color: #64748b;
+  font-size: 14px;
+}
+
+.logs-container {
+  height: 60vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.logs-header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.logs-content {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 12px;
+  background-color: #f8fafc;
+}
+
+.log-entry {
+  display: grid;
+  grid-template-columns: 120px 100px 1fr auto;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  align-items: center;
+  font-size: 13px;
+}
+
+.log-entry:last-child {
+  border-bottom: none;
+}
+
+.log-entry.log-error {
+  background-color: #fef2f2;
+}
+
+.log-entry.log-warning {
+  background-color: #fffbeb;
+}
+
+.log-entry.log-info {
+  background-color: #eff6ff;
+}
+
+.log-entry.log-config {
+  background-color: #f0fdf4;
+}
+
+.log-timestamp {
+  color: #64748b;
+}
+
+.log-message {
+  color: #1e293b;
+  word-break: break-word;
+}
+
+.no-logs {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: #94a3b8;
+  gap: 12px;
+}
+
+.no-logs .iconify {
+  font-size: 48px;
+}
+
 @media (max-width: 1200px) {
-  .metrics-grid {
+  .stats-grid {
     grid-template-columns: repeat(2, 1fr);
   }
   
-  .stats-grid {
+  .config-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .log-entry {
+    grid-template-columns: 100px 90px 1fr;
+  }
+  
+  .log-entry .el-button {
+    grid-column: 1 / -1;
   }
 }
 
@@ -1402,19 +2240,34 @@ onMounted(() => {
   
   .header-actions {
     width: 100%;
-  }
-  
-  .metrics-grid {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: stretch;
   }
   
   .stats-grid {
     grid-template-columns: 1fr;
   }
   
-  .config-row {
+  .config-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .server-header {
     flex-direction: column;
-    gap: 12px;
+    align-items: stretch;
+  }
+  
+  .server-actions {
+    justify-content: flex-end;
+  }
+  
+  .log-entry {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  
+  .log-timestamp, .log-type {
+    font-size: 11px;
   }
 }
 
@@ -1424,6 +2277,7 @@ onMounted(() => {
   align-items: center;
   gap: 6px;
   font-weight: 500;
+  transition: all 0.3s ease;
 }
 
 :deep(.el-button--primary) {
@@ -1434,6 +2288,7 @@ onMounted(() => {
 :deep(.el-button--primary:hover) {
   background: #2563eb;
   border-color: #2563eb;
+  transform: translateY(-1px);
 }
 
 :deep(.el-button--success) {
@@ -1444,13 +2299,14 @@ onMounted(() => {
 :deep(.el-button--success:hover) {
   background: #059669;
   border-color: #059669;
+  transform: translateY(-1px);
 }
 
 /* Radio group styling */
 :deep(.el-radio-group) {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 :deep(.el-radio) {
@@ -1459,6 +2315,7 @@ onMounted(() => {
 
 :deep(.el-radio__label) {
   padding-left: 0;
+  width: 100%;
 }
 
 /* Dialog styling */
@@ -1492,16 +2349,13 @@ onMounted(() => {
 :deep(.el-slider__button) {
   width: 16px;
   height: 16px;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 :deep(.el-slider__stop) {
   width: 4px;
   height: 4px;
-}
-
-/* Progress bar styling */
-:deep(.el-progress-bar) {
-  padding-right: 0;
 }
 
 /* Loading animation */
@@ -1514,12 +2368,19 @@ onMounted(() => {
   animation: spin 1s linear infinite;
 }
 
-/* Card hover effects */
-.servers-card:hover,
-.algorithm-card:hover,
-.statistics-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
-  transition: all 0.3s ease;
+/* Log details dialog */
+:deep(.log-details-dialog .el-message-box__message) {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+:deep(.log-details-dialog pre) {
+  background-color: #f8fafc;
+  padding: 12px;
+  border-radius: 6px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
 }
 </style>
