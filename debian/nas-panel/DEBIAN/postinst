@@ -126,6 +126,58 @@ case "$1" in
             systemctl start "${service}.service" || echo "Failed to start ${service}.service" >&2
         done
         
+        # --------------------------------------------------
+        # Check if nas-web is installed and restart it
+        # --------------------------------------------------
+        
+        echo "Checking if nas-web service is installed..." >&2
+        
+        # Check if nas-web service exists and is enabled
+        if systemctl list-unit-files | grep -q "^nas-web.service" || \
+           [ -f /etc/systemd/system/nas-web.service ] || \
+           [ -f /usr/lib/systemd/system/nas-web.service ]; then
+            echo "nas-web service found - restarting..." >&2
+            
+            # Try to restart nas-web service
+            if systemctl restart nas-web.service; then
+                echo "nas-web service restarted successfully" >&2
+            else
+                echo "Failed to restart nas-web service (may not be running)" >&2
+                
+                # Try to start it if restart failed
+                if systemctl start nas-web.service; then
+                    echo "nas-web service started successfully" >&2
+                else
+                    echo "Could not start nas-web service" >&2
+                fi
+            fi
+            
+            # Reload systemd to pick up any changes
+            systemctl daemon-reload
+        else
+            echo "nas-web service not found - skipping restart" >&2
+        fi
+        
+        # --------------------------------------------------
+        # Additional check: look for nas-web process
+        # --------------------------------------------------
+        
+        # Check if nas-web process is running by looking for the binary or port
+        if pgrep -f "nas-web" >/dev/null || \
+           netstat -tulpn 2>/dev/null | grep ':1112' | grep -q "nas-web"; then
+            echo "nas-web process detected - attempting to restart..." >&2
+            
+            # Try to find and kill the process gently
+            pkill -f "nas-web" || true
+            sleep 2
+            
+            # Try to start it again if we have a service file
+            if [ -f /etc/systemd/system/nas-web.service ] || \
+               [ -f /usr/lib/systemd/system/nas-web.service ]; then
+                systemctl start nas-web.service || true
+            fi
+        fi
+        
         # Clean up debconf
         if command -v db_stop >/dev/null 2>&1; then
             db_stop

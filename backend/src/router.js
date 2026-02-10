@@ -1,6 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '@/views/HomeView.vue'
-import TerminalView from '@/views/TerminalView.vue'
 import FileManager from '@/components/FileManager/FileBrowser.vue'
 import NotificationsView from '@/views/NotificationsView.vue'
 import { useAuth } from './services/AuthService'
@@ -345,7 +344,7 @@ const routes = [
       { 
         path: '/system/terminal', 
         name: 'Terminal',
-        component: TerminalView,
+        component: () => import('@/components/system/Terminal/Terminal.vue'),
         meta: { 
           title: 'routes.terminal',
           requiresAuth: true,

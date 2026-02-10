@@ -1,232 +1,499 @@
 <template>
   <div class="docker-compose">
-    <div class="header">
-      <el-button type="primary" @click="fetchComposeFiles">
-        <Icon icon="mdi:refresh" class="icon" />
-        Refresh
-      </el-button>
-      <el-button type="success" @click="showCreateDialog = true">
-        <Icon icon="mdi:plus" class="icon" />
-        New Compose
-      </el-button>
-      <el-button type="info" @click="loadTemplatesDialog">
-        <Icon icon="mdi:file-download" class="icon" />
-        Add from Templates
-      </el-button>
+    <!-- Enhanced Header -->
+    <div class="clean-header">
+      <div class="header-left">
+        <h2>
+          <el-icon><Icon icon="mdi:docker" /></el-icon>
+          Docker Compose
+          <el-tag v-if="composeFiles.length > 0" type="info" size="small" class="ml-2">
+            {{ composeFiles.length }} files
+          </el-tag>
+        </h2>
+      </div>
+      
+      <div class="header-right">
+        <el-input
+          v-model="searchQuery"
+          placeholder="Search compose files..."
+          clearable
+          size="small"
+          style="width: 300px"
+          @clear="fetchComposeFiles"
+        >
+          <template #prefix>
+            <el-icon><Icon icon="mdi:magnify" /></el-icon>
+          </template>
+        </el-input>
+
+        <div class="header-actions">
+          <el-tooltip content="Refresh" placement="top">
+            <el-button 
+              type="info" 
+              @click="fetchComposeFiles" 
+              size="small"
+              :loading="loading"
+              class="action-btn"
+            >
+              <el-icon><Icon icon="mdi:refresh" /></el-icon>
+            </el-button>
+          </el-tooltip>
+          
+          <el-tooltip content="New Compose File" placement="top">
+            <el-button 
+              type="primary" 
+              @click="showCreateDialog = true" 
+              size="small"
+              class="action-btn"
+            >
+              <el-icon><Icon icon="mdi:plus" /></el-icon>
+            </el-button>
+          </el-tooltip>
+          
+          <el-tooltip content="Templates" placement="top">
+            <el-button 
+              type="success" 
+              @click="loadTemplatesDialog" 
+              size="small"
+              class="action-btn"
+            >
+              <el-icon><Icon icon="mdi:file-download" /></el-icon>
+            </el-button>
+          </el-tooltip>
+        </div>
+      </div>
     </div>
 
-    <el-table
-      v-loading="loading"
-      :data="composeFiles"
-      style="width: 100%"
-      stripe
+    <!-- Main Table -->
+    <div class="table-wrapper">
+      <el-card shadow="never" class="clean-table-card" :class="{ 'empty': filteredComposeFiles.length === 0 }">
+        <div v-if="filteredComposeFiles.length === 0 && !loading" class="empty-state">
+          <el-icon size="64" class="empty-icon"><Icon icon="mdi:file-document-outline" /></el-icon>
+          <h3>No Docker Compose files found</h3>
+          <p>Create your first compose file to get started</p>
+          <el-button type="primary" @click="showCreateDialog = true" size="small" class="create-btn">
+            <el-icon><Icon icon="mdi:plus" /></el-icon>
+            Create your first compose
+          </el-button>
+        </div>
+        
+        <div v-else class="table-container">
+          <el-table
+            v-loading="loading"
+            :data="filteredComposeFiles"
+            class="clean-table"
+            stripe
+            @row-click="handleRowClick"
+          >
+            <el-table-column prop="name" label="File Name" min-width="250">
+              <template #default="{row}">
+                <div class="file-cell">
+                  <el-icon class="file-icon"><Icon icon="mdi:file-document-outline" /></el-icon>
+                  <div class="file-info">
+                    <span class="file-name">{{ row.name }}</span>
+                    <span class="file-date">{{ formatDate(row.modified) }}</span>
+                  </div>
+                </div>
+              </template>
+            </el-table-column>
+            
+            <el-table-column label="Status" width="150">
+              <template #default="{row}">
+                <el-tag 
+                  :type="getContainerStatus(row).type" 
+                  size="small"
+                  :class="getContainerStatus(row).class"
+                  class="status-tag"
+                >
+                  <el-icon :size="10" class="status-icon">
+                    <Icon :icon="getContainerStatus(row).icon" />
+                  </el-icon>
+                  {{ getContainerStatus(row).text }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            
+            <el-table-column label="Services" width="120">
+              <template #default="{row}">
+                <div class="services-cell">
+                  <el-icon size="12" class="services-icon"><Icon icon="mdi:server" /></el-icon>
+                  <span class="services-text">{{ row.servicesCount || '?' }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            
+            <el-table-column label="Actions" width="240" fixed="right" class-name="actions-column">
+              <template #default="{ row }">
+                <div class="actions-container">
+                  <div class="action-buttons">
+                    <!-- Deploy/Stop button -->
+                    <el-tooltip 
+                      :content="getContainerStatus(row).text === 'Running' ? 'Stop' : 'Deploy'" 
+                      placement="top"
+                    >
+                      <el-button
+                        :type="getContainerStatus(row).text === 'Running' ? 'warning' : 'success'"
+                        size="small"
+                        circle
+                        @click.stop="handleDeployStop(row)"
+                        :loading="deployLoading[row.name]"
+                        class="action-btn-circle"
+                      >
+                        <el-icon>
+                          <Icon :icon="getContainerStatus(row).text === 'Running' ? 'mdi:stop' : 'mdi:play'" />
+                        </el-icon>
+                      </el-button>
+                    </el-tooltip>
+                    
+                    <!-- Restart button -->
+                    <el-tooltip content="Restart" placement="top">
+                      <el-button
+                        type="primary"
+                        size="small"
+                        circle
+                        @click.stop="restartCompose(row)"
+                        :loading="restartLoading[row.name]"
+                        class="action-btn-circle"
+                        :disabled="getContainerStatus(row).text !== 'Running'"
+                      >
+                        <el-icon><Icon icon="mdi:restart" /></el-icon>
+                      </el-button>
+                    </el-tooltip>
+                    
+                    <!-- Edit button -->
+                    <el-tooltip content="Edit" placement="top">
+                      <el-button
+                        type="info"
+                        size="small"
+                        circle
+                        @click.stop="editCompose(row.name)"
+                        class="action-btn-circle"
+                      >
+                        <el-icon><Icon icon="mdi:pencil" /></el-icon>
+                      </el-button>
+                    </el-tooltip>
+                    
+                    <!-- Delete button -->
+                    <el-tooltip content="Delete" placement="top">
+                      <el-button
+                        type="danger"
+                        size="small"
+                        circle
+                        @click.stop="deleteCompose(row.name)"
+                        :loading="deleteLoading[row.name]"
+                        class="action-btn-circle"
+                      >
+                        <el-icon><Icon icon="mdi:delete" /></el-icon>
+                      </el-button>
+                    </el-tooltip>
+                  </div>
+                </div>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+        
+        <!-- Table footer -->
+        <div class="table-footer" v-if="filteredComposeFiles.length > 0">
+          <div class="footer-info">
+            <span class="footer-text">
+              Showing {{ filteredComposeFiles.length }} of {{ composeFiles.length }} files
+            </span>
+          </div>
+          <div class="footer-actions">
+            <el-button size="small" @click="showCreateDialog = true" class="footer-btn">
+              <el-icon><Icon icon="mdi:plus" /></el-icon>
+              New Compose
+            </el-button>
+          </div>
+        </div>
+      </el-card>
+    </div>
+
+    <!-- Create/Edit Compose Dialog -->
+    <el-dialog 
+      v-model="showCreateDialog" 
+      :title="editingCompose ? 'Edit Docker Compose' : 'Create Docker Compose'" 
+      width="800px"
+      class="clean-dialog"
+      @closed="resetCreateForm"
     >
-      <el-table-column prop="name" label="File Name" />
-      <el-table-column prop="size" label="Size" width="120" />
-      <el-table-column prop="modified" label="Modified" width="180" />
-      <el-table-column label="Status" width="150">
-        <template #default="{row}">
-          <el-tag :type="getContainerStatus(row).type">
-            <el-icon v-if="getContainerStatus(row).loading" class="is-loading">
-              <Icon icon="mdi:loading" />
-            </el-icon>
-            {{ getContainerStatus(row).text }}
-          </el-tag>
-        </template>
-      </el-table-column>
-
-      <el-table-column label="Actions" width="200">
-        <template #default="{ row }">
-          <el-button-group>
-            <el-button
-              size="small"
-              type="primary"
-              @click="deployCompose(row.name)"
+      <div class="create-dialog-content">
+        <el-form :model="composeForm" ref="composeFormRef" label-width="120px" label-position="top">
+          <div class="form-row">
+            <el-form-item 
+              label="Container Name"
+              prop="containerName"
+              :rules="[
+                { required: true, message: 'Container name is required', trigger: 'blur' },
+                { pattern: /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/, message: 'Invalid container name' }
+              ]"
+              class="form-item-half"
             >
-              <Icon icon="mdi:rocket-launch" />
-            </el-button>
-            <el-button
+              <el-input 
+                v-model="composeForm.containerName" 
+                placeholder="my-awesome-app"
+                @input="updateFilename"
+                size="small"
+              />
+            </el-form-item>
+            
+            <el-form-item label="Filename" class="form-item-half">
+              <el-input 
+                v-model="composeForm.filename" 
+                placeholder="docker-compose.yml" 
+                size="small"
+              >
+                <template #append>
+                  <span>.yml</span>
+                </template>
+              </el-input>
+            </el-form-item>
+          </div>
+          
+          <el-form-item label="Description">
+            <el-input 
+              v-model="composeForm.description" 
+              type="textarea"
+              :rows="2"
+              placeholder="Brief description of this compose file"
               size="small"
-              type="info"
-              @click="editCompose(row.name)"
-            >
-              <Icon icon="mdi:pencil" />
-            </el-button>
-            <el-button
-              size="small"
-              type="danger"
-              @click="deleteCompose(row.name)"
-            >
-              <Icon icon="mdi:delete" />
-            </el-button>
-          </el-button-group>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <el-dialog v-model="showCreateDialog" title="Create Compose File" width="80%">
-      <el-form :model="composeForm" ref="composeFormRef">
-      <el-form-item 
-        label="Container Name"
-        prop="containerName"
-        :rules="[
-          { required: true, message: 'Please input container name', trigger: 'blur' },
-          { pattern: /^[a-zA-Z0-9\s]+$/, message: 'Only letters, numbers and spaces allowed' }
-        ]"
-      >
-        <el-input 
-          v-model="composeForm.containerName" 
-          placeholder="My Awesome Container"
-          @input="updateFilename"
-        />
-      </el-form-item>
-      <el-form-item label="Filename (auto-generated)">
-        <el-input 
-          v-model="composeForm.filename" 
-          disabled 
-          placeholder="my-awesome-container.yml" 
-        />
-      </el-form-item>
-        <el-form-item 
-          label="Content"
-          prop="content"
-          :rules="[
-            { required: true, message: 'Please input compose content', trigger: 'blur' }
-          ]"
-        >
-          <el-input
-            v-model="composeForm.content"
-            type="textarea"
-            :rows="15"
-            placeholder="version: '3'
+            />
+          </el-form-item>
+          
+          <el-form-item>
+            <el-checkbox v-model="composeForm.autoStart" label="Start containers immediately" />
+          </el-form-item>
+          
+          <el-form-item label="Compose Configuration">
+            <div class="editor-header">
+              <span>docker-compose.yml</span>
+              <div class="editor-actions">
+                <el-button size="small" @click="fillSampleConfig">
+                  <el-icon><Icon icon="mdi:lightbulb-on" /></el-icon>
+                  Sample
+                </el-button>
+                <el-button size="small" @click="formatYaml" type="primary">
+                  <el-icon><Icon icon="mdi:code-braces" /></el-icon>
+                  Format
+                </el-button>
+              </div>
+            </div>
+            <el-input
+              v-model="composeForm.content"
+              type="textarea"
+              :rows="15"
+              placeholder="version: '3'
 services:
   web:
-    image: nginx
+    image: nginx:alpine
     ports:
-      - '80:80'"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-checkbox v-model="composeForm.autoStart" label="Start containers immediately after creation" />
-        </el-form-item>
-      </el-form>
+      - '80:80'
+    volumes:
+      - ./html:/usr/share/nginx/html"
+              class="code-editor"
+              resize="none"
+            />
+          </el-form-item>
+        </el-form>
+      </div>
+      
       <template #footer>
-        <el-button @click="showCreateDialog = false">Cancel</el-button>
-        <el-button 
-          type="primary" 
-          @click="submitComposeForm"
-          :loading="creatingCompose"
-        >
-          Save
-        </el-button>
+        <div class="dialog-footer">
+          <el-button @click="showCreateDialog = false" size="small">Cancel</el-button>
+          <el-button 
+            type="primary" 
+            @click="submitComposeForm"
+            :loading="creatingCompose"
+            size="small"
+          >
+            <el-icon><Icon icon="mdi:content-save" /></el-icon>
+            {{ editingCompose ? 'Update' : 'Create' }}
+          </el-button>
+        </div>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="showEditDialog" title="Edit Compose File" width="80%">
-      <el-form :model="editForm">
-        <el-form-item>
+    <!-- Templates Dialog -->
+    <el-dialog 
+      v-model="showTemplatesDialog" 
+      title="Docker Compose Templates" 
+      width="800px"
+      class="clean-dialog"
+    >
+      <div class="templates-header">
+        <div class="filters-container">
           <el-input
-            v-model="editForm.content"
-            type="textarea"
-            :rows="15"
-          />
-        </el-form-item>
-      </el-form>
+            v-model="templateSearch"
+            placeholder="Search templates..."
+            size="small"
+            class="search-input"
+            clearable
+          >
+            <template #prefix>
+              <el-icon><Icon icon="mdi:magnify" /></el-icon>
+            </template>
+          </el-input>
+        </div>
+      </div>
+      
+      <div class="templates-grid">
+        <div 
+          v-for="template in filteredTemplates" 
+          :key="template.name"
+          class="template-card"
+        >
+          <div class="template-icon">
+            <el-icon><Icon :icon="template.metadata?.icon || 'mdi:docker'" /></el-icon>
+          </div>
+          <div class="template-content">
+            <h4 class="template-name">{{ template.name }}</h4>
+            <p class="template-description">{{ template.description }}</p>
+            <div class="template-meta">
+              <span class="template-ports" v-if="template.metadata?.ports">
+                <el-icon><Icon icon="mdi:network-outline" /></el-icon>
+                {{ template.metadata.ports.length }} port(s)
+              </span>
+            </div>
+          </div>
+          <div class="template-actions">
+            <el-button 
+              type="primary" 
+              size="small" 
+              @click="useTemplate(template)"
+              class="template-use-btn"
+            >
+              <el-icon><Icon icon="mdi:plus" /></el-icon>
+              Use Template
+            </el-button>
+            <el-button 
+              type="text" 
+              size="small" 
+              @click="previewTemplate(template)"
+              class="template-preview-btn"
+            >
+              Preview
+            </el-button>
+          </div>
+        </div>
+      </div>
+      
+      <div v-if="filteredTemplates.length === 0" class="no-templates">
+        <el-icon size="48"><Icon icon="mdi:file-search-outline" /></el-icon>
+        <p>No templates found</p>
+      </div>
+    </el-dialog>
+
+    <!-- Template Preview Dialog -->
+    <el-dialog 
+      v-model="showTemplatePreview" 
+      :title="`Preview: ${selectedTemplate?.name}`" 
+      width="800px"
+      class="clean-dialog"
+    >
+      <div class="template-preview-container">
+        <div class="template-meta" v-if="selectedTemplate?.metadata">
+          <div class="meta-item" v-if="selectedTemplate.metadata.description">
+            <el-icon><Icon icon="mdi:information-outline" /></el-icon>
+            <span>{{ selectedTemplate.metadata.description }}</span>
+          </div>
+          <div class="meta-item" v-if="selectedTemplate.metadata.ports">
+            <el-icon><Icon icon="mdi:network-outline" /></el-icon>
+            <span>Ports: {{ selectedTemplate.metadata.ports.join(', ') }}</span>
+          </div>
+        </div>
+        
+        <div class="template-code">
+          <pre class="template-preview">{{ previewTemplateContent }}</pre>
+        </div>
+      </div>
+      
       <template #footer>
-        <el-button @click="showEditDialog = false">Cancel</el-button>
-        <el-button type="primary" @click="saveComposeFile">Save</el-button>
+        <div class="dialog-footer">
+          <el-button @click="showTemplatePreview = false" size="small">Cancel</el-button>
+          <el-button type="primary" @click="applyTemplate" size="small">
+            <el-icon><Icon icon="mdi:file-import" /></el-icon>
+            Use This Template
+          </el-button>
+        </div>
       </template>
     </el-dialog>
 
+    <!-- Deploy Logs Dialog -->
     <el-dialog 
       v-model="deployDialogVisible" 
-      title="Deploy Status" 
-      width="80%"
+      :title="`Deploying ${currentDeployment}`" 
+      width="900px"
+      class="clean-dialog terminal-dialog"
       @closed="handleDeployDialogClosed"
     >
       <div class="terminal-container">
         <div ref="deployTerminalRef" class="terminal"></div>
       </div>
       <template #footer>
-        <el-button @click="closeDeploy">Close</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="showTemplatesDialog" title="Add from Templates" width="60%">
-      <el-table
-        :data="templates"
-        style="width: 100%"
-        @row-click="handleTemplateSelect"
-      >
-        <el-table-column prop="name" label="Template Name" />
-        <el-table-column prop="description" label="Description" />
-        <el-table-column label="Actions" width="120">
-          <template #default="{ row }">
-            <el-button
-              size="small"
-              type="primary"
-              @click.stop="previewTemplate(row)"
-            >
-              Preview
-            </el-button>
-            <el-button
-              size="small"
-              type="success"
-              @click.stop="deployTemplateDirectly(row)"
-              v-if="row.metadata?.autoStart !== false"
-            >
-              Deploy Now
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-dialog>
-
-
-    <el-dialog v-model="showTemplatePreview" title="Template Preview" width="80%">
-      <pre class="template-preview">{{ previewTemplateContent }}</pre>
-      <template #footer>
-        <el-checkbox v-model="autoStartContainer" label="Start containers immediately" />
-        <el-button @click="showTemplatePreview = false">Cancel</el-button>
-        <el-button type="primary" @click="useTemplate">
-          Use This Template
-        </el-button>
+        <div class="dialog-footer">
+          <el-button @click="closeDeploy" size="small">
+            <el-icon><Icon icon="mdi:close" /></el-icon>
+            Close
+          </el-button>
+        </div>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import axios from 'axios';
 import { Icon } from '@iconify/vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
 
+// Reactive state
 const composeFiles = ref([]);
 const loading = ref(false);
+const searchQuery = ref('');
 const showCreateDialog = ref(false);
-const showEditDialog = ref(false);
+const showTemplatesDialog = ref(false);
+const showTemplatePreview = ref(false);
 const deployDialogVisible = ref(false);
-const deployLog = ref('');
 const creatingCompose = ref(false);
 const autoStartContainer = ref(true);
 const containerStatuses = ref({});
+const currentDeployment = ref('');
 
+// Forms
+const composeForm = ref({
+  containerName: '',
+  filename: '',
+  content: '',
+  description: '',
+  autoStart: true
+});
+
+// Templates
+const templates = ref([]);
+const previewTemplateContent = ref('');
+const selectedTemplate = ref(null);
+const templateSearch = ref('');
+
+// Dialogs
+const editingCompose = ref(false);
+
+// Terminal
 const deployTerminalRef = ref(null);
 const deployTerminal = ref(null);
 const deployFitAddon = ref(null);
 const deployEventSource = ref(null);
 
-const showTemplatesDialog = ref(false);
-const showTemplatePreview = ref(false);
-const templates = ref([]);
-const previewTemplateContent = ref('');
-const selectedTemplate = ref(null);
+// Loading states
+const deployLoading = ref({});
+const restartLoading = ref({});
+const deleteLoading = ref({});
 
+// Default templates (simplified)
 const defaultTemplates = [
   {
     name: 'Nginx Web Server',
@@ -241,47 +508,12 @@ services:
       - ./html:/usr/share/nginx/html
     restart: unless-stopped`,
     metadata: {
-      autoStart: true,
-      waitForPorts: [80]
+      ports: [80],
+      icon: 'mdi:nginx'
     }
   },
   {
-    name: 'WordPress with MySQL',
-    description: 'Complete WordPress setup with MySQL database',
-    content: `version: '3'
-services:
-  db:
-    image: mysql:5.7
-    volumes:
-      - db_data:/var/lib/mysql
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: example_root_password
-      MYSQL_DATABASE: wordpress
-      MYSQL_USER: wordpress
-      MYSQL_PASSWORD: example_password
-
-  wordpress:
-    depends_on:
-      - db
-    image: wordpress:latest
-    ports:
-      - "8000:80"
-    restart: always
-    environment:
-      WORDPRESS_DB_HOST: db:3306
-      WORDPRESS_DB_USER: wordpress
-      WORDPRESS_DB_PASSWORD: example_password
-      WORDPRESS_DB_NAME: wordpress
-volumes:
-  db_data: {}`,
-    metadata: {
-      autoStart: true,
-      waitForPorts: [8000]
-    }
-  },
-  {
-    name: 'PostgreSQL',
+    name: 'PostgreSQL Database',
     description: 'PostgreSQL database with persistent storage',
     content: `version: '3'
 services:
@@ -298,56 +530,143 @@ services:
 volumes:
   postgres_data: {}`,
     metadata: {
-      autoStart: true,
-      waitForPorts: [5432]
+      ports: [5432],
+      icon: 'mdi:database'
+    }
+  },
+  {
+    name: 'Redis',
+    description: 'Redis in-memory data store',
+    content: `version: '3'
+services:
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+volumes:
+  redis_data: {}`,
+    metadata: {
+      ports: [6379],
+      icon: 'mdi:database'
     }
   }
 ];
 
-const composeForm = ref({
-  containerName: '',
-  filename: '',
-  content: '',
-  autoStart: true
+// Computed properties
+const filteredComposeFiles = computed(() => {
+  if (!searchQuery.value) return composeFiles.value;
+  const query = searchQuery.value.toLowerCase();
+  return composeFiles.value.filter(file => 
+    file.name.toLowerCase().includes(query)
+  );
 });
 
-const editForm = ref({
-  filename: '',
-  content: ''
+const filteredTemplates = computed(() => {
+  let filtered = templates.value;
+  
+  if (templateSearch.value) {
+    const search = templateSearch.value.toLowerCase();
+    filtered = filtered.filter(t => 
+      t.name.toLowerCase().includes(search) || 
+      t.description.toLowerCase().includes(search)
+    );
+  }
+  
+  return filtered;
 });
 
+// Helper functions
 const formatContainerName = (name) => {
   return name
     .toLowerCase()
-    .replace(/\s+/g, '-')  // Zamień spacje na myślniki
-    .replace(/[^a-z0-9-]/g, '') // Usuń znaki specjalne
-    .replace(/-+/g, '-')  // Usuń podwójne myślniki
-    .replace(/^-|-$/g, ''); // Usuń myślniki z początku/końca
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
 };
 
 const updateFilename = () => {
   if (composeForm.value.containerName) {
-    composeForm.value.filename = `${formatContainerName(composeForm.value.containerName)}.yml`;
+    composeForm.value.filename = `${formatContainerName(composeForm.value.containerName)}`;
   } else {
     composeForm.value.filename = '';
   }
 };
 
+const formatDate = (dateString) => {
+  if (!dateString || dateString === 'N/A') return 'N/A';
+  try {
+    return new Date(dateString).toLocaleDateString();
+  } catch {
+    return dateString;
+  }
+};
+
+const getContainerStatus = (row) => {
+  const status = containerStatuses.value[row.name] || 'not_found';
+  
+  const statusMap = {
+    running: { 
+      type: 'success', 
+      text: 'Running', 
+      icon: 'mdi:check-circle',
+      class: 'status-running'
+    },
+    stopped: { 
+      type: 'danger', 
+      text: 'Stopped', 
+      icon: 'mdi:stop-circle',
+      class: 'status-stopped'
+    },
+    starting: { 
+      type: 'warning', 
+      text: 'Starting', 
+      icon: 'mdi:loading',
+      class: 'status-starting'
+    },
+    not_found: { 
+      type: 'info', 
+      text: 'Not running', 
+      icon: 'mdi:help-circle',
+      class: 'status-not-found'
+    },
+    error: { 
+      type: 'danger', 
+      text: 'Error', 
+      icon: 'mdi:alert-circle',
+      class: 'status-error'
+    }
+  };
+
+  return statusMap[status] || statusMap.not_found;
+};
+
+const normalizeContainerName = (composeFileName) => {
+  return composeFileName
+    .replace('.yml', '')
+    .replace('.yaml', '')
+    .replace('docker-compose-', '')
+    .split('-')[0];
+};
+
+// API functions
 const fetchComposeFiles = async () => {
   try {
     loading.value = true;
     const response = await axios.get('/services/docker/compose');
-    composeFiles.value = response.data.files.map(file => ({
-      name: file,
-      size: 'N/A',
-      modified: 'N/A'
-    }));
     
-    // Check status for all compose files
-await Promise.all(composeFiles.value.map(async file => {
-  const normalizedName = normalizeContainerName(file.name);
-  containerStatuses.value[file.name] = await checkContainerStatus(normalizedName);
-}));
+    if (response.data.success && Array.isArray(response.data.files)) {
+      composeFiles.value = response.data.files.map(file => ({
+        name: file,
+        modified: 'N/A',
+        servicesCount: '?'
+      }));
+      
+      // Update all statuses
+      await updateAllStatuses();
+    }
   } catch (error) {
     ElMessage.error('Failed to fetch compose files');
     console.error(error);
@@ -358,7 +677,6 @@ await Promise.all(composeFiles.value.map(async file => {
 
 const checkContainerStatus = async (composeFileName) => {
   try {
-    // Usuń rozszerzenie .yml/.yaml i dodatkowe prefixy
     const cleanName = composeFileName
       .replace('.yml', '')
       .replace('.yaml', '')
@@ -367,12 +685,10 @@ const checkContainerStatus = async (composeFileName) => {
 
     const response = await axios.get(`/services/docker/container/status/${cleanName}`);
     
-    // Logika dopasowania nazw dla Docker Compose
     if (response.data.status === 'running') {
       return 'running';
     }
     
-    // Dodatkowe sprawdzenie dla nazw z compose (np. "docker-compose-overseerr-1")
     if (response.data.containerName?.includes(cleanName)) {
       return response.data.status === 'running' ? 'running' : 'stopped';
     }
@@ -385,52 +701,17 @@ const checkContainerStatus = async (composeFileName) => {
   }
 };
 
-const getContainerStatus = (row) => {
-  const status = containerStatuses.value[row.name] || 'not_found';
-  
-  const statusMap = {
-    running: { type: 'success', text: 'Running', icon: 'mdi:check-circle' },
-    stopped: { type: 'danger', text: 'Stopped', icon: 'mdi:stop-circle' },
-    not_found: { type: 'info', text: 'Not running', icon: 'mdi:help-circle' },
-    error: { type: 'danger', text: 'Error', icon: 'mdi:alert-circle' },
-    default: { type: 'info', text: 'Unknown', icon: 'mdi:help-circle' }
-  };
-
-  const config = statusMap[status] || statusMap.default;
-  
-  return {
-    ...config,
-    loading: false
-  };
-};
-
-const normalizeContainerName = (composeFileName) => {
-  return composeFileName
-    .replace('.yml', '')
-    .replace('.yaml', '')
-    .replace('docker-compose-', '')
-    .split('-')[0]; // Usuń numery (np. "-1" z "docker-compose-overseerr-1")
+const updateAllStatuses = async () => {
+  for (const file of composeFiles.value) {
+    const normalizedName = normalizeContainerName(file.name);
+    containerStatuses.value[file.name] = await checkContainerStatus(normalizedName);
+  }
 };
 
 const submitComposeForm = async () => {
   try {
-    await createComposeFile();
-  } catch (error) {
-    if (error !== 'cancel') {
-      console.error('Validation failed:', error);
-    }
-  }
-};
-
-const createComposeFile = async () => {
-  try {
-    if (!composeForm.value.containerName) {
-      ElMessage.warning('Please specify a container name');
-      return;
-    }
-    
     if (!composeForm.value.filename) {
-      ElMessage.warning('Please provide a valid container name');
+      ElMessage.warning('Please specify a filename');
       return;
     }
     
@@ -443,15 +724,22 @@ const createComposeFile = async () => {
       ? composeForm.value.filename 
       : `${composeForm.value.filename}.yml`;
 
-    const response = await axios.post('/services/docker/compose_add', {
-      filename: filename,
-      content: composeForm.value.content,
-      autoStart: composeForm.value.autoStart
-    });
-
-    ElMessage.success(response.data.message || 'Compose file created successfully');
+    creatingCompose.value = true;
     
-    if (composeForm.value.autoStart) {
+    if (editingCompose.value) {
+      await axios.put(`/services/docker/compose/${filename}`, {
+        content: composeForm.value.content
+      });
+      ElMessage.success('Compose file updated successfully');
+    } else {
+      await axios.post('/services/docker/compose_add', {
+        filename: filename,
+        content: composeForm.value.content
+      });
+      ElMessage.success('Compose file created successfully');
+    }
+    
+    if (composeForm.value.autoStart && !editingCompose.value) {
       const containerName = filename.replace('.yml', '').replace('.yaml', '');
       containerStatuses.value[containerName] = 'starting';
       setTimeout(() => {
@@ -460,41 +748,44 @@ const createComposeFile = async () => {
     }
 
     showCreateDialog.value = false;
-    composeForm.value = { filename: 'docker-compose.yml', content: '', autoStart: true };
+    resetCreateForm();
     await fetchComposeFiles();
   } catch (error) {
     const errorMsg = error.response?.data?.message || 
                     error.response?.data?.error || 
-                    'Failed to create compose file';
+                    'Failed to save compose file';
     ElMessage.error(errorMsg);
     console.error('Error details:', error);
+  } finally {
+    creatingCompose.value = false;
   }
+};
+
+const resetCreateForm = () => {
+  composeForm.value = {
+    containerName: '',
+    filename: '',
+    content: '',
+    description: '',
+    autoStart: true
+  };
+  editingCompose.value = false;
 };
 
 const editCompose = async (filename) => {
   try {
     const response = await axios.get(`/services/docker/compose/${filename}`);
-    editForm.value = {
-      filename,
-      content: response.data.content
+    composeForm.value = {
+      containerName: filename.replace('.yml', '').replace('.yaml', ''),
+      filename: filename.replace('.yml', '').replace('.yaml', ''),
+      content: response.data.content,
+      description: '',
+      autoStart: false
     };
-    showEditDialog.value = true;
+    editingCompose.value = true;
+    showCreateDialog.value = true;
   } catch (error) {
     ElMessage.error('Failed to load compose file');
-    console.error(error);
-  }
-};
-
-const saveComposeFile = async () => {
-  try {
-    await axios.put(`/services/docker/compose/${editForm.value.filename}`, {
-      content: editForm.value.content
-    });
-    ElMessage.success('Compose file saved successfully');
-    showEditDialog.value = false;
-    await fetchComposeFiles();
-  } catch (error) {
-    ElMessage.error('Failed to save compose file');
     console.error(error);
   }
 };
@@ -511,6 +802,7 @@ const deleteCompose = async (filename) => {
       }
     );
 
+    deleteLoading.value[filename] = true;
     await axios.delete(`/services/docker/compose/${filename}`);
     ElMessage.success('Compose file deleted successfully');
     await fetchComposeFiles();
@@ -519,58 +811,102 @@ const deleteCompose = async (filename) => {
       ElMessage.error('Failed to delete compose file');
       console.error(error);
     }
+  } finally {
+    deleteLoading.value[filename] = false;
   }
 };
 
-const deployTemplateDirectly = async (template) => {
+const handleDeployStop = async (row) => {
+  const status = containerStatuses.value[row.name];
+  if (status === 'running') {
+    await stopCompose(row);
+  } else {
+    deployCompose(row.name);
+  }
+};
+
+const deployCompose = async (filename) => {
   try {
-    const result = await ElMessageBox.confirm(
-      `Deploy ${template.name} stack?`,
-      'Confirm Deployment',
-      { 
-        confirmButtonText: 'Deploy', 
-        cancelButtonText: 'Cancel',
-        showCheckbox: true,
-        checkboxLabel: 'Start containers immediately'
-      }
-    );
-
-    const shouldStart = result.value;
-    const loadingKey = `deploy-${template.name}`;
+    deployLoading.value[filename] = true;
+    currentDeployment.value = filename;
+    deployDialogVisible.value = true;
     
-    ElMessage.info({
-      message: `Deploying ${template.name}...`,
-      key: loadingKey,
-      duration: 0
-    });
+    await nextTick();
+    initDeployTerminal();
+    
+    deployTerminal.value.writeln('Starting deployment...');
+    deployTerminal.value.writeln('========================\r\n');
 
-    const filename = `${template.name.toLowerCase().replace(/ /g, '-')}.yml`;
-    const response = await axios.post('/services/docker/compose_add', {
-      filename: filename,
-      content: template.content,
-      autoStart: shouldStart
-    });
+    const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+    const wsUrl = `${protocol}//${window.location.hostname}:${import.meta.env.VITE_API_PORT}`;
+    deployEventSource.value = new EventSource(`${wsUrl}/services/docker/composer/deploy-stream?file=${filename}`);
+    
+    deployEventSource.value.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.message) {
+          const lines = data.message.split('\r\n');
+          lines.forEach(line => {
+            if (line.trim().length > 0) {
+              deployTerminal.value.writeln(line);
+            }
+          });
+        }
+      } catch (e) {
+        console.error('Error parsing event data:', e);
+      }
+    };
 
-    ElMessage.success({
-      message: response.data.message,
-      key: loadingKey
-    });
+    deployEventSource.value.onerror = (error) => {
+      deployTerminal.value.writeln('\r\nError in deployment stream');
+      closeDeployStream();
+    };
 
-    if (shouldStart) {
-      containerStatuses.value[filename.replace('.yml', '')] = 'starting';
-      setTimeout(() => {
-        deployCompose(filename);
-      }, 1000);
-    }
-
-    await fetchComposeFiles();
+    const containerName = filename.replace('.yml', '').replace('.yaml', '');
+    setTimeout(async () => {
+      const status = await checkContainerStatus(containerName);
+      containerStatuses.value[containerName] = status;
+      deployLoading.value[filename] = false;
+    }, 5000);
   } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('Deployment failed: ' + error.message);
-    }
+    console.error('Deployment error:', error);
+    deployLoading.value[filename] = false;
   }
 };
 
+const stopCompose = async (row) => {
+  try {
+    const cleanName = normalizeContainerName(row.name);
+    await axios.post(`/services/docker/container/${cleanName}/stop`);
+    ElMessage.success('Compose stopped successfully');
+    containerStatuses.value[row.name] = 'stopped';
+  } catch (error) {
+    ElMessage.error('Failed to stop compose');
+    console.error(error);
+  }
+};
+
+const restartCompose = async (row) => {
+  try {
+    restartLoading.value[row.name] = true;
+    const cleanName = normalizeContainerName(row.name);
+    await axios.post(`/services/docker/container/${cleanName}/restart`);
+    ElMessage.success('Compose restarted successfully');
+    containerStatuses.value[row.name] = 'starting';
+    
+    setTimeout(async () => {
+      const status = await checkContainerStatus(cleanName);
+      containerStatuses.value[row.name] = status;
+      restartLoading.value[row.name] = false;
+    }, 3000);
+  } catch (error) {
+    ElMessage.error('Failed to restart compose');
+    console.error(error);
+    restartLoading.value[row.name] = false;
+  }
+};
+
+// Terminal functions
 const initDeployTerminal = () => {
   if (deployTerminal.value) {
     try {
@@ -633,70 +969,35 @@ const closeDeploy = () => {
   handleDeployDialogClosed();
 };
 
-const deployCompose = async (filename) => {
-  try {
-    deployDialogVisible.value = true;
-    
-    await nextTick();
-    initDeployTerminal();
-    
-    deployTerminal.value.writeln('Starting deployment...');
-    deployTerminal.value.writeln('========================\r\n');
-
-    const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
-    const wsUrl = `${protocol}//${window.location.hostname}:3000`;
-    deployEventSource.value = new EventSource(`${wsUrl}/services/docker/composer/deploy-stream?file=${filename}`);
-    
-    deployEventSource.value.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.message) {
-          const lines = data.message.split('\r\n');
-          lines.forEach(line => {
-            if (line.trim().length > 0) {
-              deployTerminal.value.writeln(line);
-            }
-          });
-        }
-      } catch (e) {
-        console.error('Error parsing event data:', e);
-      }
-    };
-
-    deployEventSource.value.onerror = (error) => {
-      deployTerminal.value.writeln('\r\nError in deployment stream');
-      closeDeployStream();
-    };
-
-    // Update container status after deployment
-    const containerName = filename.replace('.yml', '').replace('.yaml', '');
-    setTimeout(async () => {
-      const status = await checkContainerStatus(containerName);
-      containerStatuses.value[containerName] = status;
-    }, 5000);
-  } catch (error) {
-    console.error('Deployment error:', error);
-    if (deployTerminal.value) {
-      deployTerminal.value.writeln('Error: ' + error.message);
-    }
-  }
-};
-
+// Template functions
 const loadTemplates = async () => {
   try {
-    // Najpierw spróbuj pobrać z GitHub
+    // Try to load from external source
     const response = await axios.get(
       'https://raw.githubusercontent.com/gekomod/docker-templates/main/contents/templates.json',
       {
         headers: {
           'Accept': 'application/vnd.github.v3.raw'
-        }
+        },
+        timeout: 5000
       }
     );
-    templates.value = response.data.templates || defaultTemplates;
+    
+    if (response.data && Array.isArray(response.data.templates)) {
+      templates.value = response.data.templates;
+    } else {
+      templates.value = defaultTemplates;
+    }
   } catch (error) {
-    console.log('Using default templates due to error:', error);
+    console.log('Using default templates:', error.message);
     templates.value = defaultTemplates;
+  }
+};
+
+const loadTemplatesDialog = async () => {
+  showTemplatesDialog.value = true;
+  if (templates.value.length === 0) {
+    await loadTemplates();
   }
 };
 
@@ -706,45 +1007,77 @@ const previewTemplate = (template) => {
   showTemplatePreview.value = true;
 };
 
-const useTemplate = () => {
+const useTemplate = (template) => {
+  composeForm.value = {
+    containerName: template.name.toLowerCase().replace(/ /g, '-'),
+    filename: template.name.toLowerCase().replace(/ /g, '-'),
+    content: template.content,
+    description: template.description,
+    autoStart: true
+  };
+  showTemplatesDialog.value = false;
   showCreateDialog.value = true;
+};
+
+const applyTemplate = () => {
+  useTemplate(selectedTemplate.value);
   showTemplatePreview.value = false;
-  showTemplatesDialog.value = false;
-  composeForm.value = {
-    filename: `${selectedTemplate.value.name.toLowerCase().replace(/ /g, '-')}.yml`,
-    content: selectedTemplate.value.content,
-    autoStart: autoStartContainer.value
-  };
 };
 
-const handleTemplateSelect = (row) => {
-  selectedTemplate.value = row;
-  composeForm.value = {
-    filename: `${row.name.toLowerCase().replace(/ /g, '-')}.yml`,
-    content: row.content,
-    autoStart: row.metadata?.autoStart !== false
-  };
-  showTemplatesDialog.value = false;
-  showCreateDialog.value = true;
+// Form helpers
+const fillSampleConfig = () => {
+  composeForm.value.content = `version: '3.8'
+
+services:
+  app:
+    image: nginx:alpine
+    container_name: my-app
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    environment:
+      - NGINX_ENV=production`;
 };
 
-const loadTemplatesDialog = async () => {
-  showTemplatesDialog.value = true;
-  loadTemplates();
-}
+const formatYaml = () => {
+  try {
+    // Simple YAML formatting
+    const lines = composeForm.value.content.split('\n');
+    let indent = 0;
+    const formatted = lines.map(line => {
+      const trimmed = line.trim();
+      if (trimmed.endsWith(':')) {
+        const result = '  '.repeat(indent) + trimmed;
+        indent++;
+        return result;
+      } else if (trimmed === '') {
+        indent = Math.max(0, indent - 1);
+        return '';
+      } else {
+        return '  '.repeat(indent) + trimmed;
+      }
+    }).join('\n');
+    
+    composeForm.value.content = formatted;
+    ElMessage.success('YAML formatted');
+  } catch (e) {
+    ElMessage.error('Formatting failed');
+  }
+};
+
+const handleRowClick = (row) => {
+  // Handle row click if needed
+};
 
 onMounted(() => {
   fetchComposeFiles();
-
-  // Aktualizuj status co 10 sekund
+  
+  // Refresh statuses every 30 seconds
   const interval = setInterval(async () => {
-    if (!composeFiles.value.length) return;
-    
-    await Promise.all(composeFiles.value.map(async file => {
-      const name = file.name.replace('.yml', '').replace('.yaml', '');
-      containerStatuses.value[name] = await checkContainerStatus(name);
-    }));
-  }, 10000);
+    if (composeFiles.value.length > 0) {
+      await updateAllStatuses();
+    }
+  }, 30000);
 
   onBeforeUnmount(() => {
     clearInterval(interval);
@@ -759,66 +1092,710 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .docker-compose {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  overflow: hidden;
+}
+
+/* Header styles */
+.clean-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.header-left h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-left h2 .el-icon {
+  font-size: 22px;
+  color: #2496ed;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.action-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  min-width: auto;
+}
+
+.action-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* Table styles */
+.table-wrapper {
+  flex: 1;
+  overflow: hidden;
   padding: 20px;
 }
 
-.header {
+.clean-table-card {
+  height: 100%;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  overflow: hidden;
+}
+
+.clean-table-card.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+}
+
+.table-container {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Table styling */
+.clean-table {
+  flex: 1;
+  border: none;
+  --el-table-border-color: #f1f5f9;
+  --el-table-header-bg-color: #f8fafc;
+  width: 100% !important;
+}
+
+:deep(.clean-table .el-table__header-wrapper) {
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+:deep(.clean-table .el-table__header th) {
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  color: #475569;
+  font-weight: 600;
+  padding: 12px 8px;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+:deep(.clean-table .el-table__row:hover > td) {
+  background-color: #f8fafc !important;
+}
+
+:deep(.clean-table .el-table__row.el-table__row--striped) {
+  background-color: #f8fafc;
+}
+
+:deep(.clean-table .el-table__row.el-table__row--striped:hover > td) {
+  background-color: #f1f5f9 !important;
+}
+
+/* Cell styles */
+.file-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.file-icon {
+  color: #3b82f6;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.file-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.file-name {
+  font-weight: 500;
+  color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-date {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+/* Status tags */
+.status-tag {
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-weight: 500;
+  font-size: 11px;
+}
+
+.status-icon {
+  font-size: 12px !important;
+}
+
+.status-running {
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.status-stopped {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+
+.status-starting {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  color: #d97706;
+  border: 1px solid #fde68a;
+}
+
+.status-not-found {
+  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
+.status-error {
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+
+/* Services cell */
+.services-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.services-icon {
+  color: #94a3b8;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.services-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+}
+
+/* Actions */
+.actions-container {
+  width: 100%;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
+.action-btn-circle {
+  padding: 8px;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+.action-btn-circle:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Empty state */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 16px;
+  text-align: center;
+  color: #64748b;
+}
+
+.empty-icon {
+  color: #cbd5e1;
+  font-size: 60px !important;
+  margin-bottom: 16px;
+}
+
+.empty-state h3 {
+  margin: 0 0 8px 0;
+  color: #1e293b;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.empty-state p {
+  margin: 0 0 24px 0;
+  max-width: 350px;
+  line-height: 1.5;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.create-btn {
+  border-radius: 8px;
+  padding: 8px 20px;
+  font-weight: 600;
+  font-size: 14px;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.create-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+}
+
+/* Table footer */
+.table-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-top: 1px solid #f1f5f9;
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+}
+
+.footer-info {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.footer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.footer-btn {
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-weight: 500;
+  font-size: 12px;
+  transition: all 0.2s ease;
+}
+
+.footer-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+/* Dialog styles */
+.clean-dialog :deep(.el-dialog) {
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.clean-dialog :deep(.el-dialog__header) {
+  padding: 16px 20px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.clean-dialog :deep(.el-dialog__body) {
+  padding: 20px;
+}
+
+.clean-dialog :deep(.el-dialog__footer) {
+  padding: 16px 20px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.dialog-footer {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
-  margin-bottom: 20px;
+  gap: 8px;
 }
 
-.icon {
-  margin-right: 5px;
+/* Create dialog */
+.create-dialog-content {
+  max-height: 70vh;
+  overflow-y: auto;
 }
 
-.deploy-log {
+.form-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.form-item-half {
+  flex: 1;
+}
+
+/* Editor styles */
+.editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.editor-header span {
+  color: #475569;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.editor-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.code-editor {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Roboto Mono', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.code-editor :deep(.el-textarea__inner) {
+  font-family: inherit;
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  resize: none;
+}
+
+/* Templates dialog */
+.templates-header {
+  margin-bottom: 16px;
+}
+
+.filters-container {
+  display: flex;
+  gap: 12px;
+}
+
+.search-input {
+  flex: 1;
+}
+
+.templates-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
   max-height: 60vh;
+  overflow-y: auto;
+  padding: 8px 4px;
+}
+
+.template-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all 0.2s ease;
+}
+
+.template-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  border-color: #3b82f6;
+}
+
+.template-icon {
+  font-size: 32px;
+  color: #3b82f6;
+  text-align: center;
+}
+
+.template-content {
+  flex: 1;
+}
+
+.template-name {
+  margin: 0 0 8px 0;
+  color: #1e293b;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.template-description {
+  margin: 0 0 12px 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.template-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.template-ports {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.template-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.template-use-btn {
+  flex: 1;
+}
+
+.template-preview-btn {
+  padding: 0;
+}
+
+.no-templates {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 16px;
+  text-align: center;
+  color: #64748b;
+}
+
+.no-templates .el-icon {
+  color: #cbd5e1;
+  margin-bottom: 16px;
+}
+
+/* Template preview */
+.template-preview-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 60vh;
+  overflow: hidden;
+}
+
+.template-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #64748b;
+}
+
+.meta-item .el-icon {
+  color: #94a3b8;
+  font-size: 16px;
+}
+
+.template-code {
+  flex: 1;
   overflow: auto;
-  background: #f5f5f5;
-  padding: 10px;
-  border-radius: 4px;
-  font-family: monospace;
-  white-space: pre-wrap;
 }
 
 .template-preview {
-  max-height: 60vh;
-  overflow: auto;
-  background: #f8f8f8;
-  padding: 10px;
-  border-radius: 4px;
-  font-family: monospace;
-  white-space: pre-wrap;
-  border: 1px solid #eaeaea;
+  margin: 0;
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 8px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Roboto Mono', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #334155;
+}
+
+/* Terminal dialog */
+.terminal-dialog :deep(.el-dialog__body) {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  height: 70vh;
 }
 
 .terminal-container {
-  width: 100%;
-  height: 70vh;
+  flex: 1;
   background: #1e1e1e;
-  padding: 10px;
-  border-radius: 4px;
+  overflow: hidden;
 }
 
 .terminal {
   width: 100%;
   height: 100%;
+  padding: 16px;
+  box-sizing: border-box;
 }
 
-.el-tag .el-icon.is-loading {
-  margin-right: 5px;
-  animation: rotating 2s linear infinite;
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+  .clean-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .header-right {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  
+  .header-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  
+  .action-buttons {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  
+  .templates-grid {
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  }
 }
 
-@keyframes rotating {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+@media (max-width: 768px) {
+  .clean-header {
+    padding: 12px;
+  }
+  
+  .header-left h2 {
+    font-size: 18px;
+  }
+  
+  .table-wrapper {
+    padding: 12px;
+  }
+  
+  .clean-dialog {
+    width: 95% !important;
+  }
+  
+  .form-row {
+    flex-direction: column;
+    gap: 0;
+  }
+  
+  .templates-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
-.el-dialog .el-checkbox {
-  margin-right: auto;
-  margin-left: 10px;
+@media (max-width: 576px) {
+  .table-footer {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+  
+  .footer-actions {
+    justify-content: center;
+  }
+  
+  .create-btn {
+    padding: 6px 16px;
+    font-size: 12px;
+  }
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.clean-table-card, .template-card {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Custom scrollbar */
+:deep(.clean-table .el-table__body-wrapper) {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f5f9;
+}
+
+:deep(.clean-table .el-table__body-wrapper::-webkit-scrollbar) {
+  width: 6px;
+  height: 6px;
+}
+
+:deep(.clean-table .el-table__body-wrapper::-webkit-scrollbar-track) {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+:deep(.clean-table .el-table__body-wrapper::-webkit-scrollbar-thumb) {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+:deep(.clean-table .el-table__body-wrapper::-webkit-scrollbar-thumb:hover) {
+  background: #94a3b8;
+}
+
+/* Utility classes */
+.ml-2 {
+  margin-left: 8px;
 }
 </style>

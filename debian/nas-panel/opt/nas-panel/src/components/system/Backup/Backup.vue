@@ -1,24 +1,85 @@
 <template>
-  <div class="backup-container">
-    <el-card shadow="hover">
-      <template #header>
-        <div class="card-header">
-          <el-icon size="24">
-            <Icon icon="mdi:content-save" />
-          </el-icon>
-          <span>{{ $t('backup.title') }}</span>
+  <div class="backup-dashboard">
+    <!-- Header Card -->
+    <el-card class="dashboard-header" shadow="hover">
+      <div class="header-content">
+        <div class="header-left">
+          <div class="header-icon">
+            <Icon icon="mdi:backup-restore" />
+          </div>
+          <div class="header-text">
+            <h1>{{ $t('backup.title') }}</h1>
+            <p class="subtitle">{{ $t('backup.subtitle') || 'Zarządzanie kopiami zapasowymi systemu' }}</p>
+          </div>
         </div>
-      </template>
+        <div class="header-actions">
+          <el-button-group>
+            <el-button 
+              :type="activeTab === 'create' ? 'primary' : 'default'"
+              @click="activeTab = 'create'"
+            >
+              <Icon icon="mdi:plus-circle" />
+              {{ $t('backup.create') }}
+            </el-button>
+            <el-button 
+              :type="activeTab === 'restore' ? 'primary' : 'default'"
+              @click="activeTab = 'restore'"
+            >
+              <Icon icon="mdi:restore" />
+              {{ $t('backup.restore') }}
+            </el-button>
+            <el-button 
+              :type="activeTab === 'history' ? 'primary' : 'default'"
+              @click="activeTab = 'history'"
+            >
+              <Icon icon="mdi:history" />
+              {{ $t('backup.history') }}
+            </el-button>
+            <el-button 
+              :type="activeTab === 'schedule' ? 'primary' : 'default'"
+              @click="activeTab = 'schedule'"
+            >
+              <Icon icon="mdi:calendar-clock" />
+              {{ $t('backup.schedule') }}
+            </el-button>
+          </el-button-group>
+        </div>
+      </div>
+    </el-card>
 
-      <el-tabs v-model="activeTab" class="backup-tabs">
-        <el-tab-pane :label="$t('backup.create')" name="create">
-          <el-form 
-            :model="backupForm" 
-            label-position="top"
-            @submit.prevent="createBackup"
-          >
+    <!-- Main Content -->
+    <div class="backup-content">
+      <!-- Create Backup Tab -->
+      <el-card v-if="activeTab === 'create'" class="tab-card" shadow="hover">
+        <template #header>
+          <div class="card-header">
+            <h2>
+              <Icon icon="mdi:content-save-plus" />
+              {{ $t('backup.create') }}
+            </h2>
+          </div>
+        </template>
+
+        <el-form 
+          :model="backupForm" 
+          label-position="top"
+          @submit.prevent="createBackup"
+          class="backup-form"
+        >
+          <div class="form-section">
+            <h3 class="section-title">{{ $t('backup.basicSettings') || 'Podstawowe ustawienia' }}</h3>
+            
+            <el-form-item :label="$t('backup.name')" required>
+              <el-input 
+                v-model="backupForm.name" 
+                :placeholder="$t('backup.namePlaceholder') || 'Nazwa kopii zapasowej'"
+                class="custom-input"
+              />
+              <span class="input-description">{{ $t('backup.nameDescription') || 'Wprowadź unikalną nazwę dla kopii zapasowej' }}</span>
+            </el-form-item>
+
             <el-form-item :label="$t('backup.type')" required>
-              <el-select v-model="backupForm.type">
+              <el-select v-model="backupForm.type" class="custom-select">
                 <el-option
                   v-for="item in backupTypes"
                   :key="item.value"
@@ -26,30 +87,47 @@
                   :value="item.value"
                 />
               </el-select>
+              <span class="input-description">{{ $t('backup.typeDescription') || 'Wybierz typ kopii zapasowej' }}</span>
             </el-form-item>
+          </div>
 
-            <el-form-item :label="$t('backup.name')" required>
-              <el-input v-model="backupForm.name" />
-            </el-form-item>
+          <div class="form-section">
+            <h3 class="section-title">{{ $t('backup.itemsss') || 'Elementy do kopii' }}</h3>
+            
+			<el-form-item :label="$t('backup.itemsss')">
+			  <div class="items-grid">
+				<el-card 
+				  v-for="item in backupItems" 
+				  :key="item.value"
+				  :class="['item-card', { 'selected': backupForm.items.includes(item.value) }]"
+				  @click="toggleItem(item.value)"
+				  shadow="hover"
+				>
+				  <div class="item-content">
+					<div class="item-icon">
+					  <Icon :icon="item.icon || 'mdi:folder'" />
+					</div>
+					<div class="item-info">
+					  <h4>{{ item.text }}</h4>
+					  <p class="item-size">{{ item.size || 'Rozmiar: Nieznany' }}</p>
+					</div>
+					<div class="item-checkbox">
+					  <el-checkbox 
+						:model-value="backupForm.items.includes(item.value)" 
+						@click.stop="toggleItem(item.value)"
+					  />
+					</div>
+				  </div>
+				</el-card>
+			  </div>
+			</el-form-item>
+          </div>
 
-            <el-form-item :label="$t('backup.itemss')">
-              <el-select 
-                v-model="backupForm.items" 
-                multiple 
-                collapse-tags
-                collapse-tags-tooltip
-              >
-                <el-option
-                  v-for="item in backupItems"
-                  :key="item.value"
-                  :label="item.text"
-                  :value="item.value"
-                />
-              </el-select>
-            </el-form-item>
-
+          <div class="form-section">
+            <h3 class="section-title">{{ $t('backup.advancedSettings') || 'Zaawansowane ustawienia' }}</h3>
+            
             <el-form-item :label="$t('backup.compression')">
-              <el-select v-model="backupForm.compression">
+              <el-select v-model="backupForm.compression" class="custom-select">
                 <el-option
                   v-for="item in compressionLevels"
                   :key="item.value"
@@ -57,33 +135,66 @@
                   :value="item.value"
                 />
               </el-select>
+              <span class="input-description">{{ $t('backup.compressionDescription') || 'Wybierz poziom kompresji' }}</span>
             </el-form-item>
 
             <el-form-item>
-              <el-checkbox v-model="backupForm.includeSystemConfig">
-                {{ $t('backup.include_system_config') }}
-              </el-checkbox>
+              <div class="switch-container">
+                <el-switch 
+                  v-model="backupForm.includeSystemConfig" 
+                  inline-prompt
+                  :active-text="$t('common.enabled')"
+                  :inactive-text="$t('common.disabled')"
+                  class="custom-switch"
+                />
+                <span class="switch-label">{{ $t('backup.include_system_config') }}</span>
+              </div>
+              <span class="input-description">{{ $t('backup.includeSystemConfigDescription') || 'Uwzględnij konfigurację systemu w kopii' }}</span>
             </el-form-item>
+          </div>
 
-            <el-form-item>
-              <el-button 
-                type="primary" 
-                native-type="submit"
-                :loading="isCreating"
-              >
-                {{ $t('backup.create_button') }}
-              </el-button>
-            </el-form-item>
-          </el-form>
-        </el-tab-pane>
+          <div class="form-actions">
+            <el-button 
+              type="primary" 
+              native-type="submit"
+              :loading="isCreating"
+              class="create-button"
+            >
+              <Icon icon="mdi:content-save" />
+              {{ $t('backup.create_button') }}
+            </el-button>
+          </div>
+        </el-form>
+      </el-card>
 
-        <el-tab-pane :label="$t('backup.restore')" name="restore">
-          <el-form label-position="top">
+      <!-- Restore Backup Tab -->
+      <el-card v-if="activeTab === 'restore'" class="tab-card" shadow="hover">
+        <template #header>
+          <div class="card-header">
+            <h2>
+              <Icon icon="mdi:backup-restore" />
+              {{ $t('backup.restore') }}
+            </h2>
+          </div>
+        </template>
+
+        <div v-if="loadingBackups" class="loading-spinner">
+          <el-icon :size="48" class="is-loading">
+            <Icon icon="mdi:loading" />
+          </el-icon>
+          <p>{{ $t('backup.loadingBackups') || 'Ładowanie dostępnych kopii...' }}</p>
+        </div>
+
+        <el-form v-else label-position="top" class="restore-form">
+          <div class="form-section">
+            <h3 class="section-title">{{ $t('backup.selectBackup') || 'Wybierz kopię do przywrócenia' }}</h3>
+            
             <el-form-item :label="$t('backup.select_backup')" required>
               <el-select 
                 v-model="selectedBackup" 
                 filterable
-                :loading="loadingBackups"
+                :placeholder="$t('backup.selectBackupPlaceholder') || 'Wybierz kopię zapasową'"
+                class="custom-select"
               >
                 <el-option
                   v-for="backup in availableBackups"
@@ -92,115 +203,249 @@
                   :value="backup.id"
                   :disabled="backup.status !== 'completed'"
                 >
-                  <span style="float: left">{{ backup.name }}</span>
-                  <span style="float: right; color: var(--el-text-color-secondary);">
-                    {{ formatDate(backup.created_at) }} ({{ formatSize(backup.size) }})
-                  </span>
+                  <div class="backup-option">
+                    <div class="backup-info">
+                      <div class="backup-name">{{ backup.name }}</div>
+                      <div class="backup-details">
+                        <span class="backup-date">{{ formatDate(backup.created_at) }}</span>
+                        <span class="backup-size">{{ formatSize(backup.size) }}</span>
+                      </div>
+                    </div>
+                    <div class="backup-status">
+                      <el-tag :type="getStatusType(backup.status)" size="small">
+                        {{ $t(`backup.statuses.${backup.status}`) }}
+                      </el-tag>
+                    </div>
+                  </div>
                 </el-option>
               </el-select>
+              <span class="input-description">{{ $t('backup.selectBackupDescription') || 'Wybierz kopię zapasową do przywrócenia' }}</span>
             </el-form-item>
 
-            <el-form-item>
-              <el-checkbox v-model="restoreSystemConfig">
-                {{ $t('backup.restore_system_config') }}
-              </el-checkbox>
-            </el-form-item>
-
-            <el-form-item>
-              <el-checkbox v-model="verifyIntegrity">
-                {{ $t('backup.verify_integrity') }}
-              </el-checkbox>
-            </el-form-item>
-
-            <el-form-item>
-              <el-button 
-                type="primary" 
-                @click="restoreBackup"
-                :loading="isRestoring"
-                :disabled="!selectedBackup"
-              >
-                {{ $t('backup.restore_button') }}
-              </el-button>
-            </el-form-item>
-          </el-form>
-        </el-tab-pane>
-
-        <el-tab-pane :label="$t('backup.history')" name="history">
-          <el-table 
-            :data="backups" 
-            v-loading="loading"
-            empty-text="No backups available"
-            style="width: 100%"
-          >
-            <el-table-column prop="name" :label="$t('backup.history_table.name')" />
-            <el-table-column :label="$t('backup.history_table.type')">
-              <template #default="{row}">
-                <el-tag>{{ $t(`backup.types.${row.type}`) }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column :label="$t('backup.history_table.date')">
-              <template #default="{row}">
-                {{ formatDate(row.created_at) }}
-              </template>
-            </el-table-column>
-            <el-table-column :label="$t('backup.history_table.size')">
-              <template #default="{row}">
-                {{ formatSize(row.size) }}
-              </template>
-            </el-table-column>
-            <el-table-column :label="$t('backup.history_table.status')" width="150">
-              <template #default="{row}">
-                <el-tag :type="getStatusType(row.status)" effect="dark">
-                  {{ $t(`backup.statuses.${row.status}`) }}
-                </el-tag>
-                <el-progress 
-                  v-if="row.status === 'in_progress'"
-                  :percentage="row.progress || 0" 
-                  :stroke-width="3"
-                  :show-text="false"
-                  style="margin-top: 5px;"
-                />
-              </template>
-            </el-table-column>
-            <el-table-column :label="$t('backup.history_table.actions')" width="180">
-              <template #default="{row}">
-                <el-button 
-                  size="small" 
-                  @click="downloadBackup(row.id)"
-                  :disabled="row.status !== 'completed'"
-                >
-                  <el-icon><Icon icon="mdi:download" /></el-icon>
-                </el-button>
-                <el-button 
-                  size="small" 
-                  type="danger" 
-                  @click="deleteBackup(row.id)"
-                >
-                  <el-icon><Icon icon="mdi:delete" /></el-icon>
-                </el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-
-          <div class="pagination">
-            <el-pagination
-              v-model:current-page="currentPage"
-              v-model:page-size="pageSize"
-              :total="totalBackups"
-              @current-change="fetchBackups"
-              layout="prev, pager, next"
-            />
+            <div v-if="selectedBackup" class="selected-backup-info">
+              <el-card shadow="never">
+                <div class="backup-detail">
+                  <h4>Szczegóły wybranej kopii:</h4>
+                  <div class="detail-grid">
+                    <div class="detail-item">
+                      <span class="detail-label">Typ:</span>
+                      <span class="detail-value">{{ getBackupType(selectedBackup) }}</span>
+                    </div>
+                    <div class="detail-item">
+                      <span class="detail-label">Data utworzenia:</span>
+                      <span class="detail-value">{{ formatDate(getBackupDate(selectedBackup)) }}</span>
+                    </div>
+                    <div class="detail-item">
+                      <span class="detail-label">Rozmiar:</span>
+                      <span class="detail-value">{{ formatSize(getBackupSize(selectedBackup)) }}</span>
+                    </div>
+                    <div class="detail-item">
+                      <span class="detail-label">Status:</span>
+                      <span class="detail-value">
+                        <el-tag :type="getStatusType(getBackupStatus(selectedBackup))" size="small">
+                          {{ $t(`backup.statuses.${getBackupStatus(selectedBackup)}`) }}
+                        </el-tag>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </el-card>
+            </div>
           </div>
-        </el-tab-pane>
 
-        <el-tab-pane :label="$t('backup.schedule')" name="schedule">
-          <el-form 
-            :model="scheduleForm" 
-            label-position="top"
-            @submit.prevent="saveSchedule"
+          <div class="form-section">
+            <h3 class="section-title">{{ $t('backup.restoreOptions') || 'Opcje przywracania' }}</h3>
+            
+            <el-form-item>
+              <div class="switch-container">
+                <el-switch 
+                  v-model="restoreSystemConfig" 
+                  inline-prompt
+                  :active-text="$t('common.enabled')"
+                  :inactive-text="$t('common.disabled')"
+                  class="custom-switch"
+                />
+                <span class="switch-label">{{ $t('backup.restore_system_config') }}</span>
+              </div>
+              <span class="input-description">{{ $t('backup.restoreSystemConfigDescription') || 'Przywróć konfigurację systemu' }}</span>
+            </el-form-item>
+
+            <el-form-item>
+              <div class="switch-container">
+                <el-switch 
+                  v-model="verifyIntegrity" 
+                  inline-prompt
+                  :active-text="$t('common.enabled')"
+                  :inactive-text="$t('common.disabled')"
+                  class="custom-switch"
+                />
+                <span class="switch-label">{{ $t('backup.verify_integrity') }}</span>
+              </div>
+              <span class="input-description">{{ $t('backup.verifyIntegrityDescription') || 'Zweryfikuj integralność kopii przed przywróceniem' }}</span>
+            </el-form-item>
+          </div>
+
+          <div class="form-actions">
+            <el-button 
+              type="danger" 
+              @click="restoreBackup"
+              :loading="isRestoring"
+              :disabled="!selectedBackup"
+              class="restore-button"
+            >
+              <Icon icon="mdi:restore-alert" />
+              {{ $t('backup.restore_button') }}
+            </el-button>
+          </div>
+        </el-form>
+      </el-card>
+
+      <!-- History Tab -->
+      <el-card v-if="activeTab === 'history'" class="tab-card" shadow="hover">
+        <template #header>
+          <div class="card-header">
+            <h2>
+              <Icon icon="mdi:history" />
+              {{ $t('backup.history') }}
+              <el-tag v-if="filteredBackups.length > 0" size="small" type="info">
+                {{ filteredBackups.length }} kopii
+              </el-tag>
+            </h2>
+            <div class="card-header-actions">
+              <el-select 
+                v-model="historyFilter" 
+                :placeholder="$t('backup.filter') || 'Filtruj'"
+                clearable
+                class="filter-select"
+              >
+                <el-option label="Wszystkie" value="" />
+                <el-option label="Zakończone" value="completed" />
+                <el-option label="W trakcie" value="in_progress" />
+                <el-option label="Niepowodzenie" value="failed" />
+              </el-select>
+              <el-button 
+                type="info" 
+                plain 
+                @click="fetchBackups"
+                :loading="loading"
+              >
+                <Icon icon="mdi:refresh" />
+                {{ $t('common.refresh') }}
+              </el-button>
+            </div>
+          </div>
+        </template>
+
+        <div v-if="loading" class="loading-spinner">
+          <el-icon :size="48" class="is-loading">
+            <Icon icon="mdi:loading" />
+          </el-icon>
+          <p>{{ $t('backup.loadingHistory') || 'Ładowanie historii...' }}</p>
+        </div>
+
+        <el-empty 
+          v-else-if="filteredBackups.length === 0" 
+          :description="historyEmptyMessage" 
+          class="empty-state"
+        >
+          <template #image>
+            <Icon icon="mdi:database-off" width="120" height="120" />
+          </template>
+        </el-empty>
+
+        <div v-else class="backups-list">
+          <div 
+            v-for="backup in paginatedBackups" 
+            :key="backup.id"
+            class="backup-item"
           >
-            <el-form-item :label="$t('backup.schedule_type')">
-              <el-select v-model="scheduleForm.type">
+            <div class="backup-icon">
+              <el-icon :size="24" :color="getBackupIconColor(backup.type)">
+                <Icon :icon="getBackupIcon(backup.type)" />
+              </el-icon>
+            </div>
+            <div class="backup-content">
+              <div class="backup-header">
+                <h4>{{ backup.name }}</h4>
+                <div class="backup-meta">
+                  <el-tag :type="getStatusType(backup.status)" size="small" effect="plain">
+                    {{ $t(`backup.statuses.${backup.status}`) }}
+                  </el-tag>
+                  <span class="backup-type">{{ $t(`backup.types.${backup.type}`) }}</span>
+                </div>
+              </div>
+              <p class="backup-details">
+                <span class="backup-date">{{ formatDate(backup.created_at) }}</span>
+                <span class="backup-size">{{ formatSize(backup.size) }}</span>
+              </p>
+              <div v-if="backup.status === 'in_progress'" class="backup-progress">
+                <el-progress 
+                  :percentage="backup.progress || 0" 
+                  :stroke-width="4"
+                  :show-text="true"
+                  :text-inside="true"
+                />
+              </div>
+            </div>
+            <div class="backup-actions">
+              <el-button 
+                size="small" 
+                @click="downloadBackup(backup.id)"
+                :disabled="backup.status !== 'completed'"
+                :loading="downloadingId === backup.id"
+              >
+                <el-icon><Icon icon="mdi:download" /></el-icon>
+                {{ $t('common.download') }}
+              </el-button>
+              <el-button 
+                size="small" 
+                type="danger" 
+                @click="deleteBackup(backup.id)"
+                :loading="deletingId === backup.id"
+              >
+                <el-icon><Icon icon="mdi:delete" /></el-icon>
+                {{ $t('common.delete') }}
+              </el-button>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="!loading && filteredBackups.length > 0" class="pagination-section">
+          <el-pagination
+            v-model:current-page="currentPage"
+            v-model:page-size="pageSize"
+            :total="filteredBackups.length"
+            :page-sizes="[10, 20, 50, 100]"
+            layout="total, sizes, prev, pager, next, jumper"
+            @current-change="handlePageChange"
+            @size-change="handleSizeChange"
+            :disabled="loading"
+          />
+        </div>
+      </el-card>
+
+      <!-- Schedule Tab -->
+      <el-card v-if="activeTab === 'schedule'" class="tab-card" shadow="hover">
+        <template #header>
+          <div class="card-header">
+            <h2>
+              <Icon icon="mdi:calendar-clock" />
+              {{ $t('backup.schedule') }}
+            </h2>
+          </div>
+        </template>
+
+        <el-form 
+          :model="scheduleForm" 
+          label-position="top"
+          @submit.prevent="saveSchedule"
+          class="schedule-form"
+        >
+          <div class="form-section">
+            <h3 class="section-title">{{ $t('backup.scheduleSettings') || 'Ustawienia harmonogramu' }}</h3>
+            
+            <el-form-item :label="$t('backup.schedule_type')" required>
+              <el-select v-model="scheduleForm.type" class="custom-select">
                 <el-option
                   v-for="item in scheduleTypes"
                   :key="item.value"
@@ -208,59 +453,79 @@
                   :value="item.value"
                 />
               </el-select>
+              <span class="input-description">{{ $t('backup.scheduleTypeDescription') || 'Wybierz typ harmonogramu' }}</span>
             </el-form-item>
 
-            <template v-if="scheduleForm.type === 'daily'">
-              <el-form-item :label="$t('backup.daily_time')">
-                <el-time-picker
-                  v-model="scheduleForm.dailyTime"
-                  format="HH:mm"
-                  value-format="HH:mm"
-                />
-              </el-form-item>
-            </template>
-
-            <template v-else-if="scheduleForm.type === 'weekly'">
-              <el-form-item :label="$t('backup.weekly_day')">
-                <el-select v-model="scheduleForm.weeklyDay">
-                  <el-option
-                    v-for="day in weekDays"
-                    :key="day.value"
-                    :label="day.text"
-                    :value="day.value"
+            <div v-if="scheduleForm.type !== 'disabled'" class="schedule-details">
+              <template v-if="scheduleForm.type === 'daily'">
+                <el-form-item :label="$t('backup.daily_time')" required>
+                  <el-time-picker
+                    v-model="scheduleForm.dailyTime"
+                    format="HH:mm"
+                    value-format="HH:mm"
+                    :placeholder="$t('backup.dailyTimePlaceholder') || 'Wybierz godzinę'"
+                    class="custom-time-picker"
                   />
-                </el-select>
-              </el-form-item>
+                  <span class="input-description">{{ $t('backup.dailyTimeDescription') || 'Godzina wykonania codziennej kopii' }}</span>
+                </el-form-item>
+              </template>
 
-              <el-form-item :label="$t('backup.weekly_time')">
-                <el-time-picker
-                  v-model="scheduleForm.weeklyTime"
-                  format="HH:mm"
-                  value-format="HH:mm"
-                />
-              </el-form-item>
-            </template>
+              <template v-else-if="scheduleForm.type === 'weekly'">
+                <el-form-item :label="$t('backup.weekly_day')" required>
+                  <el-select v-model="scheduleForm.weeklyDay" class="custom-select">
+                    <el-option
+                      v-for="day in weekDays"
+                      :key="day.value"
+                      :label="day.text"
+                      :value="day.value"
+                    />
+                  </el-select>
+                  <span class="input-description">{{ $t('backup.weeklyDayDescription') || 'Dzień tygodnia wykonania kopii' }}</span>
+                </el-form-item>
 
-            <template v-else-if="scheduleForm.type === 'monthly'">
-              <el-form-item :label="$t('backup.monthly_day')">
-                <el-input-number
-                  v-model="scheduleForm.monthlyDay"
-                  :min="1"
-                  :max="31"
-                />
-              </el-form-item>
+                <el-form-item :label="$t('backup.weekly_time')" required>
+                  <el-time-picker
+                    v-model="scheduleForm.weeklyTime"
+                    format="HH:mm"
+                    value-format="HH:mm"
+                    :placeholder="$t('backup.weeklyTimePlaceholder') || 'Wybierz godzinę'"
+                    class="custom-time-picker"
+                  />
+                  <span class="input-description">{{ $t('backup.weeklyTimeDescription') || 'Godzina wykonania cotygodniowej kopii' }}</span>
+                </el-form-item>
+              </template>
 
-              <el-form-item :label="$t('backup.monthly_time')">
-                <el-time-picker
-                  v-model="scheduleForm.monthlyTime"
-                  format="HH:mm"
-                  value-format="HH:mm"
-                />
-              </el-form-item>
-            </template>
+              <template v-else-if="scheduleForm.type === 'monthly'">
+                <el-form-item :label="$t('backup.monthly_day')" required>
+                  <el-input-number
+                    v-model="scheduleForm.monthlyDay"
+                    :min="1"
+                    :max="31"
+                    controls-position="right"
+                    class="custom-number-input"
+                  />
+                  <span class="input-description">{{ $t('backup.monthlyDayDescription') || 'Dzień miesiąca wykonania kopii' }}</span>
+                </el-form-item>
 
+                <el-form-item :label="$t('backup.monthly_time')" required>
+                  <el-time-picker
+                    v-model="scheduleForm.monthlyTime"
+                    format="HH:mm"
+                    value-format="HH:mm"
+                    :placeholder="$t('backup.monthlyTimePlaceholder') || 'Wybierz godzinę'"
+                    class="custom-time-picker"
+                  />
+                  <span class="input-description">{{ $t('backup.monthlyTimeDescription') || 'Godzina wykonania comiesięcznej kopii' }}</span>
+                </el-form-item>
+              </template>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h3 class="section-title">{{ $t('backup.retentionPolicy') || 'Polityka przechowywania' }}</h3>
+            
             <el-form-item :label="$t('backup.retention')">
-              <el-select v-model="scheduleForm.retention">
+              <el-select v-model="scheduleForm.retention" class="custom-select">
                 <el-option
                   v-for="item in retentionOptions"
                   :key="item.value"
@@ -268,72 +533,113 @@
                   :value="item.value"
                 />
               </el-select>
+              <span class="input-description">{{ $t('backup.retentionDescription') || 'Okres przechowywania kopii zapasowych' }}</span>
             </el-form-item>
+          </div>
 
-            <el-form-item>
-              <el-button 
-                type="primary" 
-                native-type="submit"
-                :loading="isSaving"
-              >
-                {{ $t('backup.save_schedule') }}
-              </el-button>
-            </el-form-item>
-          </el-form>
-        </el-tab-pane>
-      </el-tabs>
+          <div v-if="scheduleForm.type !== 'disabled'" class="form-section">
+            <h3 class="section-title">{{ $t('backup.nextBackup') || 'Następna kopia' }}</h3>
+            
+            <el-card shadow="never" class="next-backup-card">
+              <div class="next-backup-info">
+                <div class="next-backup-icon">
+                  <Icon icon="mdi:calendar-check" />
+                </div>
+                <div class="next-backup-details">
+                  <h4>{{ $t('backup.nextScheduledBackup') || 'Następna zaplanowana kopia:' }}</h4>
+                  <p class="next-backup-time">{{ calculateNextBackup() }}</p>
+                  <p class="next-backup-description">
+                    {{ getScheduleDescription() }}
+                  </p>
+                </div>
+              </div>
+            </el-card>
+          </div>
 
-      <el-dialog v-model="resultDialogVisible" :title="resultDialogTitle">
-        <div class="result-content" v-html="resultDialogMessage"></div>
-        <div class="result-content">
-          <p class="success-message">
-            <el-icon><Icon icon="mdi:information-outline" /></el-icon>
-            {{ $t('backup.creation_started') }}
-          </p>
-          <p class="warning-message">
-            <el-icon><Icon icon="mdi:clock-outline" /></el-icon>
-            {{ $t('backup.background_warning') }}
-          </p>
+          <div class="form-actions">
+            <el-button 
+              type="primary" 
+              native-type="submit"
+              :loading="isSaving"
+              class="save-button"
+            >
+              <Icon icon="mdi:content-save-check" />
+              {{ $t('backup.save_schedule') }}
+            </el-button>
+          </div>
+        </el-form>
+      </el-card>
+    </div>
+
+    <!-- Stats Card -->
+    <el-card class="stats-card" shadow="hover">
+      <div class="stats-content">
+        <div class="stat-item">
+          <div class="stat-icon stat-total">
+            <Icon icon="mdi:database" />
+          </div>
+          <div class="stat-info">
+            <h3>{{ totalBackupsCount }}</h3>
+            <p>{{ $t('backup.totalBackups') || 'Wszystkie kopie' }}</p>
+          </div>
         </div>
-        <template #footer>
-          <el-button type="primary" @click="resultDialogVisible = false">
-            {{ $t('common.close') }}
-          </el-button>
-        </template>
-      </el-dialog>
+        <div class="stat-item">
+          <div class="stat-icon stat-completed">
+            <Icon icon="mdi:check-circle" />
+          </div>
+          <div class="stat-info">
+            <h3>{{ completedBackupsCount }}</h3>
+            <p>{{ $t('backup.completedBackups') || 'Zakończone' }}</p>
+          </div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-icon stat-in-progress">
+            <Icon icon="mdi:progress-clock" />
+          </div>
+          <div class="stat-info">
+            <h3>{{ inProgressBackupsCount }}</h3>
+            <p>{{ $t('backup.inProgressBackups') || 'W trakcie' }}</p>
+          </div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-icon stat-failed">
+            <Icon icon="mdi:alert-circle" />
+          </div>
+          <div class="stat-info">
+            <h3>{{ failedBackupsCount }}</h3>
+            <p>{{ $t('backup.failedBackups') || 'Nieudane' }}</p>
+          </div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-icon stat-size">
+            <Icon icon="mdi:harddisk" />
+          </div>
+          <div class="stat-info">
+            <h3>{{ formatSize(totalBackupsSize) }}</h3>
+            <p>{{ $t('backup.totalSize') || 'Łączny rozmiar' }}</p>
+          </div>
+        </div>
+      </div>
     </el-card>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, inject, computed } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Icon } from '@iconify/vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
-const $notify = inject('notifications') || inject('$notify')
-const notificationService = inject('notifications')
-const backupIntervals = ref({})
-
-// Użyj computed aby śledzić nieprzeczytane powiadomienia
-const unreadNotifications = computed(() => {
-  return notificationService?.notifications?.value?.filter(n => !n.read).length || 0
-})
 
 // Shared data
-const formatDate = (dateString) => {
-  return new Date(dateString).toLocaleString()
-}
-
-const formatSize = (bytes) => {
-  if (bytes === 0) return '0 Bytes'
-  const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
+const activeTab = ref('create')
+const loading = ref(false)
+const loadingBackups = ref(false)
+const isCreating = ref(false)
+const isRestoring = ref(false)
+const isSaving = ref(false)
 
 // Create Backup Tab
 const backupForm = ref({
@@ -344,11 +650,6 @@ const backupForm = ref({
   includeSystemConfig: true
 })
 
-const isCreating = ref(false)
-const resultDialogVisible = ref(false)
-const resultDialogTitle = ref('')
-const resultDialogMessage = ref('')
-
 const backupTypes = [
   { value: 'full', text: t('backup.types.full') },
   { value: 'incremental', text: t('backup.types.incremental') },
@@ -356,11 +657,13 @@ const backupTypes = [
 ]
 
 const backupItems = [
-  { value: 'documents', text: t('backup.items.documents') },
-  { value: 'photos', text: t('backup.items.photos') },
-  { value: 'music', text: t('backup.items.music') },
-  { value: 'videos', text: t('backup.items.videos') },
-  { value: 'configuration', text: t('backup.items.configuration') }
+  { value: 'documents', text: t('backup.items.documents'), icon: 'mdi:file-document' },
+  { value: 'photos', text: t('backup.items.photos'), icon: 'mdi:image' },
+  { value: 'music', text: t('backup.items.music'), icon: 'mdi:music' },
+  { value: 'videos', text: t('backup.items.videos'), icon: 'mdi:video' },
+  { value: 'configuration', text: t('backup.items.configuration'), icon: 'mdi:cog' },
+  { value: 'databases', text: t('backup.items.databases'), icon: 'mdi:database' },
+  { value: 'logs', text: t('backup.items.logs'), icon: 'mdi:text-box' }
 ]
 
 const compressionLevels = [
@@ -370,156 +673,293 @@ const compressionLevels = [
   { value: 'high', text: t('backup.compression_levels.high') }
 ]
 
-// Modyfikowana funkcja tworzenia kopii
-const createBackup = async () => {
-  isCreating.value = true
-  try {
-    const response = await axios.post('/api/system/backup/create', backupForm.value)
-    
-    // Powiadomienie o rozpoczęciu tworzenia kopii
-    notificationService.addNotification({
-      title: 'Rozpoczęto tworzenie kopii',
-      message: `Rozpoczęto proces tworzenia kopii "${backupForm.value.name}"`,
-      type: 'info',
-      icon: 'mdi:backup-restore',
-      duration: 5000
-    })
-
-    // Ustawiamy dialog z podstawowymi informacjami
-    resultDialogTitle.value = 'Tworzenie kopii w toku'
-    resultDialogMessage.value = `
-      <p>Rozpoczęto proces tworzenia kopii zapasowej <strong>${backupForm.value.name}</strong>.</p>
-      <p>ID kopii: <code>${response.data.backupId}</code></p>
-      <p>Status: <el-tag type="info">W kolejce</el-tag></p>
-      <p class="info-text">Rozmiar będzie dostępny po zakończeniu procesu.</p>
-    `
-    resultDialogVisible.value = true
-
-    // Odświeżamy listę kopii po pewnym czasie
-    setTimeout(() => {
-      fetchBackups()
-      fetchAvailableBackups()
-      
-      // Dodajemy opóźnione powiadomienie (symulacja)
-      setTimeout(() => {
-        notificationService.addNotification({
-          title: 'Kopia utworzona',
-          message: `Kopia "${backupForm.value.name}" została pomyślnie utworzona`,
-          type: 'success',
-          icon: 'mdi:check-circle',
-          duration: 8000
-        })
-        
-        // Aktualizujemy dialog po "zakończeniu"
-        resultDialogMessage.value = `
-          <p>Kopia zapasowa <strong>${backupForm.value.name}</strong> została utworzona pomyślnie.</p>
-          <p>ID kopii: <code>${response.data.backupId}</code></p>
-          <p>Status: <el-tag type="success">Zakończono</el-tag></p>
-        `
-      }, 10000) // Symulacja 10 sekundowego procesu
-    }, 2000)
-
-  } catch (error) {
-    const errorMsg = error.response?.data?.message || 
-                    'Wystąpił błąd podczas tworzenia kopii zapasowej'
-    
-    notificationService.addNotification({
-      title: 'Błąd tworzenia kopii',
-      message: errorMsg,
-      type: 'error',
-      icon: 'mdi:alert-circle',
-      duration: 8000
-    })
-    
-    ElMessage.error(errorMsg)
-  } finally {
-    isCreating.value = false
-  }
-}
-
-
 // Restore Backup Tab
 const availableBackups = ref([])
 const selectedBackup = ref('')
 const restoreSystemConfig = ref(false)
 const verifyIntegrity = ref(true)
-const isRestoring = ref(false)
-const loadingBackups = ref(false)
+
+// History Tab
+const backups = ref([])
+const currentPage = ref(1)
+const pageSize = ref(10)
+const historyFilter = ref('')
+const downloadingId = ref(null)
+const deletingId = ref(null)
+const refreshInterval = ref(null)
+
+// Schedule Tab
+const scheduleForm = ref({
+  type: 'disabled',
+  dailyTime: '02:00',
+  weeklyDay: 'monday',
+  weeklyTime: '02:00',
+  monthlyDay: 1,
+  monthlyTime: '02:00',
+  retention: '30d'
+})
+
+const scheduleTypes = [
+  { value: 'disabled', text: t('backup.schedule_types.disabled') },
+  { value: 'daily', text: t('backup.schedule_types.daily') },
+  { value: 'weekly', text: t('backup.schedule_types.weekly') },
+  { value: 'monthly', text: t('backup.schedule_types.monthly') }
+]
+
+const weekDays = [
+  { value: 'monday', text: t('weekdays.monday') },
+  { value: 'tuesday', text: t('weekdays.tuesday') },
+  { value: 'wednesday', text: t('weekdays.wednesday') },
+  { value: 'thursday', text: t('weekdays.thursday') },
+  { value: 'friday', text: t('weekdays.friday') },
+  { value: 'saturday', text: t('weekdays.saturday') },
+  { value: 'sunday', text: t('weekdays.sunday') }
+]
+
+const retentionOptions = [
+  { value: '7d', text: t('backup.retention_options.7d') },
+  { value: '14d', text: t('backup.retention_options.14d') },
+  { value: '30d', text: t('backup.retention_options.30d') },
+  { value: '90d', text: t('backup.retention_options.90d') },
+  { value: '1y', text: t('backup.retention_options.1y') },
+  { value: 'forever', text: t('backup.retention_options.forever') }
+]
+
+// Computed properties
+const filteredBackups = computed(() => {
+  let result = [...backups.value]
+  
+  if (historyFilter.value) {
+    result = result.filter(backup => backup.status === historyFilter.value)
+  }
+  
+  // Sortowanie od najnowszych
+  result.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+  
+  return result
+})
+
+const paginatedBackups = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  const end = start + pageSize.value
+  return filteredBackups.value.slice(start, end)
+})
+
+const totalBackupsCount = computed(() => backups.value.length)
+const completedBackupsCount = computed(() => backups.value.filter(b => b.status === 'completed').length)
+const inProgressBackupsCount = computed(() => backups.value.filter(b => b.status === 'in_progress').length)
+const failedBackupsCount = computed(() => backups.value.filter(b => b.status === 'failed').length)
+const totalBackupsSize = computed(() => backups.value.reduce((sum, backup) => sum + (backup.size || 0), 0))
+
+const historyEmptyMessage = computed(() => {
+  if (historyFilter.value) {
+    return `Brak kopii ze statusem: ${historyFilter.value}`
+  }
+  return 'Brak dostępnych kopii zapasowych'
+})
+
+// Methods
+const formatDate = (dateString) => {
+  const date = new Date(dateString)
+  return date.toLocaleDateString('pl-PL', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+const formatSize = (bytes) => {
+  if (bytes === 0) return '0 Bytes'
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+const getStatusType = (status) => {
+  const types = {
+    completed: 'success',
+    failed: 'danger',
+    in_progress: 'warning',
+    queued: 'info'
+  }
+  return types[status] || ''
+}
+
+const getBackupIcon = (type) => {
+  const icons = {
+    'full': 'mdi:database',
+    'incremental': 'mdi:database-sync',
+    'differential': 'mdi:database-arrow-up'
+  }
+  return icons[type] || 'mdi:database'
+}
+
+const getBackupIconColor = (type) => {
+  const colors = {
+    'full': '#3b82f6',
+    'incremental': '#10b981',
+    'differential': '#8b5cf6'
+  }
+  return colors[type] || '#6b7280'
+}
+
+const toggleItem = (itemValue) => {
+  const index = backupForm.value.items.indexOf(itemValue)
+  if (index === -1) {
+    backupForm.value.items.push(itemValue)
+  } else {
+    backupForm.value.items.splice(index, 1)
+  }
+}
+
+const handlePageChange = (page) => {
+  currentPage.value = page
+}
+
+const handleSizeChange = (size) => {
+  pageSize.value = size
+  currentPage.value = 1
+}
+
+const getBackupById = (id) => {
+  return availableBackups.value.find(b => b.id === id) || backups.value.find(b => b.id === id)
+}
+
+const getBackupType = (id) => {
+  const backup = getBackupById(id)
+  return backup ? t(`backup.types.${backup.type}`) : 'Nieznany'
+}
+
+const getBackupDate = (id) => {
+  const backup = getBackupById(id)
+  return backup ? backup.created_at : null
+}
+
+const getBackupSize = (id) => {
+  const backup = getBackupById(id)
+  return backup ? backup.size : 0
+}
+
+const getBackupStatus = (id) => {
+  const backup = getBackupById(id)
+  return backup ? backup.status : 'unknown'
+}
+
+const calculateNextBackup = () => {
+  const now = new Date()
+  const next = new Date(now)
+  
+  switch(scheduleForm.value.type) {
+    case 'daily':
+      next.setHours(scheduleForm.value.dailyTime.split(':')[0])
+      next.setMinutes(scheduleForm.value.dailyTime.split(':')[1])
+      next.setSeconds(0)
+      if (next <= now) {
+        next.setDate(next.getDate() + 1)
+      }
+      break
+      
+    case 'weekly':
+      const dayMap = {
+        monday: 1, tuesday: 2, wednesday: 3, thursday: 4,
+        friday: 5, saturday: 6, sunday: 0
+      }
+      next.setHours(scheduleForm.value.weeklyTime.split(':')[0])
+      next.setMinutes(scheduleForm.value.weeklyTime.split(':')[1])
+      next.setSeconds(0)
+      
+      const targetDay = dayMap[scheduleForm.value.weeklyDay] || 1
+      const currentDay = next.getDay()
+      
+      let daysToAdd = targetDay - currentDay
+      if (daysToAdd < 0 || (daysToAdd === 0 && next <= now)) {
+        daysToAdd += 7
+      }
+      
+      next.setDate(next.getDate() + daysToAdd)
+      break
+      
+    case 'monthly':
+      next.setHours(scheduleForm.value.monthlyTime.split(':')[0])
+      next.setMinutes(scheduleForm.value.monthlyTime.split(':')[1])
+      next.setSeconds(0)
+      next.setDate(scheduleForm.value.monthlyDay)
+      
+      if (next <= now) {
+        next.setMonth(next.getMonth() + 1)
+      }
+      break
+  }
+  
+  return next.toLocaleString('pl-PL', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+const getScheduleDescription = () => {
+  switch(scheduleForm.value.type) {
+    case 'daily':
+      return `Codziennie o ${scheduleForm.value.dailyTime}`
+    case 'weekly':
+      return `Co tydzień w ${t(`weekdays.${scheduleForm.value.weeklyDay}`)} o ${scheduleForm.value.weeklyTime}`
+    case 'monthly':
+      return `Co miesiąc ${scheduleForm.value.monthlyDay}. dnia o ${scheduleForm.value.monthlyTime}`
+    default:
+      return 'Harmonogram wyłączony'
+  }
+}
+
+// API Methods
+const createBackup = async () => {
+  isCreating.value = true
+  try {
+    const response = await axios.post('/api/system/backup/create', backupForm.value)
+    
+    ElMessage.success({
+      message: 'Rozpoczęto tworzenie kopii zapasowej',
+      type: 'success',
+      showClose: true
+    })
+    
+    // Reset form
+    backupForm.value.name = ''
+    backupForm.value.items = []
+    
+    // Refresh lists
+    setTimeout(() => {
+      fetchBackups()
+      fetchAvailableBackups()
+    }, 2000)
+    
+  } catch (error) {
+    ElMessage.error({
+      message: error.response?.data?.message || 'Wystąpił błąd podczas tworzenia kopii',
+      type: 'error',
+      showClose: true
+    })
+  } finally {
+    isCreating.value = false
+  }
+}
 
 const fetchAvailableBackups = async () => {
   loadingBackups.value = true
   try {
     const response = await axios.get('/api/system/backup/list')
-    availableBackups.value = response.data.backups
+    availableBackups.value = response.data.backups || []
   } catch (error) {
-    const errorMsg = error.response?.data?.message || t('backup.fetch_error')
-    
-    $notify.addNotification({
-      title: t('backup.notification.fetch_error_title'),
-      message: errorMsg,
-      type: 'error',
-      icon: 'mdi:database-alert',
-      duration: 6000
-    })
-    
-    ElMessage.error(errorMsg)
+    ElMessage.error('Błąd podczas ładowania dostępnych kopii')
   } finally {
     loadingBackups.value = false
   }
 }
-
-const restoreBackup = async () => {
-  try {
-    await ElMessageBox.confirm(
-      t('backup.restore_confirm'),
-      t('common.warning'),
-      { type: 'warning' }
-    )
-    
-    isRestoring.value = true
-    const response = await axios.post('/api/system/backup/restore', {
-      backup_id: selectedBackup.value,
-      restore_system_config: restoreSystemConfig.value,
-      verify_integrity: verifyIntegrity.value
-    })
-    
-    $notify.addNotification({
-      title: t('backup.notification.restored_title'),
-      message: t('backup.notification.restored_message', {
-        name: availableBackups.value.find(b => b.id === selectedBackup.value)?.name || selectedBackup.value
-      }),
-      type: 'success',
-      icon: 'mdi:restore',
-      duration: 5000
-    })
-    
-    ElMessage.success(t('backup.restore_success'))
-  } catch (error) {
-    if (error !== 'cancel') {
-      const errorMsg = error.response?.data?.message || t('backup.restore_error')
-      
-      $notify.addNotification({
-        title: t('backup.notification.restore_error_title'),
-        message: errorMsg,
-        type: 'error',
-        icon: 'mdi:alert-circle',
-        duration: 8000
-      })
-      
-      ElMessage.error(errorMsg)
-    }
-  } finally {
-    isRestoring.value = false
-  }
-}
-
-// History Tab
-const backups = ref([])
-const loading = ref(false)
-const currentPage = ref(1)
-const pageSize = ref(10)
-const totalBackups = ref(0)
-const refreshInterval = ref(null)
 
 const fetchBackups = async () => {
   loading.value = true
@@ -530,26 +970,15 @@ const fetchBackups = async () => {
         per_page: pageSize.value
       }
     })
-    backups.value = response.data.backups
-    totalBackups.value = response.data.total
+    backups.value = response.data.backups || []
     
-    // Sprawdź czy są kopie w trakcie tworzenia
+    // Check for in-progress backups
     const inProgress = backups.value.filter(b => b.status === 'in_progress')
     if (inProgress.length > 0 && !refreshInterval.value) {
       startStatusRefresh()
     }
   } catch (error) {
-    const errorMsg = error.response?.data?.message || t('backup.history_fetch_error')
-    
-    $notify.addNotification({
-      title: t('backup.notification.history_error_title'),
-      message: errorMsg,
-      type: 'error',
-      icon: 'mdi:history',
-      duration: 6000
-    })
-    
-    ElMessage.error(errorMsg)
+    ElMessage.error('Błąd podczas ładowania historii kopii')
   } finally {
     loading.value = false
   }
@@ -569,11 +998,44 @@ const startStatusRefresh = () => {
       clearInterval(refreshInterval.value)
       refreshInterval.value = null
     }
-  }, 10000)
+  }, 5000)
+}
+
+const restoreBackup = async () => {
+  try {
+    await ElMessageBox.confirm(
+      'Czy na pewno chcesz przywrócić wybraną kopię zapasową? Ta operacja może nadpisać obecne dane.',
+      'Potwierdzenie przywracania',
+      {
+        confirmButtonText: 'Przywróć',
+        cancelButtonText: 'Anuluj',
+        type: 'warning',
+        confirmButtonClass: 'el-button--danger'
+      }
+    )
+    
+    isRestoring.value = true
+    await axios.post('/api/system/backup/restore', {
+      backup_id: selectedBackup.value,
+      restore_system_config: restoreSystemConfig.value,
+      verify_integrity: verifyIntegrity.value
+    })
+    
+    ElMessage.success('Rozpoczęto proces przywracania kopii')
+    
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error(error.response?.data?.message || 'Błąd podczas przywracania kopii')
+    }
+  } finally {
+    isRestoring.value = false
+  }
 }
 
 const downloadBackup = async (backupId) => {
   try {
+    downloadingId.value = backupId
+    
     const response = await axios({
       method: 'get',
       url: `/api/system/backup/download/${backupId}`,
@@ -603,126 +1065,49 @@ const downloadBackup = async (backupId) => {
       link.remove()
     }, 100)
 
-    $notify.addNotification({
-      title: t('backup.notification.download_started_title'),
-      message: t('backup.notification.download_started_message', { name: fileName }),
-      type: 'info',
-      icon: 'mdi:download',
-      duration: 4000
-    })
+    ElMessage.success('Rozpoczęto pobieranie kopii')
     
-    ElMessage.success(t('backup.download_started'))
   } catch (error) {
-    let errorMsg = t('backup.download_error')
-    
-    if (error.response) {
-      if (error.response.status === 404) {
-        errorMsg = t('backup.not_found')
-      } else if (error.response.status === 423) {
-        errorMsg = t('backup.not_ready')
-      } else {
-        errorMsg = error.response.data?.error || error.response.statusText
-      }
+    if (error.response?.status === 404) {
+      ElMessage.error('Kopia nie została znaleziona')
+    } else if (error.response?.status === 423) {
+      ElMessage.warning('Kopia nie jest jeszcze gotowa do pobrania')
+    } else {
+      ElMessage.error('Błąd podczas pobierania kopii')
     }
-    
-    $notify.addNotification({
-      title: t('backup.notification.download_error_title'),
-      message: errorMsg,
-      type: 'error',
-      icon: 'mdi:download-off',
-      duration: 8000
-    })
-    
-    ElMessage.error(errorMsg)
+  } finally {
+    downloadingId.value = null
   }
 }
 
 const deleteBackup = async (backupId) => {
   try {
     await ElMessageBox.confirm(
-      t('backup.delete_confirm'),
-      t('common.warning'),
-      { type: 'warning' }
+      'Czy na pewno chcesz usunąć tę kopię zapasową? Tej akcji nie można cofnąć.',
+      'Potwierdzenie usunięcia',
+      {
+        confirmButtonText: 'Usuń',
+        cancelButtonText: 'Anuluj',
+        type: 'error',
+        confirmButtonClass: 'el-button--danger'
+      }
     )
     
+    deletingId.value = backupId
     await axios.delete(`/api/system/backup/delete/${backupId}`)
     
-    $notify.addNotification({
-      title: t('backup.notification.deleted_title'),
-      message: t('backup.notification.deleted_message'),
-      type: 'success',
-      icon: 'mdi:delete-empty',
-      duration: 5000
-    })
-    
-    ElMessage.success(t('backup.delete_success'))
+    ElMessage.success('Kopia zapasowa została usunięta')
     fetchBackups()
     fetchAvailableBackups()
+    
   } catch (error) {
     if (error !== 'cancel') {
-      const errorMsg = error.response?.data?.message || t('backup.delete_error')
-      
-      $notify.addNotification({
-        title: t('backup.notification.delete_error_title'),
-        message: errorMsg,
-        type: 'error',
-        icon: 'mdi:delete-alert',
-        duration: 8000
-      })
-      
-      ElMessage.error(errorMsg)
+      ElMessage.error('Błąd podczas usuwania kopii')
     }
+  } finally {
+    deletingId.value = null
   }
 }
-
-const getStatusType = (status) => {
-  const types = {
-    completed: 'success',
-    failed: 'danger',
-    in_progress: 'warning',
-    queued: 'info'
-  }
-  return types[status] || ''
-}
-
-// Schedule Tab
-const scheduleForm = ref({
-  type: 'disabled',
-  dailyTime: '02:00',
-  weeklyDay: 'monday',
-  weeklyTime: '02:00',
-  monthlyDay: 1,
-  monthlyTime: '02:00',
-  retention: '30d'
-})
-
-const isSaving = ref(false)
-
-const scheduleTypes = [
-  { value: 'disabled', text: t('backup.schedule_types.disabled') },
-  { value: 'daily', text: t('backup.schedule_types.daily') },
-  { value: 'weekly', text: t('backup.schedule_types.weekly') },
-  { value: 'monthly', text: t('backup.schedule_types.monthly') }
-]
-
-const weekDays = [
-  { value: 'monday', text: t('weekdays.monday') },
-  { value: 'tuesday', text: t('weekdays.tuesday') },
-  { value: 'wednesday', text: t('weekdays.wednesday') },
-  { value: 'thursday', text: t('weekdays.thursday') },
-  { value: 'friday', text: t('weekdays.friday') },
-  { value: 'saturday', text: t('weekdays.saturday') },
-  { value: 'sunday', text: t('weekdays.sunday') }
-]
-
-const retentionOptions = [
-  { value: '7d', text: t('backup.retention_options.7d') },
-  { value: '14d', text: t('backup.retention_options.14d') },
-  { value: '30d', text: t('backup.retention_options.30d') },
-  { value: '90d', text: t('backup.retention_options.90d') },
-  { value: '1y', text: t('backup.retention_options.1y') },
-  { value: 'forever', text: t('backup.retention_options.forever') }
-]
 
 const loadSchedule = async () => {
   try {
@@ -739,17 +1124,7 @@ const loadSchedule = async () => {
       }
     }
   } catch (error) {
-    const errorMsg = error.response?.data?.message || t('backup.schedule_load_error')
-    
-    $notify.addNotification({
-      title: t('backup.notification.schedule_error_title'),
-      message: errorMsg,
-      type: 'error',
-      icon: 'mdi:calendar-alert',
-      duration: 6000
-    })
-    
-    ElMessage.error(errorMsg)
+    console.error('Error loading schedule:', error)
   }
 }
 
@@ -777,41 +1152,16 @@ const saveSchedule = async () => {
 
     await axios.post('/api/system/backup/schedule', payload)
     
-    $notify.addNotification({
-      title: t('backup.notification.schedule_saved_title'),
-      message: t('backup.notification.schedule_saved_message'),
-      type: 'success',
-      icon: 'mdi:calendar-check',
-      time: new Date(Date.now() - 1000 * 60 * 5),
-      read: false,
-      duration: 5000
-    })
+    ElMessage.success('Harmonogram został zapisany')
     
-    ElMessage.success(t('backup.schedule_saved'))
   } catch (error) {
-    const errorMsg = error.response?.data?.error || 
-                    error.response?.data?.message || 
-                    t('backup.schedule_save_error')
-    
-    $notify.addNotification({
-      id: 1,
-      title: t('backup.notification.schedule_error_title'),
-      message: errorMsg,
-      type: 'error',
-      icon: 'mdi:calendar-alert',
-      duration: 8000
-    })
-
-    ElMessage.error(errorMsg)
+    ElMessage.error(error.response?.data?.message || 'Błąd podczas zapisywania harmonogramu')
   } finally {
     isSaving.value = false
   }
 }
 
-// Active tab
-const activeTab = ref('create')
-
-// Initialize data
+// Lifecycle
 onMounted(() => {
   fetchAvailableBackups()
   fetchBackups()
@@ -819,11 +1169,6 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  // Wyczyść wszystkie interwały śledzenia kopii
-  Object.values(backupIntervals.value).forEach(interval => {
-    clearInterval(interval)
-  })
-  
   if (refreshInterval.value) {
     clearInterval(refreshInterval.value)
   }
@@ -831,92 +1176,749 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.backup-container {
+.backup-dashboard {
   padding: 20px;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+.dashboard-header {
+  background: white;
+  border-radius: 16px;
+  margin-bottom: 24px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 20px 24px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.header-icon {
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border-radius: 16px;
+  color: white;
+  font-size: 32px;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.header-text h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.subtitle {
+  margin: 8px 0 0;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.header-actions .el-button-group {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.header-actions .el-button {
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.backup-content {
+  margin-bottom: 24px;
+}
+
+.tab-card {
+  background: white;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  transition: transform 0.2s ease;
+}
+
+.tab-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 25px rgba(0, 0, 0, 0.12);
 }
 
 .card-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.card-header h2 {
+  margin: 0;
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-weight: 500;
+  gap: 12px;
+  font-size: 20px;
+  color: #1e293b;
+  font-weight: 600;
 }
 
-.backup-tabs {
-  margin-top: 20px;
-}
-
-.pagination {
-  margin-top: 20px;
+.card-header-actions {
   display: flex;
-  justify-content: flex-end;
+  gap: 12px;
+  align-items: center;
 }
 
-.el-form-item {
-  margin-bottom: 18px;
+.loading-spinner {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 80px 0;
+  min-height: 300px;
 }
 
-.el-tag {
-  margin-right: 5px;
+.loading-spinner p {
+  margin-top: 16px;
+  color: #64748b;
 }
 
-.el-progress {
+.empty-state {
+  padding: 80px 0;
+  min-height: 300px;
+}
+
+/* Form Styles */
+.backup-form,
+.restore-form,
+.schedule-form {
+  padding: 24px;
+}
+
+.form-section {
+  margin-bottom: 32px;
+  padding: 24px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.section-title {
+  margin: 0 0 20px 0;
+  font-size: 18px;
+  color: #1e293b;
+  font-weight: 600;
+}
+
+.input-description {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.custom-input,
+.custom-select,
+.custom-time-picker,
+.custom-number-input {
+  width: 100%;
+  max-width: 400px;
+}
+
+/* Items Grid */
+.items-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
   width: 100%;
 }
 
-.result-content {
-  line-height: 1.6;
+.item-card {
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  background: white;
 }
 
-.success-message {
-  color: var(--el-color-success);
+.item-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+}
+
+.item-card.selected {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.item-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+}
+
+.item-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  color: white;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.item-info {
+  flex: 1;
+}
+
+.item-info h4 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.item-size {
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.item-checkbox {
+  flex-shrink: 0;
+}
+
+/* Backup Option */
+.backup-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 8px 0;
+}
+
+.backup-info {
+  flex: 1;
+}
+
+.backup-name {
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.backup-details {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.backup-date,
+.backup-size {
+  display: inline-block;
+}
+
+.backup-status {
+  flex-shrink: 0;
+}
+
+/* Selected Backup Info */
+.selected-backup-info {
+  margin-top: 20px;
+}
+
+.backup-detail h4 {
+  margin: 0 0 16px;
+  font-size: 16px;
+  color: #1e293b;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.detail-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.detail-item:last-child {
+  border-bottom: none;
+}
+
+.detail-label {
+  font-weight: 500;
+  color: #475569;
+}
+
+.detail-value {
+  color: #1e293b;
+}
+
+/* Backups List */
+.backups-list {
+  padding: 8px 0;
+}
+
+.backup-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px;
+  border-bottom: 1px solid #f1f5f9;
+  transition: all 0.3s ease;
+}
+
+.backup-item:hover {
+  background-color: #f8fafc;
+}
+
+.backup-item:last-child {
+  border-bottom: none;
+}
+
+.backup-icon {
+  flex-shrink: 0;
+}
+
+.backup-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.backup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.backup-header h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.backup-meta {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.backup-type {
+  font-size: 12px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.backup-details {
+  display: flex;
+  gap: 16px;
+  margin: 0;
+  color: #475569;
+  font-size: 14px;
+}
+
+.backup-date,
+.backup-size {
+  display: inline-block;
+}
+
+.backup-progress {
   margin-top: 12px;
+  max-width: 300px;
 }
 
-.warning-message {
-  color: var(--el-color-warning);
+.backup-actions {
+  flex-shrink: 0;
+  display: flex;
+  gap: 8px;
+}
+
+/* Schedule Details */
+.schedule-details {
+  margin-top: 20px;
+}
+
+.next-backup-card {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border: 1px solid #bae6fd;
+}
+
+.next-backup-info {
   display: flex;
   align-items: center;
+  gap: 20px;
+  padding: 20px;
+}
+
+.next-backup-icon {
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  border-radius: 12px;
+  color: white;
+  font-size: 28px;
+}
+
+.next-backup-details h4 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  color: #1e293b;
+}
+
+.next-backup-time {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #3b82f6;
+}
+
+.next-backup-description {
+  margin: 0;
+  color: #64748b;
+  font-size: 14px;
+}
+
+/* Form Actions */
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 24px 24px 0;
+  border-top: 1px solid #f1f5f9;
+}
+
+.create-button,
+.restore-button,
+.save-button {
+  padding: 12px 32px;
+  border-radius: 10px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
   gap: 8px;
-  margin-top: 8px;
 }
 
-.result-content {
-  line-height: 1.8;
+.create-button {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border: none;
 }
 
-.result-content strong {
-  color: var(--el-color-primary);
+.restore-button {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  border: none;
 }
 
-.result-content code {
-  background: var(--el-fill-color-light);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: monospace;
+.save-button {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  border: none;
 }
 
-.info-text {
-  color: var(--el-text-color-secondary);
-  font-size: 0.9em;
-  margin-top: 10px;
+.create-button:hover {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
 }
 
-.result-content {
-  line-height: 1.8;
+.restore-button:hover {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
 }
 
-.result-content strong {
-  color: var(--el-color-primary);
+.save-button:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
 }
 
-.result-content code {
-  background: var(--el-fill-color-light);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: monospace;
+/* Stats Card */
+.stats-card {
+  background: white;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  margin-top: 20px;
+}
+
+.stats-content {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 24px;
+  padding: 24px;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.stat-icon {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  font-size: 28px;
+  color: white;
+  flex-shrink: 0;
+}
+
+.stat-total {
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+}
+
+.stat-completed {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
+.stat-in-progress {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
+.stat-failed {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+}
+
+.stat-size {
+  background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+}
+
+.stat-info h3 {
+  margin: 0 0 4px;
+  font-size: 28px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.stat-info p {
+  margin: 0;
+  color: #64748b;
+  font-size: 14px;
+}
+
+/* Switch Container */
+.switch-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.switch-label {
+  font-weight: 500;
+  color: #475569;
+}
+
+.custom-switch {
+  :deep(.el-switch__core) {
+    background-color: #cbd5e1 !important;
+    border-color: #cbd5e1 !important;
+  }
+  
+  :deep(.el-switch.is-checked .el-switch__core) {
+    background-color: #3b82f6 !important;
+    border-color: #3b82f6 !important;
+  }
+}
+
+/* Pagination */
+.pagination-section {
+  margin-top: 24px;
+  padding: 20px 24px 0;
+  border-top: 1px solid #f1f5f9;
+}
+
+/* Filter Select */
+.filter-select {
+  width: 200px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .dashboard-header {
+    padding: 16px;
+  }
+  
+  .header-content {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .header-actions {
+    width: 100%;
+    overflow-x: auto;
+  }
+  
+  .header-actions .el-button-group {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 8px;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .card-header-actions {
+    width: 100%;
+  }
+  
+  .card-header-actions .filter-select {
+    width: 100%;
+  }
+  
+  .items-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .backup-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .backup-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .backup-actions {
+    align-self: flex-end;
+  }
+  
+  .stats-content {
+    grid-template-columns: 1fr;
+  }
+  
+  .next-backup-info {
+    flex-direction: column;
+    text-align: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .header-left {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .backup-item {
+    padding: 16px;
+  }
+  
+  .backup-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
+/* Button styling */
+:deep(.el-button) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+/* Input styling */
+:deep(.el-input__inner) {
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  transition: all 0.3s ease;
+}
+
+:deep(.el-input__inner:hover),
+:deep(.el-input__inner:focus) {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Select styling */
+:deep(.el-select .el-input__inner) {
+  height: 40px;
+}
+
+/* Progress bar styling */
+:deep(.el-progress-bar__inner) {
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+}
+
+/* Tag styling */
+:deep(.el-tag) {
+  font-weight: 500;
+}
+
+/* Card hover effects */
+.tab-card:hover,
+.stats-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  transition: all 0.3s ease;
+}
+
+/* Loading states */
+.backup-item:has(:deep(.el-button.is-loading)) {
+  opacity: 0.7;
+}
+
+/* Animation for in-progress backups */
+@keyframes pulse {
+  0% {
+    background-color: rgba(245, 158, 11, 0.05);
+  }
+  50% {
+    background-color: rgba(245, 158, 11, 0.1);
+  }
+  100% {
+    background-color: rgba(245, 158, 11, 0.05);
+  }
+}
+
+.backup-item:has(.backup-progress) {
+  animation: pulse 2s infinite;
 }
 </style>

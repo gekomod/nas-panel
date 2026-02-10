@@ -11,6 +11,9 @@ import lodash from 'lodash'
 import { NotificationPlugin } from './services/NotificationService'
 import serverService from '@/services/ServerService'
 
+import SessionDetectionOverlay from '@/components/system/Detections/SessionDetectionOverlay.vue'
+import ConnectionStatusBar from '@/components/system/Detections/ConnectionStatusBar.vue'
+
 const env = {
   NODE_ENV: import.meta.env.MODE || 'development',
   VUE_APP_VERSION: import.meta.env.VUE_APP_VERSION || 'unknown'
@@ -113,6 +116,9 @@ async function initializeApp() {
     
     // Usunięto compilerOptions które mogły powodować problemy
     delete app.config.compilerOptions
+    
+    app.component('SessionDetectionOverlay', SessionDetectionOverlay)
+    app.component('ConnectionStatusBar', ConnectionStatusBar)
     
     await profilePerformance('i18n setup', () => {
       app.use(i18n)

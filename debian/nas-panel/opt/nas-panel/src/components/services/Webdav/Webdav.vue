@@ -1,398 +1,404 @@
 <template>
-  <div class="webdav-container">
-    <!-- Główna karta statusu -->
-    <el-card shadow="hover" class="status-card">
-      <template #header>
-        <div class="card-header">
-          <el-icon size="24" class="webdav-icon">
-            <Icon icon="mdi:web" />
-          </el-icon>
-          <span>{{ $t('webdav.service') }}</span>
-        </div>
-      </template>
-
-      <div v-if="loading" class="loading-spinner">
-        <el-icon :size="32" class="is-loading">
-          <Icon icon="mdi:loading" />
-        </el-icon>
-      </div>
-
-      <div v-else class="status-content">
-        <!-- Informacje o statusie -->
-        <el-descriptions :column="1" border>
-          <el-descriptions-item :label="$t('webdav.status')">
-            <el-tag :type="statusClass">
-              <el-icon :size="16">
-                <Icon :icon="statusIcon" />
-              </el-icon>
-              {{ statusText }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item :label="$t('webdav.version')">
-            {{ status.version || $t('webdav.unknown') }}
-          </el-descriptions-item>
-          <el-descriptions-item :label="$t('webdav.port')">
-            {{ config.port }}
-          </el-descriptions-item>
-          <el-descriptions-item :label="$t('webdav.protocol')">
-            {{ config.protocol.toUpperCase() }}
-          </el-descriptions-item>
-        </el-descriptions>
-
-        <!-- Przyciski akcji -->
-        <div class="action-buttons">
-          <el-button 
-            v-if="!serviceStatus"
-            type="success"
-            @click="toggleService"
-            :loading="serviceLoading"
-            plain
-            round
-          >
-            <template #icon>
-              <el-icon>
-                <Icon icon="mdi:play" />
-              </el-icon>
-            </template>
-            {{ $t('webdav.start_service') }}
-          </el-button>
-          <el-button 
-            v-else
-            type="danger"
-            @click="toggleService"
-            :loading="serviceLoading"
-            plain
-            round
-          >
-            <template #icon>
-              <el-icon>
-                <Icon icon="mdi:stop" />
-              </el-icon>
-            </template>
-            {{ $t('webdav.stop_service') }}
-          </el-button>
-          <el-button
-            type="warning"
-            @click="restartService"
-            :loading="serviceLoading"
-            plain
-            round
-          >
-            <template #icon>
-              <el-icon>
-                <Icon icon="mdi:restart" />
-              </el-icon>
-            </template>
-            {{ $t('webdav.restart_service') }}
-          </el-button>
-        </div>
-      </div>
-    </el-card>
-
-    <!-- Karty konfiguracyjne -->
-    <el-tabs v-model="activeTab" class="config-tabs">
-      <el-tab-pane :label="$t('webdav.basic_config')" name="basic">
-        <el-card shadow="hover" class="config-card">
-          <div class="config-section">
-            <el-switch
-              v-model="config.enabled"
-              :active-text="$t('webdav.enable_service')"
-              inline-prompt
-              active-color="#13ce66"
-            />
-          </div>
-
-          <div class="config-section">
-            <el-form label-position="top">
-              <el-form-item :label="$t('webdav.port')">
-                <el-input-number 
-                  v-model="config.port"
-                  :min="1"
-                  :max="65535"
-                  controls-position="right"
-                />
-              </el-form-item>
-
-              <el-form-item :label="$t('webdav.protocol')">
-                <el-radio-group v-model="config.protocol">
-                  <el-radio-button value="http">HTTP</el-radio-button>
-                  <el-radio-button value="https">HTTPS</el-radio-button>
-                </el-radio-group>
-              </el-form-item>
-            </el-form>
-          </div>
-        </el-card>
-      </el-tab-pane>
-
-      <el-tab-pane :label="$t('webdav.disk_selection')" name="disks">
-        <el-card shadow="hover" class="config-card">
-          <!-- Lista udostępnionych zasobów -->
-      <div class="shared-resources">
-        <h3>{{ $t('webdav.shared_resources') }}</h3>
-        <el-table 
-          :data="sharedResources" 
-          style="width: 100%"
-          :empty-text="$t('webdav.no_shared_resources')"
-          v-loading="loading"
-          :header-cell-style="{ backgroundColor: '#f5f7fa' }"
-        >
-          <el-table-column 
-            prop="path" 
-            :label="$t('webdav.path')" 
-            min-width="300"
-          />
-          <el-table-column 
-            :label="$t('webdav.alias')" 
-            min-width="250"
-          >
-            <template #default="scope">
-              <el-input 
-                v-model="scope.row.alias" 
-                @change="updateShare(scope.row)"
-                :placeholder="generateDefaultAlias(scope.row)"
-              />
-            </template>
-          </el-table-column>
-          <el-table-column 
-            :label="$t('webdav.permissions')" 
-            width="150"
-          >
-            <template #default="scope">
-              <el-select 
-                v-model="scope.row.read_only" 
-                @change="updateShare(scope.row)"
-              >
-                <el-option :value="false" :label="$t('webdav.read_write')" />
-                <el-option :value="true" :label="$t('webdav.read_only')" />
-              </el-select>
-            </template>
-          </el-table-column>
-          <el-table-column 
-            :label="$t('webdav.actions')" 
-            width="120"
-            align="right"
-          >
-            <template #default="scope">
-              <el-button 
-                type="danger" 
-                size="small" 
-                @click="removeShare(scope.row)"
-                circle
-              >
-                <Icon icon="mdi:delete" />
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
-
-          <!-- Lista dostępnych dysków -->
-    <div class="available-disks">
-      <h3>{{ $t('webdav.available_disks') }}</h3>
-      <el-table 
-        :data="availableDisks" 
-        style="width: 100%"
-        v-loading="loading"
-        :header-cell-style="{ backgroundColor: '#f5f7fa' }"
-      >
-        <el-table-column 
-          prop="name" 
-          :label="$t('webdav.disk_name')" 
-          min-width="200"
-        />
-        <el-table-column 
-          prop="path" 
-          :label="$t('webdav.mount_point')" 
-          min-width="300"
-        />
-        <el-table-column 
-          prop="size" 
-          :label="$t('webdav.size')" 
-          width="150"
-        />
-        <el-table-column 
-          prop="fsType" 
-          :label="$t('webdav.fs_type')" 
-          width="150"
-        />
-        <el-table-column 
-          :label="$t('webdav.actions')" 
-          width="120"
-          align="right"
-        >
-          <template #default="scope">
-            <el-tooltip :content="$t('webdav.add_share')" placement="top">
-              <el-button 
-                type="primary" 
-                size="small" 
-                @click="openDirectoryBrowser(scope.row)"
-                circle
-              >
-                <Icon icon="mdi:folder-plus" />
-              </el-button>
-            </el-tooltip>
-          </template>
-        </el-table-column>
-      </el-table>
-    </div>
-        </el-card>
-      </el-tab-pane>
-
-      <el-tab-pane :label="$t('webdav.nfs_settings')" name="nfs">
-        <el-card shadow="hover" class="config-card">
-          <div class="nfs-settings">
-            <el-switch
-              v-model="config.nfs.enabled"
-              :active-text="$t('webdav.nfs_enabled')"
-              inline-prompt
-              active-color="#13ce66"
-            />
-            
-            <div v-if="config.nfs.enabled" class="nfs-versions">
-              <h4>{{ $t('webdav.nfs_versions') }}</h4>
-              <el-checkbox-group v-model="selectedNfsVersions">
-                <el-checkbox value="v2">{{ $t('webdav.nfs_v2') }}</el-checkbox>
-                <el-checkbox value="v3">{{ $t('webdav.nfs_v3') }}</el-checkbox>
-                <el-checkbox value="v4">{{ $t('webdav.nfs_v4') }}</el-checkbox>
-                <el-checkbox value="v4_1">{{ $t('webdav.nfs_v4_1') }}</el-checkbox>
-                <el-checkbox value="v4_2">{{ $t('webdav.nfs_v4_2') }}</el-checkbox>
-              </el-checkbox-group>
+  <div class="webdav-modern">
+    <!-- Główny panel statusu -->
+    <div class="dashboard-header">
+      <el-card shadow="never" class="status-panel">
+        <div class="panel-header">
+          <div class="header-left">
+            <el-icon size="28" class="service-icon">
+              <Icon icon="mdi:cloud-sync" />
+            </el-icon>
+            <div class="header-info">
+              <h2>{{ $t('webdav.service') }}</h2>
+              <div class="header-subtitle">
+                <el-tag :type="statusClass" size="small" class="status-badge">
+                  <el-icon :size="12">
+                    <Icon :icon="statusIcon" />
+                  </el-icon>
+                  {{ statusText }}
+                </el-tag>
+                <span class="version-info" v-if="status.version">
+                  v{{ status.version }}
+                </span>
+              </div>
             </div>
           </div>
-        </el-card>
-      </el-tab-pane>
-
-      <el-tab-pane :label="$t('webdav.advanced_settings')" name="advanced">
-        <el-card shadow="hover" class="config-card">
-          <div class="advanced-settings">
-            <el-form label-position="top">
-              <el-form-item :label="$t('webdav.allow_anonymous')">
-                <el-switch
-                  v-model="config.allowAnonymous"
-                  inline-prompt
-                  :active-text="$t('webdav.yes')"
-                  :inactive-text="$t('webdav.no')"
-                />
-              </el-form-item>
-
-              <el-form-item :label="$t('webdav.read_only')">
-                <el-switch
-                  v-model="config.readOnly"
-                  inline-prompt
-                  :active-text="$t('webdav.yes')"
-                  :inactive-text="$t('webdav.no')"
-                />
-              </el-form-item>
-
-              <el-form-item :label="$t('webdav.max_connections')">
-                <el-input-number 
-                  v-model="config.maxConnections"
-                  :min="1"
-                  controls-position="right"
-                />
-              </el-form-item>
-            </el-form>
+          
+          <div class="service-controls">
+            <el-button-group>
+              <el-button
+                v-if="!serviceStatus"
+                type="success"
+                @click="toggleService"
+                :loading="serviceLoading"
+                :class="{ 'pulse-animation': !serviceStatus }"
+              >
+                <el-icon><Icon icon="mdi:play" /></el-icon>
+                {{ $t('webdav.start_service') }}
+              </el-button>
+              <el-button
+                v-else
+                type="danger"
+                @click="toggleService"
+                :loading="serviceLoading"
+              >
+                <el-icon><Icon icon="mdi:stop" /></el-icon>
+                {{ $t('webdav.stop_service') }}
+              </el-button>
+              <el-button
+                type="warning"
+                @click="restartService"
+                :loading="serviceLoading"
+                :disabled="!serviceStatus"
+              >
+                <el-icon><Icon icon="mdi:restart" /></el-icon>
+                {{ $t('webdav.restart_service') }}
+              </el-button>
+            </el-button-group>
           </div>
-        </el-card>
-      </el-tab-pane>
-    </el-tabs>
+        </div>
 
-    <!-- Przyciski akcji konfiguracji -->
-    <div class="config-actions">
-      <el-button 
-        type="primary" 
+        <div v-if="loading" class="loading-container">
+          <el-icon class="is-loading" :size="28">
+            <Icon icon="mdi:loading" />
+          </el-icon>
+        </div>
+
+        <div v-else class="connection-details">
+          <div class="detail-grid">
+            <div class="detail-item">
+              <label>{{ $t('webdav.server_address') }}</label>
+              <div class="detail-value">
+                <el-tag size="large" class="address-tag">
+                  {{ serverAddress }}
+                </el-tag>
+              </div>
+            </div>
+            
+            <div class="detail-item">
+              <label>{{ $t('webdav.port') }}</label>
+              <div class="detail-value">
+                <el-tag>{{ config.port }}</el-tag>
+              </div>
+            </div>
+            
+            <div class="detail-item">
+              <label>{{ $t('webdav.protocol') }}</label>
+              <div class="detail-value">
+                <el-tag :type="config.protocol === 'https' ? 'success' : 'info'">
+                  {{ config.protocol.toUpperCase() }}
+                </el-tag>
+              </div>
+            </div>
+            
+            <div class="detail-item">
+              <label>{{ $t('webdav.connection_url') }}</label>
+              <div class="detail-value">
+                <el-tag 
+                  type="info" 
+                  size="large" 
+                  class="url-tag"
+                  @click="copyToClipboard(connectionUrl)"
+                >
+                  {{ connectionUrl }}
+                  <el-icon class="copy-btn">
+                    <Icon icon="mdi:content-copy" />
+                  </el-icon>
+                </el-tag>
+              </div>
+            </div>
+          </div>
+        </div>
+      </el-card>
+    </div>
+
+    <!-- Karty konfiguracyjne -->
+    <div class="config-section">
+      <el-tabs v-model="activeTab" type="border-card" class="compact-tabs">
+        <el-tab-pane :label="$t('webdav.basic_config')" name="basic">
+          <div class="tab-content">
+            <el-card shadow="never" class="compact-card">
+              <div class="config-group">
+                <label class="config-label">{{ $t('webdav.service_switch') }}</label>
+                <el-switch
+                  v-model="config.enabled"
+                  :active-text="$t('webdav.enabled')"
+                  :inactive-text="$t('webdav.disabled')"
+                  inline-prompt
+                  active-color="#13ce66"
+                  inactive-color="#ff4949"
+                />
+              </div>
+
+              <el-divider />
+
+              <div class="config-row">
+                <div class="config-item">
+                  <label class="config-label">{{ $t('webdav.port') }}</label>
+                  <el-input-number
+                    v-model="config.port"
+                    :min="1"
+                    :max="65535"
+                    controls-position="right"
+                    class="compact-input"
+                  />
+                </div>
+
+                <div class="config-item">
+                  <label class="config-label">{{ $t('webdav.protocol') }}</label>
+                  <el-radio-group v-model="config.protocol" class="compact-radio">
+                    <el-radio-button value="http">HTTP</el-radio-button>
+                    <el-radio-button value="https">HTTPS</el-radio-button>
+                  </el-radio-group>
+                </div>
+              </div>
+            </el-card>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane :label="$t('webdav.disk_selection')" name="disks">
+          <div class="tab-content">
+            <!-- Udostępnione zasoby -->
+            <el-card shadow="never" class="compact-card">
+              <div class="section-header">
+                <el-icon size="20"><Icon icon="mdi:folder-shared" /></el-icon>
+                <h3>{{ $t('webdav.shared_resources') }}</h3>
+                <span class="badge-count">{{ sharedResources.length }}</span>
+              </div>
+
+              <div v-if="sharedResources.length === 0" class="empty-state">
+                <el-icon size="48"><Icon icon="mdi:folder-off-outline" /></el-icon>
+                <p>{{ $t('webdav.no_shared_resources') }}</p>
+              </div>
+
+              <div v-else class="shares-list">
+                <div v-for="share in sharedResources" :key="share.path" class="share-item">
+                  <div class="share-info">
+                    <el-icon class="share-icon"><Icon icon="mdi:folder" /></el-icon>
+                    <div class="share-details">
+                      <div class="share-path">{{ share.path }}</div>
+                      <div class="share-alias">
+                        <el-input
+                          v-model="share.alias"
+                          size="small"
+                          :placeholder="generateDefaultAlias(share)"
+                          @change="updateShare(share)"
+                          class="alias-input"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div class="share-actions">
+                    <el-select
+                      v-model="share.read_only"
+                      @change="updateShare(share)"
+                      size="small"
+                      class="permission-select"
+                    >
+                      <el-option :value="false" :label="$t('webdav.read_write')" />
+                      <el-option :value="true" :label="$t('webdav.read_only')" />
+                    </el-select>
+                    
+                    <el-button
+                      type="danger"
+                      size="small"
+                      :icon="Icon"
+                      @click="removeShare(share)"
+                      circle
+                      plain
+                    >
+                      <Icon icon="mdi:delete-outline" />
+                    </el-button>
+                  </div>
+                </div>
+              </div>
+            </el-card>
+
+            <!-- Dostępne dyski -->
+            <el-card shadow="never" class="compact-card">
+              <div class="section-header">
+                <el-icon size="20"><Icon icon="mdi:harddisk" /></el-icon>
+                <h3>{{ $t('webdav.available_disks') }}</h3>
+              </div>
+
+              <div class="disks-grid">
+                <el-card
+                  v-for="disk in availableDisks"
+                  :key="disk.path"
+                  shadow="hover"
+                  class="disk-card"
+                >
+                  <div class="disk-content">
+                    <div class="disk-header">
+                      <el-icon size="24" class="disk-icon">
+                        <Icon icon="mdi:harddisk" />
+                      </el-icon>
+                      <div class="disk-info">
+                        <h4>{{ disk.name }}</h4>
+                        <div class="disk-meta">
+                          <el-tag size="small" type="info">{{ disk.fsType }}</el-tag>
+                          <span class="disk-size">{{ disk.size }}</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div class="disk-path">
+                      <el-icon><Icon icon="mdi:folder" /></el-icon>
+                      <span>{{ disk.path }}</span>
+                    </div>
+                    
+                    <el-button
+                      type="primary"
+                      size="small"
+                      @click="openDirectoryBrowser(disk)"
+                      class="add-share-btn"
+                    >
+                      <el-icon><Icon icon="mdi:folder-plus" /></el-icon>
+                      {{ $t('webdav.add_share') }}
+                    </el-button>
+                  </div>
+                </el-card>
+              </div>
+            </el-card>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane :label="$t('webdav.advanced_settings')" name="advanced">
+          <div class="tab-content">
+            <el-card shadow="never" class="compact-card">
+              <div class="advanced-grid">
+                <div class="advanced-item">
+                  <label class="config-label">{{ $t('webdav.allow_anonymous') }}</label>
+                  <el-switch
+                    v-model="config.allowAnonymous"
+                    inline-prompt
+                    :active-text="$t('webdav.yes')"
+                    :inactive-text="$t('webdav.no')"
+                  />
+                </div>
+
+                <div class="advanced-item">
+                  <label class="config-label">{{ $t('webdav.read_only') }}</label>
+                  <el-switch
+                    v-model="config.readOnly"
+                    inline-prompt
+                    :active-text="$t('webdav.yes')"
+                    :inactive-text="$t('webdav.no')"
+                  />
+                </div>
+
+                <div class="advanced-item">
+                  <label class="config-label">{{ $t('webdav.max_connections') }}</label>
+                  <el-input-number
+                    v-model="config.maxConnections"
+                    :min="1"
+                    :max="1000"
+                    controls-position="right"
+                    class="compact-input"
+                  />
+                </div>
+
+                <div class="advanced-item">
+                  <label class="config-label">{{ $t('webdav.nfs_enabled') }}</label>
+                  <el-switch
+                    v-model="config.nfs.enabled"
+                    inline-prompt
+                    active-color="#13ce66"
+                  />
+                  
+                  <div v-if="config.nfs.enabled" class="nfs-options">
+                    <label class="sub-label">{{ $t('webdav.nfs_versions') }}</label>
+                    <el-select
+                      v-model="selectedNfsVersions"
+                      multiple
+                      collapse-tags
+                      collapse-tags-tooltip
+                      class="nfs-select"
+                    >
+                      <el-option value="v2" label="NFS v2" />
+                      <el-option value="v3" label="NFS v3" />
+                      <el-option value="v4" label="NFS v4" />
+                      <el-option value="v4_1" label="NFS v4.1" />
+                      <el-option value="v4_2" label="NFS v4.2" />
+                    </el-select>
+                  </div>
+                </div>
+              </div>
+            </el-card>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+    </div>
+
+    <!-- Przyciski akcji -->
+    <div class="action-footer">
+      <el-button
+        type="primary"
         @click="saveConfig"
         :loading="saving"
-        round
+        size="large"
+        class="save-btn"
       >
-        <Icon icon="mdi:content-save" />
+        <el-icon><Icon icon="mdi:content-save-check" /></el-icon>
         {{ $t('webdav.save_config') }}
       </el-button>
-
-      <el-button 
+      
+      <el-button
         @click="resetConfig"
         :loading="resetting"
-        round
+        size="large"
       >
-        <Icon icon="mdi:backup-restore" />
+        <el-icon><Icon icon="mdi:restore" /></el-icon>
         {{ $t('webdav.reset') }}
       </el-button>
     </div>
 
-    <!-- Informacje o połączeniu -->
-    <el-card shadow="hover" class="connection-card">
-      <template #header>
-        <div class="card-header">
-          <Icon icon="mdi:connection" />
-          <span>{{ $t('webdav.connection_info') }}</span>
-        </div>
-      </template>
-
-      <div class="connection-info">
-        <el-descriptions :column="1">
-          <el-descriptions-item :label="$t('webdav.server_address')">
-            <el-tag>{{ serverAddress }}</el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item :label="$t('webdav.connection_url')">
-            <el-tag type="info">
-              {{ connectionUrl }}
-              <el-icon class="copy-icon" @click="copyToClipboard(connectionUrl)">
-                <Icon icon="mdi:content-copy" />
-              </el-icon>
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item v-if="sharedResources.length > 0" :label="$t('webdav.shared_urls')">
-            <div class="shared-urls">
-              <div v-for="share in sharedResources" :key="share.path" class="shared-url-item">
-                <el-tag>
-                  {{ `${connectionUrl}/${share.alias}` }}
-                  <el-icon class="copy-icon" @click="copyToClipboard(`${connectionUrl}/${share.alias}`)">
-                    <Icon icon="mdi:content-copy" />
-                  </el-icon>
-                </el-tag>
-                <span class="url-label">{{ share.path }}</span>
-              </div>
-            </div>
-          </el-descriptions-item>
-        </el-descriptions>
-      </div>
-    </el-card>
-  </div>
-  
-  <el-dialog 
-    v-model="directoryDialogVisible" 
-    :title="$t('webdav.select_directory')"
-    width="60%"
-  >
-    <el-tree
-      :data="directoryTree"
-      :props="treeProps"
-      :load="loadDirectories"
-      lazy
-      show-checkbox
-      node-key="path"
-      @check="handleDirectorySelect"
+    <!-- Modal wyboru katalogów -->
+    <el-dialog
+      v-model="directoryDialogVisible"
+      :title="$t('webdav.select_directory')"
+      width="500px"
+      class="directory-modal"
     >
-      <template #default="{ node, data }">
-        <span class="custom-tree-node">
-          <Icon :icon="node.isLeaf ? 'mdi:folder-outline' : 'mdi:folder-open-outline'" />
-          <span style="margin-left: 6px">{{ node.label }}</span>
+      <el-tree
+        ref="directoryTreeRef"
+        :data="directoryTree"
+        :props="treeProps"
+        :load="loadDirectories"
+        lazy
+        show-checkbox
+        node-key="path"
+        highlight-current
+        @check="handleDirectorySelect"
+        class="directory-tree"
+      >
+        <template #default="{ node, data }">
+          <span class="tree-node">
+            <el-icon :class="['node-icon', { 'is-leaf': node.isLeaf }]">
+              <Icon :icon="node.isLeaf ? 'mdi:folder-outline' : 'mdi:folder-open-outline'" />
+            </el-icon>
+            <span class="node-label">{{ node.label }}</span>
+          </span>
+        </template>
+      </el-tree>
+      
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="directoryDialogVisible = false">
+            {{ $t('webdav.cancel') }}
+          </el-button>
+          <el-button
+            type="primary"
+            @click="confirmDirectorySelection"
+            :disabled="selectedDirectories.length === 0"
+          >
+            {{ $t('webdav.add_selected') }} ({{ selectedDirectories.length }})
+          </el-button>
         </span>
       </template>
-    </el-tree>
-    
-    <template #footer>
-      <el-button @click="directoryDialogVisible = false">
-        {{ $t('webdav.cancel') }}
-      </el-button>
-      <el-button 
-        type="primary" 
-        @click="confirmDirectorySelection"
-      >
-        {{ $t('webdav.confirm') }}
-      </el-button>
-    </template>
-  </el-dialog>
+    </el-dialog>
+  </div>
 </template>
 
 <script setup>
@@ -428,11 +434,11 @@ const directoryDialogVisible = ref(false)
 const directoryTree = ref([])
 const currentDisk = ref(null)
 const selectedDirectories = ref([])
+const directoryTreeRef = ref(null)
 const treeProps = ref({
   label: 'name',
   children: 'children',
-  isLeaf: 'isLeaf',
-  disabled: 'disabled'
+  isLeaf: 'isLeaf'
 })
 
 const status = ref({
@@ -486,7 +492,7 @@ const copyToClipboard = (text) => {
   ElMessage.success(t('webdav.copied_to_clipboard'))
 }
 
-// Funkcje zarządzania usługą
+// Funkcje zarządzania usługą (niezmienione, bo działają poprawnie)
 const toggleService = async () => {
   try {
     serviceLoading.value = true
@@ -537,7 +543,7 @@ const saveConfig = async () => {
     saving.value = true
     
     // Walidacja aliasów
-    const aliases = config.value.shares.map(share => share.alias)
+    const aliases = config.value.shares?.map(share => share.alias) || []
     const uniqueAliases = new Set(aliases)
     if (aliases.length !== uniqueAliases.size) {
       throw new Error(t('webdav.alias_must_be_unique'))
@@ -604,7 +610,7 @@ const fetchStatus = async () => {
   }
 }
 
-const fetchConfig = async (forceDefault = false) => {
+const fetchConfig = async () => {
   try {
     loading.value = true
     const response = await axios.get('/services/webdav/config')
@@ -630,13 +636,20 @@ const fetchAvailableDisks = async () => {
     const response = await axios.get('/services/webdav/available-disks')
     
     if (response.data.success) {
-      availableDisks.value = response.data.data.map(disk => ({
+      // Użyj odpowiedniego pola w zależności od struktury odpowiedzi
+      const devices = response.data.data.allAvailable || 
+                     response.data.data.mountedDevices || 
+                     response.data.data;
+      
+      availableDisks.value = devices.map(disk => ({
         name: disk.name,
-        path: disk.mountpoint,
+        path: disk.mountpoint || disk.path, // Dostosuj do odpowiedzi
         size: formatSize(disk.size),
         fsType: disk.fstype || 'unknown',
         model: disk.model,
-        isSystem: disk.isSystem
+        label: disk.label,
+        isSystem: disk.isSystem || false,
+        device: disk.device
       }))
       
       updateSharedResourcesList()
@@ -738,7 +751,7 @@ const removeShare = (resource) => {
 const openDirectoryBrowser = (disk) => {
   currentDisk.value = disk
   directoryTree.value = [{
-    name: disk.path,
+    name: disk.name,
     path: disk.path,
     isLeaf: false,
     children: []
@@ -750,7 +763,7 @@ const openDirectoryBrowser = (disk) => {
 const loadDirectories = async (node, resolve) => {
   if (node.level === 0) {
     return resolve([{ 
-      name: currentDisk.value.path, 
+      name: currentDisk.value.name, 
       path: currentDisk.value.path,
       isLeaf: false 
     }])
@@ -799,6 +812,11 @@ const confirmDirectorySelection = () => {
     updateSharedResourcesList()
     directoryDialogVisible.value = false
     ElMessage.success(t('webdav.directories_added'))
+    
+    // Resetuj zaznaczenie w drzewie
+    if (directoryTreeRef.value) {
+      directoryTreeRef.value.setCheckedKeys([])
+    }
   } else {
     ElMessage.warning(t('webdav.no_directories_selected'))
   }
@@ -819,206 +837,709 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.webdav-container {
+.webdav-modern {
   padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+  font-family: 'Inter', -apple-system, sans-serif;
 }
 
-.status-card,
-.connection-card,
-.config-card {
-  border-radius: 12px;
+/* Dashboard header z gradientem */
+.dashboard-header {
+  margin-bottom: 24px;
+}
+
+.status-panel {
   border: none;
+  border-radius: 16px;
+  background: linear-gradient(135deg, var(--el-bg-color) 0%, color-mix(in srgb, var(--el-bg-color) 90%, var(--el-color-primary-light-9)) 100%);
+  border: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+  box-shadow: var(--el-box-shadow-light);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.card-header {
+/* Ciemny motyw dla panelu statusu */
+:global(.dark) .status-panel,
+:global(body.dark) .status-panel {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border-color: color-mix(in srgb, var(--el-border-color) 50%, #1e293b);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.status-panel:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--el-box-shadow-dark);
+}
+
+/* Nagłówek panelu */
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+}
+
+:global(.dark) .panel-header,
+:global(body.dark) .panel-header {
+  border-bottom-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+}
+
+.header-left {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-weight: 500;
-}
-
-.webdav-icon {
-  color: var(--el-color-primary);
-}
-
-.status-content {
-  display: flex;
-  flex-direction: column;
   gap: 16px;
 }
 
-.loading-spinner {
+/* Ikona usługi z gradientem */
+.service-icon {
+  width: 56px;
+  height: 56px;
   display: flex;
+  align-items: center;
   justify-content: center;
-  padding: 20px 0;
+  background: linear-gradient(135deg, var(--el-color-primary) 0%, var(--el-color-primary-dark-2) 100%);
+  border-radius: 12px;
+  color: white;
+  box-shadow: 0 4px 12px rgba(var(--el-color-primary-rgb), 0.3);
+  flex-shrink: 0;
 }
 
-.action-buttons {
+.header-info h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  line-height: 1.2;
+}
+
+.header-subtitle {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.status-badge {
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.version-info {
+  font-size: 0.875rem;
+  color: var(--el-text-color-secondary);
+  font-weight: 500;
+  padding: 3px 8px;
+  background: var(--el-fill-color-lighter);
+  border-radius: 6px;
+}
+
+/* Przyciski kontroli usługi */
+.service-controls .el-button-group {
+  display: flex;
   gap: 10px;
-  margin-top: 10px;
 }
 
-.config-tabs {
-  margin-top: 10px;
-}
-
-.config-section {
-  margin-bottom: 20px;
-}
-
-.config-section:last-child {
-  margin-bottom: 0;
-}
-
-.shared-resources {
-  margin-bottom: 30px;
-}
-
-.shared-resources h3,
-.available-disks h3 {
-  margin-bottom: 15px;
-  color: var(--el-color-primary);
-}
-
-.nfs-settings {
+.service-controls .el-button {
+  border-radius: 10px;
+  font-weight: 600;
+  padding: 10px 16px;
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid transparent;
+}
+
+.service-controls .el-button:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--el-box-shadow-light);
+}
+
+.service-controls .el-button:active {
+  transform: translateY(0);
+}
+
+/* Detale połączenia - nowy design */
+.connection-details {
+  padding: 8px 0;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 20px;
 }
 
-.nfs-versions {
-  margin-top: 15px;
+.detail-item {
+  background: var(--el-fill-color-light);
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+  transition: all 0.3s ease;
 }
 
-.nfs-versions h4 {
+:global(.dark) .detail-item,
+:global(body.dark) .detail-item {
+  border-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+}
+
+.detail-item:hover {
+  background: var(--el-fill-color);
+  transform: translateY(-1px);
+  box-shadow: var(--el-box-shadow-light);
+}
+
+.detail-item label {
+  display: block;
   margin-bottom: 10px;
+  font-size: 0.875rem;
+  color: var(--el-text-color-secondary);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.detail-value {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+}
+
+.address-tag {
+  font-size: 1.125rem;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-8) 100%);
+  border: 1px solid var(--el-color-primary-light-5);
+}
+
+.url-tag {
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: var(--el-fill-color-light);
+  border: 1px solid color-mix(in srgb, var(--el-border-color) 50%, transparent);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.url-tag:hover {
+  background: var(--el-fill-color);
+  transform: translateY(-1px);
+  box-shadow: var(--el-box-shadow-light);
+}
+
+.copy-btn {
+  margin-left: 8px;
+  opacity: 0.7;
+  transition: opacity 0.3s;
+}
+
+.url-tag:hover .copy-btn {
+  opacity: 1;
+}
+
+/* Karty konfiguracyjne - nowy design */
+.config-section {
+  margin-bottom: 24px;
+}
+
+.compact-tabs {
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+  background: var(--el-bg-color);
+}
+
+:global(.dark) .compact-tabs,
+:global(body.dark) .compact-tabs {
+  border-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+}
+
+/* Stylizacja zakładek */
+:deep(.compact-tabs .el-tabs__header) {
+  border-bottom: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+  margin-bottom: 0;
+}
+
+:global(.dark) :deep(.compact-tabs .el-tabs__header),
+:global(body.dark) :deep(.compact-tabs .el-tabs__header) {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border-bottom-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+}
+
+:deep(.compact-tabs .el-tabs__item) {
+  font-weight: 600;
+  color: var(--el-text-color-secondary);
+  padding: 0 24px;
+  height: 48px;
+  line-height: 48px;
+  transition: all 0.3s ease;
+}
+
+:deep(.compact-tabs .el-tabs__item.is-active) {
+  color: var(--el-color-primary);
+  background: var(--el-bg-color);
+  border-radius: 12px 12px 0 0;
+  position: relative;
+}
+
+:deep(.compact-tabs .el-tabs__item.is-active::after) {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--el-color-primary) 0%, var(--el-color-primary-light-3) 100%);
+  border-radius: 2px;
+}
+
+.tab-content {
+  padding: 24px;
+}
+
+/* Karty wewnątrz zakładek */
+.compact-card {
+  border: none;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  background: var(--el-fill-color-light);
+  border: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+:global(.dark) .compact-card,
+:global(body.dark) .compact-card {
+  background: #1e293b;
+  border-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+}
+
+.compact-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--el-box-shadow-light);
+}
+
+.compact-card:last-child {
+  margin-bottom: 0;
+}
+
+/* Nagłówki sekcji */
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+}
+
+:global(.dark) .section-header,
+:global(body.dark) .section-header {
+  border-bottom-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+}
+
+.section-header h3 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
   color: var(--el-text-color-primary);
 }
 
-.nfs-versions .el-checkbox-group {
+.badge-count {
+  background: linear-gradient(135deg, var(--el-color-primary) 0%, var(--el-color-primary-dark-2) 100%);
+  color: white;
+  font-size: 0.75rem;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-weight: 600;
+  min-width: 24px;
+  text-align: center;
+}
+
+/* Lista udostępnionych zasobów */
+.empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--el-text-color-secondary);
+  background: var(--el-fill-color-lighter);
+  border-radius: 12px;
+  border: 2px dashed color-mix(in srgb, var(--el-border-color) 50%, transparent);
+}
+
+:global(.dark) .empty-state,
+:global(body.dark) .empty-state {
+  border-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+}
+
+.empty-state .el-icon {
+  color: var(--el-color-info-light-5);
+  margin-bottom: 16px;
+}
+
+.empty-state p {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+/* Elementy udostępnione */
+.shares-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
-.config-actions {
+.share-item {
   display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 10px;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  background: var(--el-bg-color);
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+  transition: all 0.3s ease;
 }
 
-.connection-info {
-  padding: 10px;
+:global(.dark) .share-item,
+:global(body.dark) .share-item {
+  background: #1a202c;
+  border-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
 }
 
-.copy-icon {
-  margin-left: 8px;
-  cursor: pointer;
+.share-item:hover {
+  background: var(--el-fill-color-light);
+  transform: translateY(-1px);
+  box-shadow: var(--el-box-shadow-light);
 }
 
-.copy-icon:hover {
+.share-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+  min-width: 0;
+}
+
+.share-icon {
   color: var(--el-color-primary);
+  font-size: 24px;
+  flex-shrink: 0;
+  background: var(--el-color-primary-light-9);
+  padding: 8px;
+  border-radius: 8px;
 }
 
-.shared-urls {
+.share-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.share-path {
+  font-size: 0.875rem;
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+/* Karty dysków */
+.disks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.disk-card {
+  border: none;
+  border-radius: 12px;
+  transition: transform 0.3s, box-shadow 0.3s;
+  background: var(--el-bg-color);
+  border: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+}
+
+:global(.dark) .disk-card,
+:global(body.dark) .disk-card {
+  background: #1a202c;
+  border-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+}
+
+.disk-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(var(--el-color-primary-rgb), 0.15);
+}
+
+.disk-content {
+  padding: 20px;
+}
+
+.disk-header {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.disk-icon {
+  color: white;
+  background: linear-gradient(135deg, var(--el-color-primary) 0%, var(--el-color-primary-dark-2) 100%);
+  padding: 12px;
+  border-radius: 10px;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.disk-info h4 {
+  margin: 0 0 4px 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.disk-meta {
+  display: flex;
+  align-items: center;
   gap: 8px;
 }
 
-.shared-url-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.url-label {
-  color: var(--el-text-color-secondary);
-  font-size: 0.9em;
-}
-
-.custom-tree-node {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  font-size: 14px;
-  padding: 4px 0;
-}
-
-/* Styl dla ikon */
-.iconify {
-  width: 1em;
-  height: 1em;
-  vertical-align: -0.15em;
-}
-
-.shared-resources,
-.available-disks {
-  width: 100%;
-  overflow: hidden;
-}
-
-.shared-resources .el-table,
-.available-disks .el-table {
-  width: 100%;
-}
-
-.shared-resources .el-table::before,
-.available-disks .el-table::before {
-  display: none; /* Usuwa linię pod headerem */
-}
-
-.shared-resources .el-table th,
-.available-disks .el-table th {
-  background-color: #f5f7fa;
+.disk-meta .el-tag {
+  font-size: 11px;
   font-weight: 600;
+  padding: 2px 8px;
 }
 
-.shared-resources .el-table td, 
-.shared-resources .el-table th,
-.available-disks .el-table td, 
-.available-disks .el-table th {
-  padding: 12px 0;
+.disk-size {
+  font-size: 0.875rem;
+  color: var(--el-text-color-secondary);
+  font-weight: 500;
 }
 
-.shared-resources .el-table .cell,
-.available-disks .el-table .cell {
-  padding-left: 16px;
-  padding-right: 16px;
+.disk-path {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+  font-size: 0.875rem;
+  color: var(--el-text-color-secondary);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 8px 0;
+  border-bottom: 1px dashed color-mix(in srgb, var(--el-border-color) 30%, transparent);
 }
 
-/* Responsywność */
-@media (max-width: 1200px) {
-  .shared-resources .el-table,
-  .available-disks .el-table {
-    display: block;
-    overflow-x: auto;
+.add-share-btn {
+  width: 100%;
+  margin-top: 12px;
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(135deg, var(--el-color-primary) 0%, var(--el-color-primary-dark-2) 100%);
+  border: none;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.add-share-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(var(--el-color-primary-rgb), 0.3);
+}
+
+/* Ustawienia zaawansowane */
+.advanced-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.advanced-item {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  background: var(--el-bg-color);
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+  transition: all 0.3s ease;
+}
+
+:global(.dark) .advanced-item,
+:global(body.dark) .advanced-item {
+  background: #1a202c;
+  border-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+}
+
+.advanced-item:hover {
+  background: var(--el-fill-color-light);
+  transform: translateY(-1px);
+}
+
+.sub-label {
+  font-size: 0.875rem;
+  color: var(--el-text-color-secondary);
+  font-weight: 600;
+  margin-top: 8px;
+}
+
+/* Przyciski akcji */
+.action-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
+  padding: 24px 0;
+  border-top: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+  margin-top: 24px;
+}
+
+:global(.dark) .action-footer,
+:global(body.dark) .action-footer {
+  border-top-color: color-mix(in srgb, var(--el-border-color) 50%, #334155);
+}
+
+.action-footer .el-button {
+  border-radius: 12px;
+  padding: 12px 24px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid transparent;
+  min-width: 140px;
+  justify-content: center;
+}
+
+.save-btn {
+  background: linear-gradient(135deg, var(--el-color-primary) 0%, var(--el-color-primary-dark-2) 100%);
+  border: none;
+  color: white;
+}
+
+.save-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(var(--el-color-primary-rgb), 0.3);
+}
+
+.action-footer .el-button:not(.save-btn):hover {
+  transform: translateY(-2px);
+  box-shadow: var(--el-box-shadow-light);
+  background: var(--el-fill-color-light);
+}
+
+/* Animacja pulsująca */
+@keyframes pulse {
+  0% { 
+    box-shadow: 0 0 0 0 rgba(var(--el-color-success-rgb), 0.4); 
+  }
+  70% { 
+    box-shadow: 0 0 0 10px rgba(var(--el-color-success-rgb), 0); 
+  }
+  100% { 
+    box-shadow: 0 0 0 0 rgba(var(--el-color-success-rgb), 0); 
   }
 }
 
+.pulse-animation {
+  animation: pulse 2s infinite;
+}
+
 /* Responsywność */
+@media (max-width: 992px) {
+  .webdav-modern {
+    padding: 16px;
+  }
+  
+  .panel-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 20px;
+  }
+  
+  .service-controls .el-button-group {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .disks-grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  }
+  
+  .advanced-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 768px) {
-  .action-buttons,
-  .config-actions {
+  .share-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+  
+  .share-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .alias-input {
+    width: 100%;
+  }
+  
+  .action-footer {
     flex-direction: column;
   }
   
-  .action-buttons > *,
-  .config-actions > * {
+  .action-footer .el-button {
     width: 100%;
   }
+}
 
-  .shared-url-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
+@media (max-width: 480px) {
+  .config-row {
+    grid-template-columns: 1fr;
+  }
+  
+  .disks-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .compact-tabs :deep(.el-tabs__item) {
+    padding: 0 12px;
+    font-size: 14px;
+  }
+  
+  .service-icon {
+    width: 48px;
+    height: 48px;
+  }
+  
+  .header-info h2 {
+    font-size: 1.25rem;
   }
 }
 </style>

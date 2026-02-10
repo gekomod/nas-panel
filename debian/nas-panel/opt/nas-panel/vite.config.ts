@@ -5,6 +5,7 @@ import { createServer } from 'vite'
 import express from 'express'
 import os from 'os-utils'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
+import CompressionPlugin from 'compression-webpack-plugin'
 
 export default defineConfig({
   plugins: [
@@ -41,19 +42,28 @@ export default defineConfig({
     outDir: 'dist',
     assetsDir: 'assets',  // Zamiast _nuxt
     assetsInlineLimit: 0,
+    chunkSizeWarningLimit: 3600,
     rollupOptions: {
       output: {
+        entryFileNames: `assets/js/[name]-naspanel.js`,
+        chunkFileNames: `assets/js/[name]-naspanel.js`,
         assetFileNames: (assetInfo) => {
-          // Ensure WASM files keep their extension
-          if (assetInfo.name && assetInfo.name.endsWith('.wasm')) {
-            return 'assets/[name][extname]';
-          }
-          return 'assets/[name]-[hash][extname]';
+          return 'assets/css/[name]-naspanel[extname]';
         }
       }
-    }
+    },
   },
   optimizeDeps: {
-    exclude: ['monaco-editor','@sqlite.org/sqlite-wasm']
+    exclude: ['monaco-editor']
+  },
+  configureWebpack: {
+    output: {
+      filename: "assets/[name].js",
+      chunkFilename: "assets/[name].js"
+    }
+  },
+  chainWebpack(config) {
+    config.plugins.delete('prefetch');
+    config.plugin('CompressionPlugin').use(CompressionPlugin);
   }
 })

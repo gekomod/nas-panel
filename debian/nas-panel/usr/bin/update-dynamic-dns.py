@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 
 # Konfiguracja
-API_URL = "http://localhost:3000/network/dynamic-dns/update-all"
+API_URL = "http://localhost:1112/network/dynamic-dns/update-all"
 AUTH_TOKEN = "your_api_token_here"  # Zastąp rzeczywistym tokenem
 LOG_FILE = "/var/log/dynamic-dns.log"
 

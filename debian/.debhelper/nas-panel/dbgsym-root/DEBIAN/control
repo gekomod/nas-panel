@@ -1,13 +1,13 @@
 Package: nas-panel-dbgsym
 Package-Type: ddeb
 Source: nas-panel
-Version: 1.0-5
+Version: 1.1.3
 Auto-Built-Package: debug-symbols
 Architecture: amd64
 Maintainer: Gekomod <zaba141@o2.pl>
 Installed-Size: 65
-Depends: nas-panel (= 1.0-5)
+Depends: nas-panel (= 1.1.3)
 Section: debug
 Priority: optional
 Description: debug symbols for nas-panel
-Build-Ids: dcc078f4c1d5fa01c9faa044d1fcb0b689ee6a93
+Build-Ids: 880290439ac324f7dee32aad948fedcee6991391

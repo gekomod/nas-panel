@@ -1,61 +1,71 @@
 <template>
-  <el-card class="widget-card" shadow="hover">
-  <template #header>
-    <div class="widget-header">
-      <div class="header-left">
-        <Icon icon="mdi:harddisk" width="18" height="18" color="#409EFF" />
-        <h3>{{ t('fileSystem.title') }}</h3>
-      </div>
-      <div class="header-actions">
-        <el-tooltip :content="autoRefresh ? t('fileSystem.autoRefreshOff') : t('fileSystem.autoRefreshOn')">
-          <el-button 
-            size="small" 
-            @click="toggleAutoRefresh" 
-            text
-          >
-            <Icon :icon="autoRefresh ? 'mdi:pause-circle' : 'mdi:play-circle'" width="16" height="16" />
-          </el-button>
-        </el-tooltip>
-        <el-button 
-          size="small" 
-          @click="fetchFileSystems" 
-          :loading="loading"
-          text
-        >
-          <Icon icon="mdi:refresh" width="16" height="16" :class="{ 'spin': loading }" />
-        </el-button>
-      </div>
-    </div>
-  </template>
-
-    
-    <transition-group name="disk-list" tag="div" class="disk-container">
-      <div v-for="disk in sortedDisks" :key="disk.device" class="disk-item">
-        <div class="disk-main">
-          <Icon :icon="getDiskIcon(disk)" width="20" height="20" class="disk-icon" />
-          <div class="disk-info">
-            <span class="device">{{ disk.device }}</span>
-            <span class="mount">{{ disk.mount || '–' }}</span>
+  <el-card 
+    class="widget-card" 
+    shadow="hover" 
+    v-loading="loading"
+  >
+    <!-- Nagłówek -->
+    <template #header>
+      <div class="widget-header">
+        <div class="header-main">
+          <div class="header-icon">
+            <Icon icon="mdi:harddisk" width="16" />
           </div>
-          <span class="size">{{ formatSize(disk.size) }}</span>
+          <span class="header-title">Dyski</span>
+          <div class="update-time">
+            <Icon icon="mdi:update" width="12" />
+            <span>{{ t('common.update') }}: {{ lastUpdate }}</span>
+          </div>
+        </div>
+        <div class="header-sub">
+          <span class="hostname">{{ fileSystems.length }} dysków</span>
+          <span class="system">{{ totalUsedPercent }}% zajęte</span>
+        </div>
+      </div>
+    </template>
+
+    <!-- Zawartość widgetu -->
+    <div class="widget-content">
+      <div 
+        v-for="disk in sortedDisks" 
+        :key="disk.device" 
+        class="disk-row"
+      >
+        <div class="disk-info">
+          <Icon 
+            :icon="getDiskIcon(disk.device)" 
+            width="12" 
+            class="disk-icon"
+            :style="{ color: getDiskColor(disk.device) }"
+          />
+          <span class="disk-name">{{ formatDeviceName(disk.device) }}</span>
+          <span class="mount-point" v-if="disk.mount" :title="disk.mount">
+            {{ formatMountPoint(disk.mount) }}
+          </span>
         </div>
         
-        <div class="disk-usage">
-          <span class="percent">{{ disk.percentNumber }}%</span>
-          <div class="progress-container">
-            <div 
-              class="progress-bar" 
-              :style="{ width: disk.percentNumber + '%' }"
-              :class="getUsageClass(disk.percentNumber)"
-            ></div>
+        <div class="disk-stats">
+          <div class="disk-usage">
+            <div class="usage-bar">
+              <div 
+                class="bar-fill" 
+                :style="{ width: `${disk.percentNumber}%` }"
+                :class="getUsageClass(disk.percentNumber)"
+              ></div>
+            </div>
+            <div class="usage-numbers">
+              <span class="usage-percent" :class="getUsageClass(disk.percentNumber)">
+                {{ disk.percentNumber }}%
+              </span>
+            </div>
+          </div>
+          <div class="disk-size-info">
+            <span class="used-space">{{ formatSize(calculateUsed(disk)) }}</span>
+            <span class="separator">/</span>
+            <span class="total-space">{{ formatSize(parseSize(disk.size)) }}</span>
           </div>
         </div>
       </div>
-    </transition-group>
-
-    <div v-if="error" class="error-message">
-      <Icon icon="mdi:alert-circle" width="16" height="16" color="#F56C6C" />
-      <span>{{ error }}</span>
     </div>
   </el-card>
 </template>
@@ -68,274 +78,518 @@ export default {
 </script>
 
 <script setup>
-import { useI18n } from 'vue-i18n'
-const { t } = useI18n()
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import axios from 'axios'
 import { Icon } from '@iconify/vue'
 
-// Dane
+const { t } = useI18n()
+
 const fileSystems = ref([])
-const loading = ref(false)
-const error = ref(null)
-const autoRefresh = ref(true)
-const refreshInterval = ref(null)
-const sortBy = ref('usage') // 'usage', 'name', 'size'
+const loading = ref(true)
+const lastUpdate = ref(t('common.loading'))
+let intervalId = null
 
-axios.defaults.baseURL = `${window.location.protocol}//${window.location.hostname}:3000`;
-
-// Computed
 const sortedDisks = computed(() => {
-  return [...fileSystems.value].sort((a, b) => {
-    if (sortBy.value === 'name') return a.device.localeCompare(b.device)
-    if (sortBy.value === 'size') return parseSize(b.size) - parseSize(a.size)
-    return b.percentNumber - a.percentNumber
-  })
+  return [...fileSystems.value].sort((a, b) => b.percentNumber - a.percentNumber)
 })
 
-// Metody
-const fetchFileSystems = async () => {
-  loading.value = true
-  error.value = null
+const totalUsedPercent = computed(() => {
+  if (fileSystems.value.length === 0) return 0
+  const total = fileSystems.value.reduce((sum, disk) => sum + disk.percentNumber, 0)
+  return Math.round(total / fileSystems.value.length)
+})
+
+const getDiskIcon = (device) => {
+  if (device.includes('nvme')) return 'ph:hard-drive'
+  if (device.includes('sd') || device.includes('hd')) return 'ph:hard-drives'
+  if (device.includes('mmc')) return 'mdi:sd-card'
+  return 'mdi:harddisk'
+}
+
+const getDiskColor = (device) => {
+  if (device.includes('nvme')) return 'var(--el-color-primary)'
+  if (device.includes('sd')) return 'var(--el-color-success)'
+  if (device.includes('hd')) return 'var(--el-color-warning)'
+  if (device.includes('mmc')) return 'var(--el-color-info)'
+  return 'var(--el-text-color-secondary)'
+}
+
+const formatDeviceName = (device) => {
+  return device.replace(/^\/dev\//, '').toUpperCase()
+}
+
+const formatMountPoint = (mount) => {
+  if (!mount) return ''
+  // Skróć długie ścieżki montowania
+  if (mount.length > 15) {
+    return mount.split('/').pop() || mount
+  }
+  return mount
+}
+
+const getUsageClass = (percent) => {
+  if (percent >= 90) return 'critical'
+  if (percent >= 70) return 'warning'
+  return 'normal'
+}
+
+const formatSize = (bytes) => {
+  if (!bytes || bytes === 0) return '0 B'
   
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let value = bytes
+  let unitIndex = 0
+  
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex++
+  }
+  
+  return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
+}
+
+const parseSize = (size) => {
+  if (!size) return 0
+  
+  // Jeśli rozmiar jest już w bajtach (liczba)
+  if (typeof size === 'number') return size
+  
+  const units = { 
+    'K': 1, 'KB': 1,
+    'M': 2, 'MB': 2,
+    'G': 3, 'GB': 3,
+    'T': 4, 'TB': 4,
+    'P': 5, 'PB': 5
+  }
+  
+  const match = size.toString().match(/^(\d+\.?\d*)\s*([KMGTP]?B?)$/i)
+  
+  if (match) {
+    const value = parseFloat(match[1])
+    const unit = match[2].toUpperCase()
+    return value * Math.pow(1024, units[unit] || 0)
+  }
+  
+  return parseFloat(size) || 0
+}
+
+const calculateUsed = (disk) => {
+  const total = parseSize(disk.size)
+  return total * (disk.percentNumber / 100)
+}
+
+const fetchFileSystems = async () => {
   try {
+    loading.value = true
     const response = await axios.get('/api/filesystems')
-    fileSystems.value = processDiskData(response.data)
+    const data = response.data
+    const disks = Array.isArray(data) ? data : data.disks || Object.values(data)
+    
+    fileSystems.value = disks
+      .map(disk => ({
+        device: disk.device || 'Unknown',
+        size: disk.size || '0B',
+        percent: disk.percent || '0%',
+        percentNumber: parseInt(disk.percent?.toString().replace('%', '')) || 0,
+        mount: disk.mount || ''
+      }))
+      .filter(disk => !['tmpfs', 'devtmpfs'].includes(disk.device))
+    
+    lastUpdate.value = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    
   } catch (err) {
-    error.value = 'Błąd ładowania danych dyskowych'
-    console.error(err)
+    console.error('Błąd ładowania dysków:', err)
+    lastUpdate.value = t('common.error')
+    // Fallback data for development
+    fileSystems.value = [
+      {
+        device: '/dev/sda1',
+        size: '256GB',
+        percent: '65%',
+        percentNumber: 65,
+        mount: '/'
+      },
+      {
+        device: '/dev/nvme0n1p1',
+        size: '512GB',
+        percent: '42%',
+        percentNumber: 42,
+        mount: '/home'
+      },
+      {
+        device: '/dev/mmcblk0p1',
+        size: '128GB',
+        percent: '18%',
+        percentNumber: 18,
+        mount: '/boot'
+      }
+    ]
   } finally {
     loading.value = false
   }
 }
 
-const processDiskData = (data) => {
-  let disks = Array.isArray(data) ? data : data.disks || Object.values(data)
-  return disks.map(disk => ({
-    device: disk.device || 'Unknown',
-    size: disk.size || '0B',
-    percent: disk.percent || '0%',
-    percentNumber: parsePercent(disk.percent),
-    mount: disk.mount || ''
-  })).filter(disk => !['tmpfs', 'devtmpfs'].includes(disk.device))
-}
-
-const parsePercent = (percent) => {
-  return parseInt(percent?.toString().replace('%', '')) || 0
-}
-
-const parseSize = (size) => {
-  const units = { 'K': 1, 'M': 2, 'G': 3, 'T': 4 }
-  const match = size?.match(/^(\d+\.?\d*)\s*([KMGTP]?)B?$/i)
-  return match ? parseFloat(match[1]) * Math.pow(1024, units[match[2].toUpperCase()] || 0) : 0
-}
-
-const formatSize = (size) => {
-  if (!size) return '0B'
-  return size.replace(/(\d+\.?\d*)\s*([KMGTP]?)B?/i, '$1 $2B').trim()
-}
-
-const getDiskIcon = (disk) => {
-  if (disk.device.startsWith('/dev/sd')) return 'mdi:harddisk'
-  if (disk.device.startsWith('/dev/dm')) return 'mdi:memory'
-  if (disk.device.startsWith('/dev/md')) return 'mdi:database'
-  return 'mdi:harddisk'
-}
-
-const getUsageClass = (percent) => {
-  return {
-    'low': percent < 70,
-    'medium': percent >= 70 && percent < 90,
-    'high': percent >= 90
-  }
-}
-
-const toggleAutoRefresh = () => {
-  autoRefresh.value = !autoRefresh.value
-  if (autoRefresh.value) setupAutoRefresh()
-  else clearAutoRefresh()
-}
-
-const setupAutoRefresh = () => {
-  clearAutoRefresh()
-  refreshInterval.value = setInterval(fetchFileSystems, 30000)
-}
-
-const clearAutoRefresh = () => {
-  if (refreshInterval.value) {
-    clearInterval(refreshInterval.value)
-    refreshInterval.value = null
-  }
-}
-
-// Hooks
 onMounted(() => {
   fetchFileSystems()
-  setupAutoRefresh()
+  intervalId = setInterval(fetchFileSystems, 30000)
 })
 
 onBeforeUnmount(() => {
-  clearAutoRefresh()
+  if (intervalId) clearInterval(intervalId)
 })
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 .widget-card {
-  border-radius: 8px;
+  border-radius: 12px;
   font-family: 'Inter', -apple-system, sans-serif;
+  background: linear-gradient(135deg, var(--el-bg-color) 0%, color-mix(in srgb, var(--el-bg-color) 90%, var(--el-color-primary-light-9)) 100%);
+  border: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  min-height: 280px;
+  height: 100%;
+  
+  /* Ciemniejszy border w trybie dark */
+  :global(.dark) &,
+  :global(body.dark) & {
+    border-color: color-mix(in srgb, var(--el-border-color) 50%, #1e293b);
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  }
+
+  &:deep(.el-card__header) {
+    border-bottom: 1px solid color-mix(in srgb, var(--el-border-color) 30%, transparent);
+    padding: 16px 20px;
+    background: transparent;
+    
+    :global(.dark) &,
+    :global(body.dark) & {
+      border-bottom-color: color-mix(in srgb, var(--el-border-color) 50%, #1e293b);
+    }
+  }
+
+  &:deep(.el-card__body) {
+    padding: 12px 20px 16px;
+  }
 }
 
 .widget-header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
 }
 
-.header-left h3 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 500;
-
-}
-
-.header-actions {
+.header-main {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 2px;
+
+  .header-icon {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--el-color-primary) 0%, var(--el-color-primary-dark-2) 100%);
+    border-radius: 8px;
+    color: white;
+    box-shadow: 0 2px 6px rgba(var(--el-color-primary-rgb), 0.25);
+    flex-shrink: 0;
+  }
+
+  .header-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--el-text-color-primary);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .update-time {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--el-text-color-secondary);
+    font-weight: 400;
+    padding: 4px 8px;
+    background: var(--el-fill-color-light);
+    border-radius: 6px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
 }
 
-.disk-container {
+.header-sub {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  gap: 8px;
+
+  .hostname, .system {
+    font-weight: 500;
+    color: var(--el-text-color-regular);
+    padding: 4px 8px;
+    background: var(--el-fill-color-lighter);
+    border-radius: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    text-align: center;
+  }
+
+  .system {
+    color: var(--el-color-primary);
+    font-weight: 600;
+  }
+}
+
+.widget-content {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 6px;
 }
 
-.disk-item {
-  padding: 8px;
-  border-radius: 6px;
-  transition: all 0.3s ease;
+.disk-row {
+  padding: 8px 10px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+  min-height: auto;
+  
+  &:hover {
+    background: var(--el-fill-color-lighter);
+    border-color: color-mix(in srgb, var(--el-border-color) 50%, transparent);
+    
+    :global(.dark) &,
+    :global(body.dark) & {
+      border-color: color-mix(in srgb, var(--el-border-color) 30%, #334155);
+    }
+  }
+  
+  &:not(:last-child) {
+    margin-bottom: 2px;
+  }
 }
 
-.disk-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.disk-main {
+.disk-info {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 6px;
+  font-size: 12px;
+  
+  .disk-icon {
+    flex-shrink: 0;
+  }
+  
+  .disk-name {
+    font-weight: 500;
+    color: var(--el-text-color-primary);
+    font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
+    font-size: 11px;
+  }
+  
+  .mount-point {
+    font-size: 10px;
+    color: var(--el-text-color-secondary);
+    opacity: 0.8;
+    font-weight: 400;
+    margin-left: auto;
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
-.disk-icon {
-  flex-shrink: 0;
-  color: #909399;
-}
-
-.disk-info {
-  flex-grow: 1;
+.disk-stats {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-}
-
-.device {
-  font-size: 13px;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.mount {
-  font-size: 11px;
-  color: #909399;
-}
-
-.size {
-  font-size: 12px;
-  font-weight: 500;
-  color: #409EFF;
-  white-space: nowrap;
+  gap: 4px;
 }
 
 .disk-usage {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
-.percent {
-  font-size: 12px;
-  font-weight: 500;
-  color: #606266;
-  min-width: 32px;
-  text-align: right;
-}
-
-.progress-container {
-  flex-grow: 1;
-  height: 6px;
-  background: #e0e6ed;
-  border-radius: 3px;
+.usage-bar {
+  flex: 1;
+  height: 4px;
+  background: color-mix(in srgb, var(--el-border-color) 20%, transparent);
+  border-radius: 2px;
   overflow: hidden;
 }
 
-.progress-bar {
+.bar-fill {
   height: 100%;
-  border-radius: 3px;
-  transition: width 0.5s ease;
+  transition: width 0.3s ease;
+  
+  &.normal {
+    background: var(--el-color-success);
+  }
+  
+  &.warning {
+    background: var(--el-color-warning);
+  }
+  
+  &.critical {
+    background: var(--el-color-danger);
+  }
 }
 
-.progress-bar.low {
-  background: #67C23A;
+.usage-numbers {
+  min-width: 35px;
+  text-align: right;
 }
 
-.progress-bar.medium {
-  background: #E6A23C;
+.usage-percent {
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
+  padding: 2px 6px;
+  border-radius: 10px;
+  display: inline-block;
+  min-width: 30px;
+  text-align: center;
+  
+  &.normal {
+    color: var(--el-color-success);
+    background: rgba(var(--el-color-success-rgb), 0.1);
+  }
+  
+  &.warning {
+    color: var(--el-color-warning);
+    background: rgba(var(--el-color-warning-rgb), 0.1);
+  }
+  
+  &.critical {
+    color: var(--el-color-danger);
+    background: rgba(var(--el-color-danger-rgb), 0.1);
+  }
 }
 
-.progress-bar.high {
-  background: #F56C6C;
-}
-
-.error-message {
+.disk-size-info {
   display: flex;
   align-items: center;
-  gap: 6px;
-  color: #F56C6C;
-  font-size: 12px;
-  margin-top: 8px;
+  justify-content: flex-end;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--el-text-color-secondary);
+  
+  .used-space,
+  .total-space {
+    font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
+  }
+  
+  .separator {
+    opacity: 0.5;
+  }
 }
 
-/* Animacje */
-.disk-list-move,
-.disk-list-enter-active,
-.disk-list-leave-active {
-  transition: all 0.3s ease;
+/* Compact mode for very small screens */
+@media (max-width: 480px) {
+  .widget-card {
+    border-radius: 10px;
+    
+    &:deep(.el-card__header) {
+      padding: 12px 16px;
+    }
+    
+    &:deep(.el-card__body) {
+      padding: 10px 16px 12px;
+    }
+  }
+
+  .header-main {
+    .header-icon {
+      width: 28px;
+      height: 28px;
+    }
+    
+    .header-title {
+      font-size: 13px;
+    }
+    
+    .update-time {
+      font-size: 10px;
+      padding: 3px 6px;
+    }
+  }
+  
+  .header-sub {
+    font-size: 11px;
+    
+    .hostname, .system {
+      padding: 3px 6px;
+    }
+  }
+  
+  .disk-row {
+    padding: 6px 8px;
+  }
+  
+  .disk-info {
+    font-size: 11px;
+    gap: 6px;
+    margin-bottom: 4px;
+    
+    .disk-name {
+      font-size: 10px;
+    }
+    
+    .mount-point {
+      font-size: 9px;
+      max-width: 60px;
+    }
+  }
+  
+  .disk-usage {
+    gap: 8px;
+  }
+  
+  .usage-bar {
+    height: 3px;
+  }
+  
+  .usage-percent {
+    font-size: 10px;
+    padding: 1px 4px;
+    min-width: 25px;
+  }
+  
+  .disk-size-info {
+    font-size: 9px;
+    gap: 3px;
+  }
 }
 
-.disk-list-enter-from,
-.disk-list-leave-to {
-  opacity: 0;
-  transform: translateX(30px);
-}
-
-.disk-list-leave-active {
-  position: absolute;
-}
-
-.spin {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  100% { transform: rotate(360deg); }
+@media (max-width: 360px) {
+  .disk-info {
+    .mount-point {
+      display: none;
+    }
+  }
+  
+  .disk-stats {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 3px;
+  }
+  
+  .disk-usage {
+    width: 100%;
+  }
+  
+  .usage-bar {
+    min-width: 60px;
+  }
 }
 </style>

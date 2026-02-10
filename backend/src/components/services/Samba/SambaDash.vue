@@ -1,140 +1,180 @@
 <template>
   <div class="samba-dashboard">
-    <!-- Hero Header -->
-    <div class="hero-section">
-      <div class="hero-content">
-        <div class="hero-icon">
-          <Icon icon="mdi:server-network" width="48" />
-        </div>
-        <div class="hero-text">
-          <h1>{{ $t('samba.title') }}</h1>
-          <p class="hero-description">{{ $t('samba.description') }}</p>
-        </div>
-        <div class="hero-status">
-          <div class="status-badge" :class="statusClass">
-            <div class="status-indicator" :class="statusClass"></div>
-            <span>{{ statusText }}</span>
+    <!-- Header -->
+    <el-card class="dashboard-header compact" shadow="hover">
+      <div class="header-content">
+        <div class="header-left">
+          <div class="header-icon small">
+            <Icon icon="mdi:server-network" />
+          </div>
+          <div class="header-text">
+            <h2>{{ $t('samba.title') }}</h2>
+            <p class="subtitle">{{ $t('samba.description') }}</p>
           </div>
         </div>
-      </div>
-      
-      <!-- Quick Actions -->
-      <div class="quick-actions">
-        <el-button 
-          type="primary" 
-          @click="toggleService('start')"
-          :disabled="serviceStatus.running || !serviceStatus.installed"
-          :loading="loading"
-          class="action-btn"
-        >
-          <Icon icon="mdi:play" width="18" />
-          <span>{{ $t('samba.actions.start') }}</span>
-        </el-button>
         
-        <el-button 
-          type="danger" 
-          @click="toggleService('stop')"
-          :disabled="!serviceStatus.running"
-          :loading="loading"
-          class="action-btn"
-        >
-          <Icon icon="mdi:stop" width="18" />
-          <span>{{ $t('samba.actions.stop') }}</span>
-        </el-button>
+        <!-- Stats Section -->
+        <div class="header-stats">
+          <div class="stat-item small">
+            <div class="stat-icon">
+              <Icon icon="mdi:server" width="14" />
+            </div>
+            <div class="stat-info">
+              <div class="stat-value">{{ serviceStatus.installed ? $t('common.installed') : $t('common.notInstalled') }}</div>
+              <div class="stat-label">{{ $t('samba.status.installation') }}</div>
+            </div>
+          </div>
+          
+          <div class="stat-item small">
+            <div class="stat-icon" :class="statusClass">
+              <Icon :icon="statusIcon" width="14" />
+            </div>
+            <div class="stat-info">
+              <div class="stat-value">{{ statusText }}</div>
+              <div class="stat-label">{{ $t('samba.status.service') }}</div>
+            </div>
+          </div>
+          
+          <div class="stat-item small">
+            <div class="stat-icon">
+              <Icon icon="mdi:clock-outline" width="14" />
+            </div>
+            <div class="stat-info">
+              <div class="stat-label">{{ $t('common.lastUpdate') }}</div>
+              <div class="stat-value">{{ lastCheckedTime }}</div>
+            </div>
+          </div>
+        </div>
         
-        <el-button 
-          @click="restartService"
-          :disabled="!serviceStatus.running"
-          :loading="restarting"
-          class="action-btn"
-        >
-          <Icon icon="mdi:refresh" width="18" />
-          <span>{{ $t('samba.actions.restart') }}</span>
-        </el-button>
-        
-        <el-button 
-          v-if="!serviceStatus.installed"
-          type="success"
-          @click="installSamba"
-          :loading="installing"
-          class="action-btn install-btn"
-        >
-          <Icon icon="mdi:download" width="18" />
-          <span>{{ $t('samba.actions.install') }}</span>
-        </el-button>
-      </div>
-    </div>
-
-    <!-- Alert dla nie zainstalowanej usługi -->
-    <div v-if="!serviceStatus.installed" class="install-banner">
-      <div class="banner-content">
-        <Icon icon="mdi:alert-circle" width="24" />
-        <div class="banner-text">
-          <h4>{{ $t('samba.alerts.notInstalled.title') }}</h4>
-          <p>{{ $t('samba.alerts.notInstalled.message') }}</p>
+        <!-- Quick Actions -->
+        <div class="header-actions compact">
+          <el-button-group>
+            <el-button 
+              type="primary" 
+              @click="toggleService('start')"
+              :disabled="serviceStatus.running || !serviceStatus.installed"
+              :loading="loading"
+              size="small"
+            >
+              <Icon icon="mdi:play" width="14" />
+              {{ $t('samba.actions.start') }}
+            </el-button>
+            
+            <el-button 
+              type="danger" 
+              @click="toggleService('stop')"
+              :disabled="!serviceStatus.running"
+              :loading="loading"
+              size="small"
+            >
+              <Icon icon="mdi:stop" width="14" />
+              {{ $t('samba.actions.stop') }}
+            </el-button>
+            
+            <el-button 
+              v-if="!serviceStatus.installed"
+              type="success"
+              @click="installSamba"
+              :loading="installing"
+              size="small"
+            >
+              <Icon icon="mdi:download" width="14" />
+              {{ $t('samba.actions.install') }}
+            </el-button>
+          </el-button-group>
         </div>
       </div>
-    </div>
+    </el-card>
+
+    <!-- Alert dla nie zainstalowanej usługi -->
+    <el-alert
+      v-if="!serviceStatus.installed"
+      :title="$t('samba.alerts.notInstalled.title')"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="service-alert"
+    >
+      <template #default>
+        <p>{{ $t('samba.alerts.notInstalled.message') }}</p>
+      </template>
+    </el-alert>
+
+    <!-- Alert dla wyłączonej usługi -->
+    <el-alert
+      v-if="serviceStatus.installed && !serviceStatus.running"
+      :title="$t('samba.alerts.serviceStopped.title')"
+      type="info"
+      :closable="false"
+      show-icon
+      class="service-alert"
+    >
+      <template #default>
+        <p>{{ $t('samba.alerts.serviceStopped.message') }}</p>
+      </template>
+    </el-alert>
 
     <!-- Navigation Cards -->
     <div class="navigation-cards">
-      <div 
+      <el-card 
         v-for="tab in tabs" 
         :key="tab.name"
         class="nav-card"
         :class="{ active: activeTab === tab.name }"
         @click="activeTab = tab.name"
+        shadow="hover"
       >
-        <div class="nav-icon" :class="{ active: activeTab === tab.name }">
-          <Icon :icon="tab.icon" width="24" />
-        </div>
         <div class="nav-content">
-          <h3>{{ tab.label }}</h3>
-          <p>{{ tab.description }}</p>
+          <div class="nav-icon" :class="{ active: activeTab === tab.name }">
+            <Icon :icon="tab.icon" width="20" />
+          </div>
+          <div class="nav-text">
+            <h3>{{ tab.label }}</h3>
+            <p>{{ tab.description }}</p>
+          </div>
+          <div class="nav-arrow">
+            <Icon icon="mdi:chevron-right" width="16" />
+          </div>
         </div>
-        <div class="nav-arrow">
-          <Icon icon="mdi:chevron-right" width="20" />
-        </div>
-      </div>
+      </el-card>
     </div>
 
     <!-- Tab Content -->
-    <div class="tab-content-wrapper">
-      <div v-if="activeTab === 'shares'" class="tab-content">
+    <el-card class="tab-content-wrapper" shadow="hover">
+      <div class="tab-content">
         <SambaShares 
+          v-if="activeTab === 'shares'"
           :service-status="serviceStatus" 
           @refresh-status="checkServiceStatus"
         />
-      </div>
-      
-      <div v-if="activeTab === 'settings'" class="tab-content">
+        
         <SambaSettings 
+          v-if="activeTab === 'settings'"
           :service-status="serviceStatus"
           @service-restarted="checkServiceStatus"
         />
-      </div>
-      
-      <div v-if="activeTab === 'status'" class="tab-content">
+        
         <SambaStatus 
+          v-if="activeTab === 'status'"
           :status="serviceStatus" 
           @status-changed="checkServiceStatus"
         />
       </div>
-    </div>
+    </el-card>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, computed } from 'vue';
-import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { Icon } from '@iconify/vue';
+import { useI18n } from 'vue-i18n';
 import SambaShares from './SambaShares.vue';
 import SambaSettings from './SambaSettings.vue';
 import SambaStatus from './SambaStatus.vue';
 import axios from 'axios';
 
-const router = useRouter();
+const { t } = useI18n();
 const activeTab = ref('shares');
 const serviceStatus = ref({
   installed: false,
@@ -142,27 +182,27 @@ const serviceStatus = ref({
   error: null
 });
 const loading = ref(false);
-const restarting = ref(false);
 const installing = ref(false);
+const lastChecked = ref(null);
 
 const tabs = [
   {
     name: 'shares',
     icon: 'mdi:folder-multiple',
-    label: 'Udostępnienia',
-    description: 'Zarządzaj udostępnieniami sieciowymi'
+    label: t('samba.tabs.shares'),
+    description: t('samba.tabs.sharesDescription')
   },
   {
     name: 'settings',
     icon: 'mdi:cog',
-    label: 'Ustawienia',
-    description: 'Konfiguruj ustawienia serwera'
+    label: t('samba.tabs.settings'),
+    description: t('samba.tabs.settingsDescription')
   },
   {
     name: 'status',
     icon: 'mdi:chart-line',
-    label: 'Status',
-    description: 'Monitoruj stan usługi'
+    label: t('samba.tabs.status'),
+    description: t('samba.tabs.statusDescription')
   }
 ];
 
@@ -172,10 +212,29 @@ const statusClass = computed(() => {
   return 'warning';
 });
 
+const statusIcon = computed(() => {
+  if (!serviceStatus.value.installed) return 'mdi:server-off';
+  if (serviceStatus.value.running) return 'mdi:server-network';
+  return 'mdi:server-network-off';
+});
+
 const statusText = computed(() => {
-  if (!serviceStatus.value.installed) return 'Nie zainstalowano';
-  if (serviceStatus.value.running) return 'Działa';
-  return 'Zatrzymana';
+  if (!serviceStatus.value.installed) return t('samba.status.notInstalled');
+  if (serviceStatus.value.running) return t('samba.status.running');
+  return t('samba.status.stopped');
+});
+
+const lastCheckedTime = computed(() => {
+  if (!lastChecked.value) return t('common.never');
+  const date = new Date(lastChecked.value);
+  const now = new Date();
+  const diffInMinutes = Math.floor((now - date) / (1000 * 60));
+  
+  if (diffInMinutes < 1) return t('common.justNow');
+  if (diffInMinutes < 60) return t('common.minutesAgo', { minutes: diffInMinutes });
+  if (diffInMinutes < 1440) return t('common.hoursAgo', { hours: Math.floor(diffInMinutes / 60) });
+  
+  return date.toLocaleDateString();
 });
 
 onMounted(() => {
@@ -189,11 +248,12 @@ async function checkServiceStatus() {
       ...response.data,
       error: null
     };
+    lastChecked.value = new Date().toISOString();
   } catch (error) {
     serviceStatus.value = {
       installed: false,
       running: false,
-      error: error.response?.data?.error || 'Błąd połączenia'
+      error: error.response?.data?.error || t('samba.errors.connection')
     };
     console.error('Status check error:', error);
   }
@@ -203,25 +263,12 @@ async function toggleService(action) {
   loading.value = true;
   try {
     await axios.post('/services/samba/toggle', { action });
-    ElMessage.success(action === 'start' ? 'Usługa uruchomiona' : 'Usługa zatrzymana');
+    ElMessage.success(action === 'start' ? t('samba.messages.started') : t('samba.messages.stopped'));
     await checkServiceStatus();
   } catch (error) {
-    ElMessage.error(action === 'start' ? 'Błąd uruchamiania' : 'Błąd zatrzymywania');
+    ElMessage.error(action === 'start' ? t('samba.errors.startFailed') : t('samba.errors.stopFailed'));
   } finally {
     loading.value = false;
-  }
-}
-
-async function restartService() {
-  restarting.value = true;
-  try {
-    await axios.post('/services/samba/restart');
-    ElMessage.success('Usługa zrestartowana');
-    await checkServiceStatus();
-  } catch (error) {
-    ElMessage.error('Błąd restartowania');
-  } finally {
-    restarting.value = false;
   }
 }
 
@@ -229,10 +276,10 @@ async function installSamba() {
   installing.value = true;
   try {
     await axios.post('/services/samba/install');
-    ElMessage.success('Instalacja rozpoczęta');
+    ElMessage.success(t('samba.messages.installStarted'));
     await checkServiceStatus();
   } catch (error) {
-    ElMessage.error('Błąd instalacji');
+    ElMessage.error(t('samba.errors.installFailed'));
   } finally {
     installing.value = false;
   }
@@ -241,253 +288,197 @@ async function installSamba() {
 
 <style scoped lang="scss">
 .samba-dashboard {
-  --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  --success-gradient: linear-gradient(135deg, #38b2ac 0%, #319795 100%);
-  --warning-gradient: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
-  --error-gradient: linear-gradient(135deg, #f56565 0%, #e53e3e 100%);
-  --card-bg: #ffffff;
-  --text-primary: #2d3748;
-  --text-secondary: #718096;
-  --border-color: #e2e8f0;
-  --radius-lg: 16px;
-  --radius-md: 12px;
-  --radius-sm: 8px;
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --card-bg: var(--el-bg-color);
+  --border-color: var(--el-border-color);
+  --text-primary: var(--el-text-color-primary);
+  --text-secondary: var(--el-text-color-secondary);
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 20px;
 }
 
-.dark .samba-dashboard {
-  --card-bg: #1a202c;
-  --text-primary: #e2e8f0;
-  --text-secondary: #a0aec0;
-  --border-color: #2d3748;
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
-}
-
-.samba-dashboard {
-  margin: 0 auto;
-  padding: 24px;
-}
-
-/* Hero Section */
-.hero-section {
-  background: var(--primary-gradient);
+/* Header */
+.dashboard-header.compact {
   border-radius: var(--radius-lg);
-  padding: 32px;
-  margin-bottom: 24px;
-  color: white;
-  box-shadow: var(--shadow-lg);
+  margin-bottom: var(--spacing-lg);
 }
 
-.hero-content {
+.dashboard-header.compact .header-content {
+  padding: var(--spacing-lg);
   display: flex;
   align-items: center;
-  gap: 24px;
-  margin-bottom: 24px;
+  gap: var(--spacing-xl);
+  flex-wrap: nowrap;
 }
 
-.hero-icon {
-  background: rgba(255, 255, 255, 0.2);
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  min-width: 200px;
+}
+
+.header-icon.small {
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  backdrop-filter: blur(10px);
-}
-
-.hero-text {
-  flex: 1;
-  
-  h1 {
-    margin: 0 0 8px 0;
-    font-size: 2rem;
-    font-weight: 700;
-  }
-}
-
-.hero-description {
-  margin: 0;
-  opacity: 0.9;
-  font-size: 1rem;
-}
-
-.hero-status {
-  .status-badge {
-    background: rgba(255, 255, 255, 0.2);
-    backdrop-filter: blur(10px);
-    padding: 12px 20px;
-    border-radius: 50px;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-weight: 600;
-    
-    &.success {
-      background: linear-gradient(135deg, rgba(56, 178, 172, 0.3) 0%, rgba(49, 151, 149, 0.3) 100%);
-    }
-    
-    &.warning {
-      background: linear-gradient(135deg, rgba(237, 137, 54, 0.3) 0%, rgba(221, 107, 32, 0.3) 100%);
-    }
-    
-    &.error {
-      background: linear-gradient(135deg, rgba(245, 101, 101, 0.3) 0%, rgba(229, 62, 62, 0.3) 100%);
-    }
-  }
-  
-  .status-indicator {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    
-    &.success {
-      background: #38b2ac;
-    }
-    
-    &.warning {
-      background: #ed8936;
-    }
-    
-    &.error {
-      background: #f56565;
-    }
-  }
-}
-
-/* Quick Actions */
-.quick-actions {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  
-  .action-btn {
-    background: rgba(255, 255, 255, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    color: white;
-    padding: 10px 20px;
-    border-radius: var(--radius-sm);
-    font-weight: 600;
-    transition: var(--transition);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    
-    &:hover {
-      background: rgba(255, 255, 255, 0.3);
-      transform: translateY(-2px);
-    }
-    
-    &:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    
-    &.install-btn {
-      background: rgba(72, 187, 120, 0.3);
-      border-color: rgba(72, 187, 120, 0.5);
-    }
-  }
-}
-
-/* Install Banner */
-.install-banner {
-  background: linear-gradient(135deg, #fed7d7 0%, #feb2b2 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
   border-radius: var(--radius-md);
-  padding: 20px;
-  margin-bottom: 24px;
-  border-left: 4px solid #e53e3e;
-  
-  .dark & {
-    background: linear-gradient(135deg, #742a2a 0%, #9b2c2c 100%);
-  }
+  color: white;
+  font-size: 20px;
+  flex-shrink: 0;
 }
 
-.banner-content {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  
-  .iconify {
-    color: #e53e3e;
-    margin-top: 2px;
-  }
-}
-
-.banner-text {
+.header-text {
   flex: 1;
+  min-width: 0;
   
-  h4 {
-    margin: 0 0 4px 0;
-    color: #742a2a;
-    
-    .dark & {
-      color: #fed7d7;
-    }
-  }
-  
-  p {
+  h2 {
     margin: 0;
-    color: #9b2c2c;
-    
-    .dark & {
-      color: #feb2b2;
-    }
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.2;
   }
+  
+  .subtitle {
+    margin: var(--spacing-xs) 0 0;
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.3;
+  }
+}
+
+.header-stats {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xl);
+  margin: 0 var(--spacing-lg);
+  flex: 1;
+  justify-content: center;
+}
+
+.stat-item.small {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-width: 120px;
+}
+
+.stat-item.small .stat-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  
+  &.success {
+    background: rgba(34, 197, 94, 0.1);
+    color: #22c55e;
+  }
+  
+  &.warning {
+    background: rgba(245, 158, 11, 0.1);
+    color: #f59e0b;
+  }
+  
+  &.error {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+  }
+}
+
+.stat-item.small .stat-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.stat-item.small .stat-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
+.stat-item.small:last-child .stat-value {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.stat-item.small:last-child .stat-label {
+  margin-bottom: 2px;
+}
+
+.header-actions.compact {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Service Alerts */
+.service-alert {
+  margin-bottom: var(--spacing-lg);
+  border-radius: var(--radius-md);
 }
 
 /* Navigation Cards */
 .navigation-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 16px;
-  margin-bottom: 32px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
 }
 
 .nav-card {
-  background: var(--card-bg);
-  border: 2px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 20px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: var(--transition);
+  transition: all 0.2s ease;
   
   &:hover {
-    border-color: #667eea;
-    transform: translateY(-4px);
-    box-shadow: var(--shadow-md);
+    border-color: var(--el-color-primary);
+    transform: translateY(-2px);
   }
   
   &.active {
-    border-color: #667eea;
-    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+    border-color: var(--el-color-primary);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(29, 78, 216, 0.05) 100%);
+  }
+  
+  :deep(.el-card__body) {
+    padding: var(--spacing-md);
   }
 }
 
+.nav-content {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
 .nav-icon {
-  background: linear-gradient(135deg, #edf2f7 0%, #e2e8f0 100%);
-  width: 56px;
-  height: 56px;
-  border-radius: var(--radius-sm);
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  background: var(--el-fill-color-light);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: var(--transition);
-  
-  .dark & {
-    background: linear-gradient(135deg, #2d3748 0%, #4a5568 100%);
-  }
+  transition: all 0.2s ease;
   
   &.active, .nav-card:hover & {
-    background: var(--primary-gradient);
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
     
     .iconify {
       color: white;
@@ -495,35 +486,31 @@ async function installSamba() {
   }
   
   .iconify {
-    color: #718096;
-    transition: var(--transition);
-    
-    .dark & {
-      color: #a0aec0;
-    }
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
   }
 }
 
-.nav-content {
+.nav-text {
   flex: 1;
   
   h3 {
-    margin: 0 0 4px 0;
-    color: var(--text-primary);
-    font-size: 1.125rem;
+    margin: 0 0 var(--spacing-xs);
+    font-size: 14px;
     font-weight: 600;
+    color: var(--text-primary);
   }
   
   p {
     margin: 0;
+    font-size: 12px;
     color: var(--text-secondary);
-    font-size: 0.875rem;
   }
 }
 
 .nav-arrow {
   opacity: 0;
-  transition: var(--transition);
+  transition: opacity 0.2s ease;
   
   .iconify {
     color: var(--text-secondary);
@@ -536,42 +523,64 @@ async function installSamba() {
 
 /* Tab Content */
 .tab-content-wrapper {
-  background: var(--card-bg);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-lg);
+  min-height: 400px;
+  
+  :deep(.el-card__body) {
+    padding: 0;
+  }
 }
 
 .tab-content {
-  padding: 32px;
+  padding: var(--spacing-lg);
 }
 
 /* Responsive */
-@media (max-width: 768px) {
-  .samba-dashboard {
-    padding: 16px;
+@media (max-width: 1024px) {
+  .dashboard-header.compact .header-content {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--spacing-lg);
   }
   
-  .hero-section {
-    padding: 24px 16px;
+  .header-left {
+    min-width: auto;
   }
   
-  .hero-content {
+  .header-stats {
+    order: 2;
+    justify-content: space-around;
+    gap: var(--spacing-md);
+  }
+  
+  .stat-item.small {
     flex-direction: column;
     text-align: center;
-    gap: 16px;
+    gap: 4px;
   }
   
-  .quick-actions {
+  .header-actions.compact {
+    order: 3;
+    width: 100%;
     justify-content: center;
   }
   
   .navigation-cards {
     grid-template-columns: 1fr;
   }
+}
+
+@media (max-width: 768px) {
+  .samba-dashboard {
+    padding: var(--spacing-md);
+  }
+  
+  .header-stats {
+    display: none;
+  }
   
   .tab-content {
-    padding: 24px 16px;
+    padding: var(--spacing-md);
   }
 }
 </style>

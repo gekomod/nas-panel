@@ -8,7 +8,7 @@
             <Icon icon="mdi:folder-multiple" width="24" />
           </div>
           <div>
-            <h2>Udostępnienia</h2>
+            <h2>Udostępnienia Samba</h2>
             <p class="subtitle">Zarządzaj udostępnieniami sieciowymi</p>
           </div>
         </div>
@@ -63,6 +63,14 @@
               >
                 {{ share.readOnly ? 'Tylko odczyt' : 'Odczyt/Zapis' }}
               </el-tag>
+              <el-tag 
+                v-if="share.guestOk"
+                type="info"
+                size="small"
+                effect="plain"
+              >
+                Goście
+              </el-tag>
             </div>
           </div>
           <div class="share-actions">
@@ -101,6 +109,16 @@
               <span class="info-label">Opis:</span>
               <span class="info-value">{{ share.comment }}</span>
             </div>
+            <div v-if="share.validUsers" class="info-item">
+              <Icon icon="mdi:account-multiple" width="16" />
+              <span class="info-label">Użytkownicy:</span>
+              <span class="info-value">{{ share.validUsers }}</span>
+            </div>
+            <div class="info-item">
+              <Icon icon="mdi:lock" width="16" />
+              <span class="info-label">Uprawnienia:</span>
+              <span class="info-value">{{ share.createMask }}/{{ share.directoryMask }}</span>
+            </div>
           </div>
         </div>
         
@@ -129,7 +147,7 @@
       </div>
     </div>
 
-    <!-- Create/Edit Dialog -->
+    <!-- Create/Edit Dialog - Poprawiony -->
     <el-dialog 
       v-model="showCreateDialog" 
       :title="editingShare ? 'Edytuj udostępnienie' : 'Nowe udostępnienie'"
@@ -173,13 +191,53 @@
             <el-input 
               v-model="shareForm.comment" 
               type="textarea"
-              :rows="3"
+              :rows="2"
               placeholder="Krótki opis udostępnienia"
               maxlength="255"
-              show-word-limit
             />
           </el-form-item>
           
+          <el-form-item label="Użytkownicy z dostępem">
+            <el-select
+              v-model="shareForm.validUsers"
+              placeholder="Wybierz użytkowników"
+              multiple
+              filterable
+              size="large"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="user in availableUsers"
+                :key="user"
+                :label="user"
+                :value="user"
+              />
+            </el-select>
+            <div class="form-hint">Wybierz użytkowników którzy mają dostęp do udostępnienia</div>
+          </el-form-item>
+          
+          <el-form-item label="Maska uprawnień">
+            <div class="permissions-grid">
+              <div class="permission-item">
+                <label>Tworzenie plików:</label>
+                <el-input 
+                  v-model="shareForm.createMask" 
+                  placeholder="0664"
+                  size="large"
+                />
+              </div>
+              <div class="permission-item">
+                <label>Tworzenie katalogów:</label>
+                <el-input 
+                  v-model="shareForm.directoryMask" 
+                  placeholder="0775"
+                  size="large"
+                />
+              </div>
+            </div>
+          </el-form-item>
+          
+          <!-- PRZYWRÓCONY ŁADNY PANEL WYBORU UPRAWNIEŃ -->
           <el-form-item label="Uprawnienia">
             <div class="permission-toggle">
               <div 
@@ -207,6 +265,38 @@
                 <div class="toggle-content">
                   <div class="toggle-title">Tylko odczyt</div>
                   <div class="toggle-desc">Użytkownicy mogą tylko przeglądać</div>
+                </div>
+              </div>
+            </div>
+          </el-form-item>
+          
+          <el-form-item label="Dostęp gości">
+            <div class="guest-access">
+              <div 
+                class="guest-option"
+                :class="{ active: !shareForm.guestOk }"
+                @click="shareForm.guestOk = false"
+              >
+                <div class="guest-icon">
+                  <Icon icon="mdi:account-lock" width="20" />
+                </div>
+                <div class="guest-content">
+                  <div class="guest-title">Tylko zalogowani</div>
+                  <div class="guest-desc">Dostęp tylko dla wybranych użytkowników</div>
+                </div>
+              </div>
+              
+              <div 
+                class="guest-option"
+                :class="{ active: shareForm.guestOk }"
+                @click="shareForm.guestOk = true"
+              >
+                <div class="guest-icon">
+                  <Icon icon="mdi:account-group" width="20" />
+                </div>
+                <div class="guest-content">
+                  <div class="guest-title">Zezwalaj gościom</div>
+                  <div class="guest-desc">Dostęp bez logowania</div>
                 </div>
               </div>
             </div>
@@ -250,6 +340,7 @@ const props = defineProps({
 const emit = defineEmits(['refresh-status']);
 
 const shares = ref([]);
+const availableUsers = ref([]);
 const loading = ref(false);
 const showCreateDialog = ref(false);
 const editingShare = ref(null);
@@ -260,7 +351,11 @@ const shareForm = ref({
   name: '',
   path: '',
   comment: '',
-  readOnly: false
+  readOnly: false,
+  guestOk: false,
+  validUsers: [],
+  createMask: '0664',
+  directoryMask: '0775'
 });
 
 const formRules = {
@@ -287,6 +382,7 @@ onMounted(() => {
   if (props.serviceStatus.running) {
     loadShares();
   }
+  loadUsers();
 });
 
 async function loadShares() {
@@ -295,7 +391,17 @@ async function loadShares() {
     const response = await axios.get('/services/samba/shares');
     
     if (response.data && Array.isArray(response.data.data)) {
-      shares.value = response.data.data;
+      shares.value = response.data.data.map(share => ({
+        ...share,
+        validUsers: share.validUsers || '',
+        createMask: share.createMask || '0664',
+        directoryMask: share.directoryMask || '0775',
+        guestOk: share.guestOk || false
+      }));
+      
+      if (response.data.users) {
+        availableUsers.value = response.data.users;
+      }
     } else {
       throw new Error('Nieprawidłowy format danych');
     }
@@ -311,9 +417,25 @@ async function loadShares() {
   }
 }
 
+async function loadUsers() {
+  try {
+    const response = await axios.get('/services/samba/users');
+    if (response.data.success) {
+      availableUsers.value = response.data.data;
+    }
+  } catch (error) {
+    console.error('Error loading users:', error);
+    // Fallback do podstawowych użytkowników
+    availableUsers.value = ['root', 'www-data', 'nobody'];
+  }
+}
+
 function editShare(share) {
   editingShare.value = share;
-  shareForm.value = { ...share };
+  shareForm.value = { 
+    ...share,
+    validUsers: share.validUsers ? share.validUsers.split(' ').filter(u => u.trim()) : []
+  };
   showCreateDialog.value = true;
 }
 
@@ -325,15 +447,20 @@ async function saveShare() {
   
   saving.value = true;
   try {
+    const data = {
+      ...shareForm.value,
+      validUsers: shareForm.value.validUsers.join(' ')
+    };
+    
     if (editingShare.value) {
-      await axios.put(`/services/samba/shares/${editingShare.value.name}`, shareForm.value);
+      await axios.put(`/services/samba/shares/${editingShare.value.name}`, data);
       ElNotification.success({
         title: 'Sukces',
         message: 'Udostępnienie zaktualizowane',
         position: 'bottom-right'
       });
     } else {
-      await axios.post('/services/samba/shares', shareForm.value);
+      await axios.post('/services/samba/shares', data);
       ElNotification.success({
         title: 'Sukces',
         message: 'Udostępnienie utworzone',
@@ -361,7 +488,11 @@ function resetForm() {
     name: '',
     path: '',
     comment: '',
-    readOnly: false
+    readOnly: false,
+    guestOk: false,
+    validUsers: [],
+    createMask: '0664',
+    directoryMask: '0775'
   };
   editingShare.value = null;
   if (shareFormRef.value) {
@@ -468,6 +599,124 @@ watch(showCreateDialog, (newVal) => {
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
+
+  .permission-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .toggle-option {
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+    cursor: pointer;
+    transition: var(--transition);
+    
+    &:hover {
+      border-color: var(--primary-color);
+    }
+    
+    &.active {
+      border-color: var(--primary-color);
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+    }
+    
+    .toggle-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 12px;
+      
+      .iconify {
+        color: var(--text-primary);
+      }
+      
+      .active & {
+        background: var(--primary-color);
+        
+        .iconify {
+          color: white;
+        }
+      }
+    }
+    .toggle-title {
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+      font-size: 0.875rem;
+    }
+    
+    .toggle-desc {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+  }
+  
+    .guest-access {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .guest-option {
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+    cursor: pointer;
+    transition: var(--transition);
+    
+    &:hover {
+      border-color: var(--primary-color);
+    }
+    
+    &.active {
+      border-color: var(--primary-color);
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.1) 100%);
+    }
+    
+    .guest-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 12px;
+      
+      .iconify {
+        color: var(--text-primary);
+      }
+      
+      .active & {
+        background: var(--success-color);
+        
+        .iconify {
+          color: white;
+        }
+      }
+    }
+    
+    .guest-title {
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+      font-size: 0.875rem;
+    }
+    
+    .guest-desc {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+  }
+
 
 /* Header */
 .section-header {
@@ -606,7 +855,7 @@ watch(showCreateDialog, (newVal) => {
 .shares-grid {
   padding: 32px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
   gap: 24px;
 }
 
@@ -669,9 +918,16 @@ watch(showCreateDialog, (newVal) => {
 }
 
 .share-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  
   :deep(.el-tag) {
     font-weight: 500;
     border: none;
+    font-size: 11px;
+    height: 22px;
+    line-height: 20px;
   }
 }
 
@@ -682,7 +938,7 @@ watch(showCreateDialog, (newVal) => {
 .share-info {
   .info-item {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 12px;
     margin-bottom: 12px;
     
@@ -693,6 +949,7 @@ watch(showCreateDialog, (newVal) => {
     .iconify {
       color: var(--text-secondary);
       flex-shrink: 0;
+      margin-top: 2px;
     }
     
     .info-label {
@@ -700,6 +957,7 @@ watch(showCreateDialog, (newVal) => {
       font-size: 0.875rem;
       font-weight: 500;
       flex-shrink: 0;
+      min-width: 100px;
     }
     
     .info-value {
@@ -754,7 +1012,7 @@ watch(showCreateDialog, (newVal) => {
   }
 }
 
-/* Dialog */
+/* Dialog - Poprawiony */
 .modern-dialog {
   :deep(.el-dialog) {
     border-radius: var(--radius-lg);
@@ -808,61 +1066,37 @@ watch(showCreateDialog, (newVal) => {
   margin-top: 4px;
 }
 
-.permission-toggle {
+.permissions-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 16px;
 }
 
-.toggle-option {
-  border: 2px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  padding: 16px;
-  cursor: pointer;
-  transition: var(--transition);
-  
-  &:hover {
-    border-color: var(--primary-color);
-  }
-  
-  &.active {
-    border-color: var(--primary-color);
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
-  }
-  
-  .toggle-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: var(--radius-sm);
-    background: var(--bg-primary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 12px;
-    
-    .iconify {
-      color: var(--text-primary);
-    }
-    
-    .active & {
-      background: var(--primary-color);
-      
-      .iconify {
-        color: white;
-      }
-    }
-  }
-  
-  .toggle-title {
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 4px;
-  }
-  
-  .toggle-desc {
+.permission-item {
+  label {
+    display: block;
     font-size: 0.75rem;
     color: var(--text-secondary);
-    line-height: 1.4;
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+}
+
+.access-options {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.access-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  
+  .access-label {
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    font-weight: 500;
   }
 }
 
@@ -895,14 +1129,12 @@ watch(showCreateDialog, (newVal) => {
   }
 }
 
-/* Loading State */
-:deep(.el-loading-mask) {
-  background: rgba(255, 255, 255, 0.8);
-  
-  .dark & {
-    background: rgba(0, 0, 0, 0.8);
+  @media (max-width: 768px) {
+    .permission-toggle,
+    .guest-access {
+      grid-template-columns: 1fr;
+    }
   }
-}
 
 /* Responsive */
 @media (max-width: 768px) {
@@ -917,7 +1149,7 @@ watch(showCreateDialog, (newVal) => {
     padding: 24px;
   }
   
-  .permission-toggle {
+  .permissions-grid {
     grid-template-columns: 1fr;
   }
   

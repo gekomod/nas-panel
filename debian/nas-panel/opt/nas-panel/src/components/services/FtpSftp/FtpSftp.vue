@@ -22,9 +22,21 @@
         </div>
 
         <div v-else>
+          <div v-if="!ftpStatus.installed" class="install-mini-prompt">
+            <p>{{ $t('ftp_sftp.ftp_install_prompt') }}</p>
+            <el-button 
+              type="primary" 
+              size="small" 
+              @click="installService('ftp')" 
+              :loading="installing"
+              plain
+            >
+              <Icon icon="material-symbols:download" />
+              {{ $t('ftp_sftp.install_ftp') }}
+            </el-button>
+          </div>
 
-
-          <div class="status-content">
+          <div v-else class="status-content">
             <el-descriptions :column="1" border>
               <el-descriptions-item :label="$t('ftp_sftp.status')">
                 <el-tag :type="ftpStatus.running ? 'success' : 'danger'">
@@ -40,6 +52,12 @@
                   <Icon :icon="ftpConfig.anonymousLogin ? 'mdi:account-eye' : 'mdi:account-lock'" />
                   {{ ftpConfig.anonymousLogin ? $t('ftp_sftp.enabled') : $t('ftp_sftp.disabled') }}
                 </el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item :label="$t('ftp_sftp.ftp_user')">
+                <el-tag>{{ ftpConfig.ftpUser || 'ftpuser' }}</el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item :label="$t('ftp_sftp.ftp_group')">
+                <el-tag>{{ ftpConfig.ftpGroup || 'nogroup' }}</el-tag>
               </el-descriptions-item>
             </el-descriptions>
 
@@ -189,16 +207,6 @@
         <el-card shadow="hover" class="config-card">
           <div class="config-section">
             <el-form label-position="top">
-              <el-form-item :label="$t('ftp_sftp.enable_service')">
-                <el-switch
-                  v-model="ftpConfig.enabled"
-                  :active-text="$t('ftp_sftp.enabled')"
-                  :inactive-text="$t('ftp_sftp.disabled')"
-                  inline-prompt
-                  active-color="#13ce66"
-                />
-              </el-form-item>
-
               <el-row :gutter="20">
                 <el-col :span="12">
                   <el-form-item :label="$t('ftp_sftp.port')">
@@ -223,6 +231,21 @@
                 </el-col>
               </el-row>
 
+              <el-row :gutter="20">
+                <el-col :span="12">
+                  <el-form-item :label="$t('ftp_sftp.ftp_user')">
+                    <el-input v-model="ftpConfig.ftpUser" placeholder="ftpuser" />
+                    <div class="form-hint">{{ $t('ftp_sftp.ftp_user_hint') }}</div>
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item :label="$t('ftp_sftp.ftp_group')">
+                    <el-input v-model="ftpConfig.ftpGroup" placeholder="nogroup" />
+                    <div class="form-hint">{{ $t('ftp_sftp.ftp_group_hint') }}</div>
+                  </el-form-item>
+                </el-col>
+              </el-row>
+
               <el-form-item :label="$t('ftp_sftp.passive_ports')">
                 <div class="passive-ports">
                   <el-input-number 
@@ -239,6 +262,7 @@
                     controls-position="right"
                   />
                 </div>
+                <div class="form-hint">{{ $t('ftp_sftp.passive_ports_hint') }}</div>
               </el-form-item>
 
               <el-row :gutter="20">
@@ -250,8 +274,23 @@
                       :max="1000"
                       controls-position="right"
                     />
+                    <div class="form-hint">{{ $t('ftp_sftp.max_connections_hint') }}</div>
                   </el-form-item>
                 </el-col>
+                <el-col :span="12">
+                  <el-form-item :label="$t('ftp_sftp.max_per_ip')">
+                    <el-input-number 
+                      v-model="ftpConfig.maxClientsPerIP"
+                      :min="1"
+                      :max="100"
+                      controls-position="right"
+                    />
+                    <div class="form-hint">{{ $t('ftp_sftp.max_per_ip_hint') }}</div>
+                  </el-form-item>
+                </el-col>
+              </el-row>
+
+              <el-row :gutter="20">
                 <el-col :span="12">
                   <el-form-item :label="$t('ftp_sftp.timeout')">
                     <el-input-number 
@@ -261,32 +300,90 @@
                       controls-position="right"
                     />
                     <span class="unit">{{ $t('ftp_sftp.seconds') }}</span>
+                    <div class="form-hint">{{ $t('ftp_sftp.timeout_hint') }}</div>
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item :label="$t('ftp_sftp.ssl_tls')">
+                    <el-switch
+                      v-model="ftpConfig.sslEnabled"
+                      :active-text="$t('ftp_sftp.enabled')"
+                      :inactive-text="$t('ftp_sftp.disabled')"
+                      inline-prompt
+                      active-color="#13ce66"
+                    />
+                    <div class="form-hint">{{ $t('ftp_sftp.ssl_tls_hint') }}</div>
                   </el-form-item>
                 </el-col>
               </el-row>
 
-              <el-form-item :label="$t('ftp_sftp.ssl_tls')">
-                <el-switch
-                  v-model="ftpConfig.sslEnabled"
-                  :active-text="$t('ftp_sftp.enabled')"
-                  :inactive-text="$t('ftp_sftp.disabled')"
-                  inline-prompt
-                  active-color="#13ce66"
-                />
-              </el-form-item>
-
               <el-form-item v-if="ftpConfig.sslEnabled" :label="$t('ftp_sftp.ssl_cert_path')">
-                <el-input v-model="ftpConfig.sslCertPath" />
-                <el-button type="primary" plain class="browse-btn">
+                <el-input v-model="ftpConfig.sslCertPath" placeholder="/etc/ssl/certs/proftpd.crt" />
+                <el-button type="primary" plain class="browse-btn" @click="browseForCertificate">
                   <Icon icon="material-symbols:folder-open" />
                   {{ $t('ftp_sftp.browse') }}
                 </el-button>
+                <div class="form-hint">{{ $t('ftp_sftp.ssl_cert_path_hint') }}</div>
               </el-form-item>
             </el-form>
           </div>
         </el-card>
 
-        <!-- FTP Shares Management -->
+        <!-- FTP Users Management -->
+        <el-card shadow="hover" class="users-card">
+          <template #header>
+            <div class="card-header">
+              <Icon icon="mdi:account-group" />
+              <span>{{ $t('ftp_sftp.ftp_users') }}</span>
+            </div>
+          </template>
+
+          <div class="users-content">
+            <el-table :data="ftpUsers" style="width: 100%" empty-text="No FTP users">
+              <el-table-column prop="username" :label="$t('ftp_sftp.username')" />
+              <el-table-column prop="uid" :label="$t('ftp_sftp.user_id')" width="120" />
+              <el-table-column prop="home" :label="$t('ftp_sftp.home_directory')" />
+              <el-table-column :label="$t('ftp_sftp.actions')" width="150" align="right">
+                <template #default="{row}">
+                  <el-button-group>
+                    <el-tooltip :content="$t('ftp_sftp.change_password')" placement="top">
+                      <el-button 
+                        size="small" 
+                        @click="showChangePasswordDialog(row.username)"
+                        circle
+                      >
+                        <Icon icon="material-symbols:key" />
+                      </el-button>
+                    </el-tooltip>
+                    <el-tooltip :content="$t('ftp_sftp.delete_user')" placement="top">
+                      <el-button 
+                        size="small" 
+                        type="danger"
+                        @click="deleteFtpUser(row.username)"
+                        circle
+                      >
+                        <Icon icon="material-symbols:delete" />
+                      </el-button>
+                    </el-tooltip>
+                  </el-button-group>
+                </template>
+              </el-table-column>
+            </el-table>
+
+            <div class="add-user">
+              <el-button 
+                type="primary" 
+                @click="showAddUserDialog"
+                plain
+              >
+                <Icon icon="material-symbols:person-add" />
+                {{ $t('ftp_sftp.add_ftp_user') }}
+              </el-button>
+            </div>
+          </div>
+        </el-card>
+
+        <!-- FTP Shares Management - UPROSZCZONE -->
         <el-card shadow="hover" class="shares-card">
           <template #header>
             <div class="card-header">
@@ -296,32 +393,31 @@
           </template>
 
           <div class="shares-content">
+            <el-alert 
+              title="Note: Simple configuration mode"
+              type="info"
+              :closable="false"
+              show-icon
+              class="share-alert"
+            >
+              <template #default>
+                <p>Currently using simple configuration. All directories have full access.</p>
+              </template>
+            </el-alert>
+
             <el-table :data="ftpShares" style="width: 100%" empty-text="No shared folders">
               <el-table-column prop="path" :label="$t('ftp_sftp.path')" />
               <el-table-column :label="$t('ftp_sftp.options')" width="200">
                 <template #default="scope">
-                  <el-tag v-if="scope.row.options.allowOverwrite" size="small" type="info">
-                    <Icon icon="material-symbols:edit" />
-                    {{ $t('ftp_sftp.overwrite') }}
-                  </el-tag>
-                  <el-tag v-if="scope.row.options.allowResume" size="small" type="info">
-                    <Icon icon="material-symbols:pause" />
-                    {{ $t('ftp_sftp.resume') }}
+                  <el-tag size="small" type="info" class="option-tag">
+                    <Icon icon="material-symbols:check" />
+                    Full Access
                   </el-tag>
                 </template>
               </el-table-column>
               <el-table-column :label="$t('ftp_sftp.actions')" width="150" align="right">
                 <template #default="scope">
                   <el-button-group>
-                    <el-tooltip :content="$t('ftp_sftp.edit')" placement="top">
-                      <el-button 
-                        size="small" 
-                        @click="editShare(scope.row)"
-                        circle
-                      >
-                        <Icon icon="material-symbols:edit" />
-                      </el-button>
-                    </el-tooltip>
                     <el-tooltip :content="$t('ftp_sftp.remove')" placement="top">
                       <el-button 
                         size="small" 
@@ -424,15 +520,15 @@
                       </el-tag>
                     </template>
                   </el-table-column>
+                  <el-table-column prop="remote" :label="$t('ftp_sftp.remote_address')" />
                   <el-table-column prop="status" :label="$t('ftp_sftp.status')">
                     <template #default="{row}">
-                      <el-tag :type="row.status === 'active' ? 'success' : 'info'">
+                      <el-tag :type="row.status === 'established' ? 'success' : 'info'">
                         {{ row.status }}
                       </el-tag>
                     </template>
                   </el-table-column>
-                  <el-table-column prop="time" :label="$t('ftp_sftp.duration')" />
-                  <el-table-column prop="command" :label="$t('ftp_sftp.command')" />
+                  <el-table-column prop="pid" :label="$t('ftp_sftp.pid')" width="100" />
                   <el-table-column :label="$t('ftp_sftp.actions')" width="100" align="right">
                     <template #default="{row}">
                       <el-tooltip :content="$t('ftp_sftp.disconnect')" placement="top">
@@ -441,6 +537,7 @@
                           type="danger"
                           @click="killConnection(row.pid, 'ftp')"
                           circle
+                          :disabled="row.pid === 'N/A'"
                         >
                           <Icon icon="material-symbols:close" />
                         </el-button>
@@ -481,6 +578,7 @@
                           type="danger"
                           @click="killConnection(row.pid, 'sftp')"
                           circle
+                          :disabled="!row.pid || row.pid === 'N/A'"
                         >
                           <Icon icon="material-symbols:close" />
                         </el-button>
@@ -515,6 +613,24 @@
         <Icon icon="material-symbols:restart-alt" />
         {{ $t('ftp_sftp.reset') }}
       </el-button>
+      
+      <el-button 
+        type="info"
+        @click="testConfig"
+        round
+      >
+        <Icon icon="material-symbols:bug-report" />
+        Test Config
+      </el-button>
+      
+      <el-button 
+        type="warning"
+        @click="repairConfig"
+        round
+      >
+        <Icon icon="material-symbols:handyman" />
+        Repair Config
+      </el-button>
     </div>
 
     <!-- Full installation prompt when nothing installed -->
@@ -536,38 +652,35 @@
       </div>
     </el-card>
 
-    <!-- Add/Edit Share Dialog -->
+    <!-- Add/Edit Share Dialog - UPROSZCZONE -->
     <el-dialog 
       v-model="shareDialogVisible" 
-      :title="editShareMode ? $t('ftp_sftp.edit_share') : $t('ftp_sftp.add_share')"
+      :title="$t('ftp_sftp.add_share')"
       width="50%"
     >
+      <el-alert 
+        title="Simple Share Configuration"
+        type="info"
+        :closable="false"
+        show-icon
+        class="dialog-alert"
+      >
+        <template #default>
+          <p>All directories added will have full access permissions.</p>
+        </template>
+      </el-alert>
+
       <el-form :model="currentShare" label-position="top">
         <el-form-item :label="$t('ftp_sftp.path')" required>
           <el-input v-model="currentShare.path">
             <template #append>
               <el-button @click="browseForPath">
-  <template #icon>
-    <Icon icon="material-symbols:folder-open" />
-  </template>
-</el-button>
+                <template #icon>
+                  <Icon icon="material-symbols:folder-open" />
+                </template>
+              </el-button>
             </template>
           </el-input>
-        </el-form-item>
-
-        <el-form-item :label="$t('ftp_sftp.alias')">
-          <el-input v-model="currentShare.alias" />
-        </el-form-item>
-
-        <el-form-item :label="$t('ftp_sftp.options')">
-          <el-checkbox v-model="currentShare.options.allowOverwrite">
-            <Icon icon="material-symbols:edit" />
-            {{ $t('ftp_sftp.allow_overwrite') }}
-          </el-checkbox>
-          <el-checkbox v-model="currentShare.options.allowResume">
-            <Icon icon="material-symbols:pause" />
-            {{ $t('ftp_sftp.allow_resume') }}
-          </el-checkbox>
         </el-form-item>
       </el-form>
 
@@ -579,6 +692,7 @@
         <el-button 
           type="primary" 
           @click="confirmShare"
+          :disabled="!currentShare.path"
         >
           <Icon icon="material-symbols:check" />
           {{ $t('ftp_sftp.confirm') }}
@@ -586,41 +700,115 @@
       </template>
     </el-dialog>
     
+    <!-- Add FTP User Dialog -->
     <el-dialog 
-  v-model="directoryDialogVisible" 
-  :title="$t('ftp_sftp.select_directory')"
-  width="60%"
->
-  <el-tree
-    :data="directoryTree"
-    :props="treeProps"
-    :load="loadDirectories"
-    lazy
-    node-key="path"
-    @node-click="handleDirectorySelect"
-    highlight-current
-  >
-    <template #default="{ node, data }">
-      <span class="custom-tree-node">
-        <Icon :icon="data.isLeaf ? 'mdi:folder-outline' : 'mdi:folder-open-outline'" />
-        <span style="margin-left: 6px">{{ node.label }}</span>
-      </span>
-    </template>
-  </el-tree>
-  
-  <template #footer>
-    <el-button @click="directoryDialogVisible = false">
-      {{ $t('ftp_sftp.cancel') }}
-    </el-button>
-    <el-button 
-      type="primary" 
-      @click="confirmDirectorySelection"
-      :disabled="!selectedDirectory"
+      v-model="userDialogVisible" 
+      :title="$t('ftp_sftp.add_ftp_user')"
+      width="50%"
     >
-      {{ $t('ftp_sftp.confirm') }}
-    </el-button>
-  </template>
-</el-dialog>
+      <el-form :model="currentUser" label-position="top">
+        <el-form-item :label="$t('ftp_sftp.username')" required>
+          <el-input v-model="currentUser.username" />
+        </el-form-item>
+        
+        <el-form-item :label="$t('ftp_sftp.password')" required>
+          <el-input v-model="currentUser.password" type="password" show-password />
+        </el-form-item>
+        
+        <el-form-item :label="$t('ftp_sftp.home_directory')">
+          <el-input v-model="currentUser.homeDirectory" placeholder="/home/username">
+            <template #append>
+              <el-button @click="browseForHomeDirectory">
+                <Icon icon="material-symbols:folder-open" />
+              </el-button>
+            </template>
+          </el-input>
+        </el-form-item>
+      </el-form>
+      
+      <template #footer>
+        <el-button @click="userDialogVisible = false">
+          {{ $t('ftp_sftp.cancel') }}
+        </el-button>
+        <el-button 
+          type="primary" 
+          @click="addFtpUser"
+          :disabled="!currentUser.username || !currentUser.password"
+        >
+          {{ $t('ftp_sftp.add_user') }}
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- Change Password Dialog -->
+    <el-dialog 
+      v-model="passwordDialogVisible" 
+      :title="$t('ftp_sftp.change_password')"
+      width="50%"
+    >
+      <el-form :model="passwordForm" label-position="top">
+        <el-form-item :label="$t('ftp_sftp.username')">
+          <el-input v-model="passwordForm.username" disabled />
+        </el-form-item>
+        
+        <el-form-item :label="$t('ftp_sftp.new_password')" required>
+          <el-input v-model="passwordForm.newPassword" type="password" show-password />
+        </el-form-item>
+        
+        <el-form-item :label="$t('ftp_sftp.confirm_password')" required>
+          <el-input v-model="passwordForm.confirmPassword" type="password" show-password />
+        </el-form-item>
+      </el-form>
+      
+      <template #footer>
+        <el-button @click="passwordDialogVisible = false">
+          {{ $t('ftp_sftp.cancel') }}
+        </el-button>
+        <el-button 
+          type="primary" 
+          @click="changePassword"
+          :disabled="!passwordForm.newPassword || !passwordForm.confirmPassword || passwordForm.newPassword !== passwordForm.confirmPassword"
+        >
+          {{ $t('ftp_sftp.change_password') }}
+        </el-button>
+      </template>
+    </el-dialog>
+    
+    <el-dialog 
+      v-model="directoryDialogVisible" 
+      :title="directoryDialogTitle"
+      width="60%"
+    >
+      <el-tree
+        :data="directoryTree"
+        :props="treeProps"
+        :load="loadDirectories"
+        lazy
+        node-key="path"
+        @node-click="handleDirectorySelect"
+        highlight-current
+      >
+        <template #default="{ node, data }">
+          <span class="custom-tree-node">
+            <Icon :icon="data.isLeaf ? 'mdi:folder-outline' : 'mdi:folder-open-outline'" />
+            <span style="margin-left: 6px">{{ node.label }}</span>
+          </span>
+        </template>
+      </el-tree>
+      
+      <template #footer>
+        <el-button @click="directoryDialogVisible = false">
+          {{ $t('ftp_sftp.cancel') }}
+        </el-button>
+        <el-button 
+          type="primary" 
+          @click="confirmDirectorySelection"
+          :disabled="!selectedDirectory"
+        >
+          {{ $t('ftp_sftp.confirm') }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -643,14 +831,15 @@ const resetting = ref(false)
 const installing = ref(false)
 const activeTab = ref('ftp')
 const connectionsTab = ref('ftp')
-const directoryDialogVisible = ref(false);
-const directoryTree = ref([]);
-const selectedDirectory = ref(null);
+const directoryDialogVisible = ref(false)
+const directoryDialogTitle = ref('')
+const directoryTree = ref([])
+const selectedDirectory = ref(null)
 const treeProps = {
   label: 'name',
   children: 'children',
   isLeaf: 'isLeaf'
-};
+}
 
 // Service status
 const ftpStatus = ref({
@@ -665,7 +854,6 @@ const sftpStatus = ref({
 
 // Configurations
 const ftpConfig = ref({
-  enabled: true,
   port: 21,
   anonymousLogin: false,
   passivePorts: {
@@ -673,28 +861,43 @@ const ftpConfig = ref({
     max: 65534
   },
   maxClients: 50,
-  maxClientsPerIP: 5,  // This remains the same for the UI
+  maxClientsPerIP: 5,
   timeout: 300,
   sslEnabled: false,
   sslCertPath: '',
+  ftpUser: 'ftpuser',
+  ftpGroup: 'nogroup',
   additionalOptions: []
 })
 
-// Shares and connections
+// Shares, users and connections
 const ftpShares = ref([])
+const ftpUsers = ref([])
 const ftpConnections = ref([])
 const sftpConnections = ref([])
 
-// Share dialog
+// Dialogs
 const shareDialogVisible = ref(false)
-const editShareMode = ref(false)
+const userDialogVisible = ref(false)
+const passwordDialogVisible = ref(false)
 const currentShare = ref({
   path: '',
-  alias: '',
   options: {
     allowOverwrite: false,
     allowResume: false
   }
+})
+
+const currentUser = ref({
+  username: '',
+  password: '',
+  homeDirectory: ''
+})
+
+const passwordForm = ref({
+  username: '',
+  newPassword: '',
+  confirmPassword: ''
 })
  
 // Connection refresh interval
@@ -708,8 +911,8 @@ const getConnectionStateType = (state) => {
 }
 
 const handleDirectorySelect = (data) => {
-  selectedDirectory.value = data.path;
-};
+  selectedDirectory.value = data.path
+}
 
 const openSshSettings = () => {
   router.push('/services/ssh')
@@ -717,47 +920,83 @@ const openSshSettings = () => {
 
 const confirmDirectorySelection = () => {
   if (selectedDirectory.value) {
-    currentShare.value.path = selectedDirectory.value;
-    directoryDialogVisible.value = false;
-    ElMessage.success(t('ftp_sftp.directory_selected'));
+    if (directoryDialogTitle.value === t('ftp_sftp.select_share_directory')) {
+      currentShare.value.path = selectedDirectory.value
+    } else if (directoryDialogTitle.value === t('ftp_sftp.select_home_directory')) {
+      currentUser.value.homeDirectory = selectedDirectory.value
+    } else if (directoryDialogTitle.value === t('ftp_sftp.select_certificate_directory')) {
+      ftpConfig.value.sslCertPath = selectedDirectory.value
+    }
+    directoryDialogVisible.value = false
+    ElMessage.success(t('ftp_sftp.directory_selected'))
   } else {
-    ElMessage.warning(t('ftp_sftp.no_directory_selected'));
+    ElMessage.warning(t('ftp_sftp.no_directory_selected'))
   }
-};
+}
 
 const browseForPath = async () => {
   try {
     const response = await axios.post('/api/filesystems/browse-directory', {
       path: currentShare.value.path || '/'
-    });
-    console.log(response.data.directories);
- 
-      directoryTree.value = response.data.directories;
-      directoryDialogVisible.value = true;
-
+    })
+    
+    directoryTree.value = response.data.directories
+    directoryDialogTitle.value = t('ftp_sftp.select_share_directory')
+    directoryDialogVisible.value = true
   } catch (error) {
-    ElMessage.error('Failed to browse directory');
-    console.error('Browse error:', error);
+    ElMessage.error('Failed to browse directory')
+    console.error('Browse error:', error)
   }
-};
+}
+
+const browseForHomeDirectory = async () => {
+  try {
+    const response = await axios.post('/api/filesystems/browse-directory', {
+      path: currentUser.value.homeDirectory || '/home'
+    })
+    
+    directoryTree.value = response.data.directories
+    directoryDialogTitle.value = t('ftp_sftp.select_home_directory')
+    directoryDialogVisible.value = true
+  } catch (error) {
+    ElMessage.error('Failed to browse directory')
+    console.error('Browse error:', error)
+  }
+}
+
+const browseForCertificate = async () => {
+  try {
+    const response = await axios.post('/api/filesystems/browse-directory', {
+      path: ftpConfig.value.sslCertPath || '/etc/ssl/certs'
+    })
+    
+    directoryTree.value = response.data.directories
+    directoryDialogTitle.value = t('ftp_sftp.select_certificate_directory')
+    directoryDialogVisible.value = true
+  } catch (error) {
+    ElMessage.error('Failed to browse directory')
+    console.error('Browse error:', error)
+  }
+}
 
 const loadDirectories = async (node, resolve) => {
   try {
+    const path = node?.data?.path || '/'
     const response = await axios.post('/api/filesystems/browse-directory', {
-      path: currentShare.value.path || '/'
-    });
+      path: path
+    })
     
     const directories = response.data.directories.map(dir => ({
       ...dir,
       children: []
-    }));
+    }))
     
-    resolve(directories);
+    resolve(directories)
   } catch (error) {
-    console.error('Error loading directories:', error);
-    resolve([]);
+    console.error('Error loading directories:', error)
+    resolve([])
   }
-};
+}
 
 // Service management
 const toggleService = async (service, action) => {
@@ -806,36 +1045,38 @@ const installService = async (service) => {
 
 const saveConfig = async () => {
   try {
-    saving.value = true;
-    const response = await axios.post('/api/services/ftp-sftp/config', { config: ftpConfig.value });
+    saving.value = true
+    
+    // Zapisz konfigurację
+    const response = await axios.post('/api/services/ftp-sftp/config', { config: ftpConfig.value })
     
     if (response.data.success) {
       ElNotification.success({
         title: t('ftp_sftp.success'),
         message: response.data.message
-      });
+      })
+      // Odśwież dane po zapisaniu konfiguracji
+      await fetchFtpShares()
+      await fetchFtpUsers()
+      await fetchStatus()
     }
   } catch (error) {
-    let errorMessage = error.response?.data?.error || t('ftp_sftp.config_save_error');
-    
-    if (error.response?.data?.details?.includes('FTP user does not exist')) {
-      errorMessage = t('ftp_sftp.missing_user_error');
-    }
+    let errorMessage = error.response?.data?.error || t('ftp_sftp.config_save_error')
     
     ElNotification.error({
       title: t('ftp_sftp.error'),
       message: errorMessage,
       duration: 5000
-    });
+    })
   } finally {
-    saving.value = false;
+    saving.value = false
   }
-};
+}
 
 const resetConfig = async () => {
   try {
     resetting.value = true
-    await fetchConfig(true)
+    await fetchConfig()
     ElNotification.success({
       title: t('ftp_sftp.success'),
       message: t('ftp_sftp.config_reset')
@@ -847,6 +1088,67 @@ const resetConfig = async () => {
     })
   } finally {
     resetting.value = false
+  }
+}
+
+const repairConfig = async () => {
+  try {
+    await ElMessageBox.confirm(
+      'This will reset FTP configuration to default. Continue?',
+      'Repair Configuration',
+      {
+        confirmButtonText: 'Repair',
+        cancelButtonText: 'Cancel',
+        type: 'warning'
+      }
+    )
+    
+    const response = await axios.post('/api/services/ftp-sftp/repair-config')
+    
+    if (response.data.success) {
+      ElNotification.success({
+        title: t('ftp_sftp.success'),
+        message: response.data.message
+      })
+      await fetchStatus()
+      await fetchConfig()
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElNotification.error({
+        title: t('ftp_sftp.error'),
+        message: error.response?.data?.error || 'Failed to repair configuration'
+      })
+    }
+  }
+}
+
+const testConfig = async () => {
+  try {
+    const response = await axios.get('/api/services/ftp-sftp/test-config')
+    
+    if (response.data.success) {
+      ElNotification.info({
+        title: 'Config Test',
+        message: response.data.configValid ? 'Configuration is valid' : 'Configuration has errors',
+        duration: 5000
+      })
+      
+      // Pokaż szczegóły w dialogu
+      ElMessageBox.alert(
+        `<pre style="background: #f5f5f5; padding: 10px; border-radius: 4px; overflow: auto; max-height: 400px;">${response.data.output || response.data.error}</pre>`,
+        'Configuration Test Output',
+        {
+          dangerouslyUseHTMLString: true,
+          confirmButtonText: 'OK'
+        }
+      )
+    }
+  } catch (error) {
+    ElNotification.error({
+      title: t('ftp_sftp.error'),
+      message: 'Failed to test configuration'
+    })
   }
 }
 
@@ -866,16 +1168,20 @@ const fetchStatus = async () => {
   }
 }
 
-const fetchConfig = async (forceDefault = false) => {
+const fetchConfig = async () => {
   try {
     loading.value = true
     const response = await axios.get('/api/services/ftp-sftp/config')
     
-    if (response.success) {
-      ftpConfig.value = response.config
+    if (response.data.success) {
+      ftpConfig.value = {
+        ...ftpConfig.value,
+        ...response.data.config
+      }
     }
     
     await fetchFtpShares()
+    await fetchFtpUsers()
   } catch (error) {
     ElNotification.error({
       title: t('ftp_sftp.error'),
@@ -897,6 +1203,17 @@ const fetchFtpShares = async () => {
   }
 }
 
+const fetchFtpUsers = async () => {
+  try {
+    const response = await axios.get('/api/services/ftp-sftp/users')
+    if (response.data.success) {
+      ftpUsers.value = response.data.users
+    }
+  } catch (error) {
+    console.error('Error fetching FTP users:', error)
+  }
+}
+
 const fetchConnections = async () => {
   try {
     // Clear existing connections
@@ -913,9 +1230,13 @@ const fetchConnections = async () => {
     
     // Fetch SFTP connections only if SFTP is installed and running
     if (sftpStatus.value.installed && sftpStatus.value.running) {
-      const sftpResponse = await axios.get('/services/ssh/connections')
-      if (sftpResponse.data.success) {
-        sftpConnections.value = sftpResponse.data.connections
+      try {
+        const sftpResponse = await axios.get('/services/ssh/connections')
+        if (sftpResponse.data.success) {
+          sftpConnections.value = sftpResponse.data.connections
+        }
+      } catch (sshError) {
+        console.error('Error fetching SFTP connections:', sshError)
       }
     }
   } catch (error) {
@@ -926,20 +1247,30 @@ const fetchConnections = async () => {
 const showAddShareDialog = () => {
   currentShare.value = {
     path: '',
-    alias: '',
     options: {
       allowOverwrite: false,
       allowResume: false
     }
   }
-  editShareMode.value = false
   shareDialogVisible.value = true
 }
 
-const editShare = (share) => {
-  currentShare.value = JSON.parse(JSON.stringify(share))
-  editShareMode.value = true
-  shareDialogVisible.value = true
+const showAddUserDialog = () => {
+  currentUser.value = {
+    username: '',
+    password: '',
+    homeDirectory: ''
+  }
+  userDialogVisible.value = true
+}
+
+const showChangePasswordDialog = (username) => {
+  passwordForm.value = {
+    username: username,
+    newPassword: '',
+    confirmPassword: ''
+  }
+  passwordDialogVisible.value = true
 }
 
 const removeShare = async (share) => {
@@ -978,9 +1309,8 @@ const removeShare = async (share) => {
 
 const confirmShare = async () => {
   try {
-    const action = editShareMode.value ? 'update' : 'add'
     const response = await axios.post('/api/services/ftp-sftp/shares', {
-      action,
+      action: 'add',
       share: currentShare.value
     })
     
@@ -997,6 +1327,83 @@ const confirmShare = async () => {
       title: t('ftp_sftp.error'),
       message: error.response?.data?.error || t('ftp_sftp.share_save_error')
     })
+  }
+}
+
+const addFtpUser = async () => {
+  try {
+    const response = await axios.post('/api/services/ftp-sftp/users', currentUser.value)
+    
+    if (response.data.success) {
+      ElNotification.success({
+        title: t('ftp_sftp.success'),
+        message: response.data.message
+      })
+      userDialogVisible.value = false
+      await fetchFtpUsers()
+    }
+  } catch (error) {
+    ElNotification.error({
+      title: t('ftp_sftp.error'),
+      message: error.response?.data?.error || t('ftp_sftp.user_add_error')
+    })
+  }
+}
+
+const changePassword = async () => {
+  try {
+    if (passwordForm.value.newPassword !== passwordForm.value.confirmPassword) {
+      ElMessage.error(t('ftp_sftp.passwords_do_not_match'))
+      return
+    }
+    
+    const response = await axios.post(`/api/services/ftp-sftp/users/${passwordForm.value.username}/change-password`, {
+      password: passwordForm.value.newPassword
+    })
+    
+    if (response.data.success) {
+      ElNotification.success({
+        title: t('ftp_sftp.success'),
+        message: response.data.message
+      })
+      passwordDialogVisible.value = false
+    }
+  } catch (error) {
+    ElNotification.error({
+      title: t('ftp_sftp.error'),
+      message: error.response?.data?.error || t('ftp_sftp.password_change_error')
+    })
+  }
+}
+
+const deleteFtpUser = async (username) => {
+  try {
+    await ElMessageBox.confirm(
+      t('ftp_sftp.confirm_delete_user', { username }),
+      t('ftp_sftp.warning'),
+      {
+        confirmButtonText: t('ftp_sftp.confirm'),
+        cancelButtonText: t('ftp_sftp.cancel'),
+        type: 'warning'
+      }
+    )
+    
+    const response = await axios.delete(`/api/services/ftp-sftp/users/${username}`)
+    
+    if (response.data.success) {
+      ElNotification.success({
+        title: t('ftp_sftp.success'),
+        message: response.data.message
+      })
+      await fetchFtpUsers()
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElNotification.error({
+        title: t('ftp_sftp.error'),
+        message: error.response?.data?.error || t('ftp_sftp.user_delete_error')
+      })
+    }
   }
 }
 
@@ -1057,7 +1464,9 @@ watch([ftpStatus, sftpStatus], ([newFtp, newSftp]) => {
 // Initialize component
 onMounted(() => {
   fetchStatus().then(() => {
-    fetchConfig()
+    if (ftpStatus.value.installed) {
+      fetchConfig()
+    }
   })
 })
 
@@ -1086,6 +1495,7 @@ onUnmounted(() => {
 .status-card,
 .config-card,
 .shares-card,
+.users-card,
 .connections-card,
 .install-prompt {
   border-radius: 12px;
@@ -1097,6 +1507,7 @@ onUnmounted(() => {
 .status-card:hover,
 .config-card:hover,
 .shares-card:hover,
+.users-card:hover,
 .connections-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 25px rgba(0, 0, 0, 0.12);
@@ -1161,6 +1572,16 @@ onUnmounted(() => {
   font-size: 0.9rem;
 }
 
+.browse-btn {
+  margin-left: 10px;
+}
+
+.form-hint {
+  font-size: 0.8rem;
+  color: var(--el-text-color-secondary);
+  margin-top: 4px;
+}
+
 .install-prompt {
   background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
 }
@@ -1198,11 +1619,13 @@ onUnmounted(() => {
   font-size: 0.9rem;
 }
 
-.shares-content {
+.shares-content,
+.users-content {
   padding: 10px;
 }
 
-.add-share {
+.add-share,
+.add-user {
   margin-top: 20px;
   display: flex;
   justify-content: flex-end;
@@ -1223,15 +1646,22 @@ onUnmounted(() => {
   padding: 10px;
 }
 
-.browse-btn {
-  margin-left: 10px;
+.option-tag {
+  margin-right: 5px;
+  margin-bottom: 5px;
 }
 
-/* Custom icon styles */
-.iconify {
-  width: 1em;
-  height: 1em;
-  vertical-align: -0.15em;
+.custom-tree-node {
+  display: flex;
+  align-items: center;
+}
+
+.share-alert {
+  margin-bottom: 15px;
+}
+
+.dialog-alert {
+  margin-bottom: 15px;
 }
 
 /* Responsiveness */

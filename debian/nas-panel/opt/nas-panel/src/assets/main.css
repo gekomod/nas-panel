@@ -1,0 +1,52 @@
+/* Globalne resetowanie marginesów */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Arial', sans-serif;
+}
+
+/* Kontener aplikacji */
+#app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: #f5f5f5;
+}
+
+/* Aktywne linki w menu */
+.el-menu-item.is-active {
+  background-color: #ecf5ff !important;
+  border-bottom: 2px solid #409EFF !important;
+}
+
+/* Karty widgetów */
+.widget-card {
+  border-radius: 8px;
+  transition: transform 0.3s;
+}
+.widget-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Reset podstawowych stylów */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Arial', sans-serif;
+  line-height: 1.6;
+}
+
+/* Style dla Element Plus */
+.el-menu {
+  user-select: none;
+}
+
+.el-card {
+  margin-bottom: 20px;
+}

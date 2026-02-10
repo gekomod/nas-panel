@@ -9,7 +9,9 @@ const path = require('path');
 const multer = require('multer');
 const diskusage = require('diskusage');
 const { exec } = require('child_process');
+require('dotenv').config({ path: './.env' });
 
+const ServerRoutes = require('./src/api/server.cjs');
 const StorageRoutes = require('./src/api/storage.cjs');
 const NetworkRoutes = require('./src/api/network.cjs');
 const SystemRoutes = require('./src/api/system.cjs');
@@ -26,6 +28,10 @@ const SshRoutes = require('./src/api/ssh.cjs');
 const SystemBackupRoutes = require('./src/api/system-backup.cjs');
 const SftpFtpRoutes = require('./src/api/sftp-ftp.cjs');
 const LogsRoutes = require('./src/api/logs.cjs');
+const PowerRoutes = require('./src/api/power.cjs');
+const MediaRoutes = require('./src/api/media.cjs');
+const VPNRoutes = require('./src/api/vpn.cjs');
+const LoadBalancer = require('./src/api/loadbalancer.cjs');
 
 const os = require('os');
 const { publicIpv4 } = require('public-ip');
@@ -50,6 +56,7 @@ const initializeDynamicOrigins = async () => {
   try {
     const localIps = getLocalIps(); // np. ['192.168.1.20', '192.168.1.54']
     const publicIp = await publicIpv4().catch(() => null);
+    const hostname = os.hostname(); // Pobierz nazwę hosta systemu
 
     const newOrigins = [];
 
@@ -67,6 +74,19 @@ const initializeDynamicOrigins = async () => {
       newOrigins.push(`http://${publicIp}`);
     }
 
+    // Dodaj hostname systemu
+    newOrigins.push(`http://${hostname}`);
+    newOrigins.push(`http://${hostname}:5173`);
+    newOrigins.push(`http://${hostname}:8080`);
+
+    // Dodaj localhost i typowe adresy
+    newOrigins.push('http://localhost:5173');
+    newOrigins.push('http://localhost:8080');
+    newOrigins.push('http://localhost');
+    newOrigins.push('http://127.0.0.1:5173');
+    newOrigins.push('http://127.0.0.1:8080');
+    newOrigins.push('http://127.0.0.1');
+
     // Dodaj tylko unikalne originy
     newOrigins.forEach(origin => {
       if (!allowedOrigins.includes(origin)) {
@@ -78,6 +98,19 @@ const initializeDynamicOrigins = async () => {
   } catch (error) {
     console.error('Błąd inicjalizacji originów:', error);
   }
+};
+
+// Funkcja middleware do dynamicznego dodawania originów
+const dynamicOriginMiddleware = (req, res, next) => {
+  const origin = req.headers.origin;
+  
+  if (origin && !allowedOrigins.includes(origin)) {
+    allowedOrigins.push(origin);
+    console.log('Dodano nowy origin:', origin);
+    console.log('Aktualna lista originów:', allowedOrigins);
+  }
+  
+  next();
 };
 
 initializeDynamicOrigins();
@@ -101,7 +134,8 @@ const upload = multer({
 
 const app = express()
 const HOST = '0.0.0.0'; // Nasłuchuje na wszystkich interfejsach
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.VITE_API_PORT || 3000;
+console.log(`API port: ${PORT}`);
 
 const BASE_DIR = '/';
 
@@ -113,6 +147,22 @@ app.locals.requireAuth = (req, res, next) => {
   console.log('Auth check');
   next();
 };
+
+app.use(dynamicOriginMiddleware);
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Zezwól na żądania bez origin (np. z Postmana, curl)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Origin nie jest dozwolony przez CORS'));
+    }
+  },
+  credentials: true
+}));
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
@@ -158,6 +208,7 @@ const requireAuth = (err, req, res, next) => {
 
 // SMART Endpoints
 
+ServerRoutes(app,requireAuth);
 StorageRoutes(app,requireAuth);
 NetworkRoutes(app,requireAuth);
 SystemRoutes(app,requireAuth);
@@ -174,6 +225,10 @@ SshRoutes(app, requireAuth);
 SystemBackupRoutes(app, requireAuth);
 SftpFtpRoutes(app, requireAuth);
 LogsRoutes(app, requireAuth);
+PowerRoutes(app, requireAuth);
+MediaRoutes(app, requireAuth);
+VPNRoutes(app, requireAuth);
+LoadBalancer(app, requireAuth);
 
 // Zmieniamy funkcję logowania:
 app.post('/api/login', async (req, res) => {
@@ -237,55 +292,724 @@ app.get('/api/check-auth', (req, res) => {
 // Endpoint dla danych CPU
 app.get('/api/cpu', requireAuth, async (req, res) => {
   try {
-    const [cpu, temp] = await Promise.all([
+    const [cpuLoad, cpuTemp, osInfo] = await Promise.all([
       si.currentLoad(),
       si.cpuTemperature(),
-      si.currentLoad()
-    ])
+      si.osInfo()
+    ]);
     
-    const osInfo = await si.osInfo();
-
+    // Pobierz dodatkowe informacje o CPU
+    const cpuInfo = await si.cpu();
+    
+    // Oblicz stabilną temperaturę CPU
+    let stableTemperature = null;
+    
+    if (cpuTemp) {
+      // Hierarchia priorytetów dla temperatury:
+      if (cpuTemp.main !== null && cpuTemp.main > 0) {
+        stableTemperature = Math.round(cpuTemp.main);
+      } else if (cpuTemp.max !== null && cpuTemp.max > 0) {
+        stableTemperature = Math.round(cpuTemp.max);
+      } else if (cpuTemp.cores && cpuTemp.cores.length > 0) {
+        const validTemps = cpuTemp.cores.filter(temp => 
+          temp !== null && temp !== undefined && temp > 0
+        );
+        if (validTemps.length > 0) {
+          const sum = validTemps.reduce((a, b) => a + b, 0);
+          stableTemperature = Math.round(sum / validTemps.length);
+        }
+      }
+    }
+    
+    // Pobierz LOAD AVG z różnych źródeł
+    let load1 = 0, load5 = 0, load15 = 0;
+    
+    // Źródło 1: z systeminformation (może być w różnych formatach)
+    if (osInfo.loadavg) {
+      if (Array.isArray(osInfo.loadavg)) {
+        // Format: [1min, 5min, 15min]
+        load1 = osInfo.loadavg[0] || 0;
+        load5 = osInfo.loadavg[1] || 0;
+        load15 = osInfo.loadavg[2] || 0;
+      } else if (typeof osInfo.loadavg === 'string') {
+        // Format: "0.25, 0.21, 0.70"
+        const loads = osInfo.loadavg.split(',').map(l => parseFloat(l.trim()) || 0);
+        load1 = loads[0] || 0;
+        load5 = loads[1] || 0;
+        load15 = loads[2] || 0;
+      } else if (typeof osInfo.loadavg === 'object') {
+        // Format: { '1': 0.25, '5': 0.21, '15': 0.70 }
+        load1 = osInfo.loadavg['1'] || osInfo.loadavg[0] || 0;
+        load5 = osInfo.loadavg['5'] || osInfo.loadavg[1] || 0;
+        load15 = osInfo.loadavg['15'] || osInfo.loadavg[2] || 0;
+      }
+    }
+    
+    // Źródło 2: bezpośrednio z /proc/loadavg
+    if (load1 === 0 && load5 === 0 && load15 === 0) {
+      try {
+        const loadavgContent = fs.readFileSync('/proc/loadavg', 'utf8');
+        const loads = loadavgContent.split(/\s+/).slice(0, 3).map(l => parseFloat(l) || 0);
+        load1 = loads[0] || 0;
+        load5 = loads[1] || 0;
+        load15 = loads[2] || 0;
+      } catch (e) {
+        console.log('Cannot read /proc/loadavg:', e.message);
+      }
+    }
+    
+    // Źródło 3: komenda uptime
+    if (load1 === 0 && load5 === 0 && load15 === 0) {
+      try {
+        const uptimeOutput = await execPromise('uptime');
+        const loadMatch = uptimeOutput.match(/load average:\s*([\d.,]+),\s*([\d.,]+),\s*([\d.,]+)/i);
+        if (loadMatch) {
+          // Zamień przecinki na kropki (dla formatu europejskiego)
+          load1 = parseFloat(loadMatch[1].replace(',', '.')) || 0;
+          load5 = parseFloat(loadMatch[2].replace(',', '.')) || 0;
+          load15 = parseFloat(loadMatch[3].replace(',', '.')) || 0;
+        }
+      } catch (e) {
+        console.log('Cannot get uptime:', e.message);
+      }
+    }
+    
+    // Formatuj liczby (zamień przecinki na kropki, zaokrąglij do 2 miejsc)
+    const formatLoad = (value) => {
+      if (typeof value === 'string') {
+        value = value.replace(',', '.');
+      }
+      return parseFloat(parseFloat(value || 0).toFixed(2));
+    };
+    
+    load1 = formatLoad(load1);
+    load5 = formatLoad(load5);
+    load15 = formatLoad(load15);
+    
+    // Pobierz informacje o obciążeniu systemu
+    const coreUsage = cpuLoad.cpus ? 
+      cpuLoad.cpus.map(core => Math.round(core.load)) : 
+      Array(cpuInfo.cores).fill(0);
+    
+    // Oblicz średnie obciążenie dla rdzeni
+    const avgCoreUsage = coreUsage.length > 0 ? 
+      Math.round(coreUsage.reduce((a, b) => a + b, 0) / coreUsage.length) : 
+      0;
+    
+    // Pobierz aktualne obciążenie CPU
+    const currentLoad = cpuLoad.currentLoad || 0;
+    
     res.json({
-      usage: Math.round(cpu.currentLoad),
-      temperature: temp.main,
-      cores: cpu.cpus.length,
-      load1: osInfo.loadavg[0] || load.avgLoad[0] || 0,
-      load5: osInfo.loadavg[1] || load.avgLoad[1] || 0,
-      load15: osInfo.loadavg[2] || load.avgLoad[2] || 0
+      // Główne statystyki
+      usage: Math.round(currentLoad),
+      temperature: stableTemperature,
+      cores: cpuInfo.cores,
+      physicalCores: cpuInfo.physicalCores || cpuInfo.cores,
+      frequency: cpuInfo.speed || 0,
+      manufacturer: cpuInfo.manufacturer || 'Unknown',
+      model: cpuInfo.brand || 'Unknown',
+      
+      // Obciążenie systemu (LOAD AVG) - poprawione
+      load1: load1,
+      load5: load5,
+      load15: load15,
+      
+      // Obciążenie na rdzeń
+      avgCoreUsage: avgCoreUsage,
+      coreUsage: coreUsage,
+      
+      // Szczegółowe informacje o obciążeniu
+      loadDetails: {
+        user: Math.round(cpuLoad.currentLoadUser || 0),
+        system: Math.round(cpuLoad.currentLoadSystem || 0),
+        nice: Math.round(cpuLoad.currentLoadNice || 0),
+        idle: Math.round(cpuLoad.currentLoadIdle || 0),
+        irq: Math.round(cpuLoad.currentLoadIrq || 0)
+      },
+      
+      // Informacje o temperaturze
+      temperatureDetails: {
+        main: cpuTemp.main || null,
+        max: cpuTemp.max || null,
+        cores: cpuTemp.cores || [],
+        socket: cpuTemp.socket || [],
+        hasTemperature: stableTemperature !== null,
+        unit: '°C'
+      },
+      
+      // Informacje o systemie
+      system: {
+        uptime: osInfo.uptime || 0,
+        hostname: osInfo.hostname || 'Unknown'
+      },
+      
+      // Timestamp
+      timestamp: new Date().toISOString()
     });
+    
   } catch (error) {
+    console.error('CPU info error:', error);
+    
+    // Fallback z rzeczywistym odczytem loadavg
+    let fallbackLoad1 = 0, fallbackLoad5 = 0, fallbackLoad15 = 0;
+    
+    try {
+      // Spróbuj odczytać loadavg z /proc/loadavg
+      const loadavgContent = fs.readFileSync('/proc/loadavg', 'utf8');
+      const loads = loadavgContent.split(/\s+/).slice(0, 3).map(l => parseFloat(l) || 0);
+      fallbackLoad1 = parseFloat(loads[0].toFixed(2));
+      fallbackLoad5 = parseFloat(loads[1].toFixed(2));
+      fallbackLoad15 = parseFloat(loads[2].toFixed(2));
+    } catch (e) {
+      // Jeśli to nie działa, użyj uptime
+      try {
+        const uptimeOutput = execSync('uptime', { encoding: 'utf8' });
+        const loadMatch = uptimeOutput.match(/load average:\s*([\d.,]+),\s*([\d.,]+),\s*([\d.,]+)/i);
+        if (loadMatch) {
+          fallbackLoad1 = parseFloat(loadMatch[1].replace(',', '.')) || 0;
+          fallbackLoad5 = parseFloat(loadMatch[2].replace(',', '.')) || 0;
+          fallbackLoad15 = parseFloat(loadMatch[3].replace(',', '.')) || 0;
+        }
+      } catch (e2) {
+        // Ostatecznie losowe wartości
+        fallbackLoad1 = Math.random().toFixed(2);
+        fallbackLoad5 = Math.random().toFixed(2);
+        fallbackLoad15 = Math.random().toFixed(2);
+      }
+    }
+    
+    const cores = os.cpus().length;
+    const fallbackUsage = Math.random() * 100;
+    
     res.json({
-      usage: Math.round(Math.random() * 100),
+      usage: Math.round(fallbackUsage),
       temperature: Math.round(Math.random() * 30 + 50),
-      cores: os.cpus().length,
-      load1: Math.random().toFixed(2),
-      load5: Math.random().toFixed(2),
-      load15: Math.random().toFixed(2)
+      cores: cores,
+      load1: fallbackLoad1,
+      load5: fallbackLoad5,
+      load15: fallbackLoad15,
+      avgCoreUsage: Math.round(fallbackUsage),
+      coreUsage: Array(cores).fill(0).map(() => Math.round(Math.random() * 100)),
+      loadDetails: {
+        user: Math.round(fallbackUsage * 0.7),
+        system: Math.round(fallbackUsage * 0.3),
+        nice: 0,
+        idle: Math.round(100 - fallbackUsage),
+        irq: 0
+      },
+      temperatureDetails: {
+        main: null,
+        max: null,
+        cores: [],
+        socket: [],
+        hasTemperature: false,
+        unit: '°C'
+      },
+      system: {
+        uptime: os.uptime(),
+        hostname: os.hostname()
+      },
+      timestamp: new Date().toISOString(),
+      isFallback: true,
+      error: error.message
     });
   }
 });
+
+// Dodatkowy endpoint tylko dla loadavg
+app.get('/api/system/loadavg', requireAuth, (req, res) => {
+  try {
+    // Metoda 1: /proc/loadavg (najbardziej niezawodna)
+    const loadavgContent = fs.readFileSync('/proc/loadavg', 'utf8');
+    const loads = loadavgContent.split(/\s+/).slice(0, 3);
+    
+    // Pobierz również liczbę procesorów dla kontekstu
+    const cpuCount = os.cpus().length;
+    
+    res.json({
+      load1: parseFloat(loads[0]),
+      load5: parseFloat(loads[1]),
+      load15: parseFloat(loads[2]),
+      raw: loadavgContent.trim(),
+      cpuCount: cpuCount,
+      // Normalizowane obciążenie (load / cpuCount)
+      normalized: {
+        load1: parseFloat((parseFloat(loads[0]) / cpuCount).toFixed(2)),
+        load5: parseFloat((parseFloat(loads[1]) / cpuCount).toFixed(2)),
+        load15: parseFloat((parseFloat(loads[2]) / cpuCount).toFixed(2))
+      },
+      timestamp: new Date().toISOString(),
+      source: '/proc/loadavg'
+    });
+    
+  } catch (error) {
+    // Metoda 2: uptime command
+    try {
+      const uptimeOutput = execSync('uptime', { encoding: 'utf8' });
+      const loadMatch = uptimeOutput.match(/load average:\s*([\d.,]+),\s*([\d.,]+),\s*([\d.,]+)/i);
+      
+      if (loadMatch) {
+        const cpuCount = os.cpus().length;
+        
+        res.json({
+          load1: parseFloat(loadMatch[1].replace(',', '.')),
+          load5: parseFloat(loadMatch[2].replace(',', '.')),
+          load15: parseFloat(loadMatch[3].replace(',', '.')),
+          raw: uptimeOutput.trim(),
+          cpuCount: cpuCount,
+          normalized: {
+            load1: parseFloat((parseFloat(loadMatch[1].replace(',', '.')) / cpuCount).toFixed(2)),
+            load5: parseFloat((parseFloat(loadMatch[2].replace(',', '.')) / cpuCount).toFixed(2)),
+            load15: parseFloat((parseFloat(loadMatch[3].replace(',', '.')) / cpuCount).toFixed(2))
+          },
+          timestamp: new Date().toISOString(),
+          source: 'uptime'
+        });
+      } else {
+        throw new Error('Cannot parse uptime output');
+      }
+    } catch (e) {
+      // Ostateczny fallback
+      res.json({
+        load1: 0,
+        load5: 0,
+        load15: 0,
+        error: 'Cannot get loadavg',
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+});
+
+
 
 // Endpoint dla danych RAM
 
 app.get('/api/ram', requireAuth, async (req, res) => {
   try {
-    const mem = await si.mem()
+    const mem = await si.mem();
+    
+    // Oblicz różne metryki użycia pamięci
+    const total = mem.total;
+    const available = mem.available || (mem.free + mem.buffers + mem.cached);
+    const used = mem.used || (total - mem.free);
+    const free = mem.free;
+    
+    // Różne sposoby obliczania użycia pamięci:
+    
+    // 1. Tradycyjne użycie (używane przez większość monitorów)
+    const usageTraditional = Math.round(((total - free) / total) * 100);
+    
+    // 2. Rzeczywiste użycie (pomijając cache i buffers) - Linux way
+    const usageActual = Math.round(((total - available) / total) * 100);
+    
+    // 3. Użycie z cache (włączając cache jako użyte)
+    const usageWithCache = Math.round((used / total) * 100);
+    
+    // 4. Swap usage
+    const swapUsage = mem.swaptotal > 0 ? 
+      Math.round((mem.swapused / mem.swaptotal) * 100) : 0;
+    
+    // Oblicz różne procenty
+    const percentages = {
+      used: Math.round((used / total) * 100),
+      free: Math.round((free / total) * 100),
+      buffers: mem.buffers ? Math.round((mem.buffers / total) * 100) : 0,
+      cached: mem.cached ? Math.round((mem.cached / total) * 100) : 0,
+      available: Math.round((available / total) * 100),
+      active: mem.active ? Math.round((mem.active / total) * 100) : 0,
+      slab: mem.slab ? Math.round((mem.slab / total) * 100) : 0
+    };
+    
+    // Formatted values for display
+    const formatBytes = (bytes) => {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    };
+    
+    // Get memory details per process
+    let topProcesses = [];
+    try {
+      const processes = await si.processes();
+      topProcesses = processes.list
+        .sort((a, b) => (b.mem || 0) - (a.mem || 0))
+        .slice(0, 10)
+        .map(p => ({
+          pid: p.pid,
+          name: p.name,
+          cpu: p.cpu,
+          mem: p.mem,
+          memBytes: p.memRss,
+          command: p.command.substring(0, 50)
+        }));
+    } catch (e) {
+      console.log('Could not get process memory info:', e.message);
+    }
+    
+    // Get memory info from /proc/meminfo for more details
+    let memInfoDetails = {};
+    try {
+      const meminfo = fs.readFileSync('/proc/meminfo', 'utf8');
+      const lines = meminfo.split('\n');
+      
+      lines.forEach(line => {
+        if (line.trim()) {
+          const parts = line.split(':');
+          if (parts.length >= 2) {
+            const key = parts[0].trim();
+            const value = parts[1].trim().replace(' kB', '').trim();
+            memInfoDetails[key] = parseInt(value) * 1024; // Convert kB to bytes
+          }
+        }
+      });
+    } catch (e) {
+      console.log('Could not read /proc/meminfo:', e.message);
+    }
+    
+    // Calculate memory pressure (Linux memory pressure)
+    let pressure = { some: 0, full: 0 };
+    try {
+      const pressureSome = fs.readFileSync('/proc/pressure/memory', 'utf8');
+      const someMatch = pressureSome.match(/some avg10=(\d+\.\d+)/);
+      const fullMatch = pressureSome.match(/full avg10=(\d+\.\d+)/);
+      
+      if (someMatch) pressure.some = parseFloat(someMatch[1]);
+      if (fullMatch) pressure.full = parseFloat(fullMatch[1]);
+    } catch (e) {
+      // /proc/pressure/memory may not exist on all systems
+    }
+    
     res.json({
-      total: mem.total,
-      used: mem.used,
-      free: mem.free,
-      available: mem.available, // Ważne - dostępna pamięć
-      buffers: mem.buffers,
-      cached: mem.cached,
-      active: mem.active,
-      // Oblicz procent na podstawie rzeczywiście użytej pamięci
-      percentage: Math.round(((mem.total - mem.available) / mem.total) * 100)
-    })
+      // Raw values in bytes
+      raw: {
+        total: total,
+        used: used,
+        free: free,
+        available: available,
+        buffers: mem.buffers || 0,
+        cached: mem.cached || 0,
+        active: mem.active || 0,
+        slab: mem.slab || 0,
+        swaptotal: mem.swaptotal || 0,
+        swapused: mem.swapused || 0,
+        swapfree: mem.swapfree || 0
+      },
+      
+      // Formatted values for display
+      formatted: {
+        total: formatBytes(total),
+        used: formatBytes(used),
+        free: formatBytes(free),
+        available: formatBytes(available),
+        buffers: formatBytes(mem.buffers || 0),
+        cached: formatBytes(mem.cached || 0),
+        swap: mem.swaptotal > 0 ? formatBytes(mem.swapused || 0) + ' / ' + formatBytes(mem.swaptotal || 0) : 'N/A'
+      },
+      
+      // Usage percentages
+      percentages: percentages,
+      
+      // Different usage calculations
+      usage: {
+        traditional: usageTraditional,          // (total - free) / total
+        actual: usageActual,                    // (total - available) / total (Linux way)
+        withCache: usageWithCache,             // used / total
+        swap: swapUsage                        // swap used percentage
+      },
+      
+      // Memory pressure (Linux)
+      pressure: pressure,
+      
+      // Detailed memory information
+      details: {
+        // Memory composition
+        composition: {
+          used: used,
+          buffers: mem.buffers || 0,
+          cached: mem.cached || 0,
+          slab: mem.slab || 0,
+          available: available
+        },
+        
+        // Memory efficiency metrics
+        efficiency: {
+          cacheRatio: mem.cached ? Math.round((mem.cached / total) * 100) : 0,
+          bufferRatio: mem.buffers ? Math.round((mem.buffers / total) * 100) : 0,
+          availableRatio: Math.round((available / total) * 100),
+          swapUsageRatio: swapUsage
+        },
+        
+        // Memory info from /proc/meminfo
+        meminfo: memInfoDetails
+      },
+      
+      // Top memory consuming processes
+      topProcesses: topProcesses,
+      
+      // Health indicators
+      health: {
+        status: available < (total * 0.1) ? 'warning' : available < (total * 0.2) ? 'caution' : 'good',
+        warning: available < (total * 0.1) ? 'Low available memory' : 
+                 available < (total * 0.2) ? 'Moderate available memory' : 'Healthy',
+        swapHealth: swapUsage > 80 ? 'warning' : swapUsage > 50 ? 'caution' : 'good'
+      },
+      
+      // Metadata
+      timestamp: new Date().toISOString(),
+      uptime: os.uptime(),
+      source: 'systeminformation'
+    });
+    
   } catch (error) {
-    console.error('RAM API error:', error)
-    res.status(500).json({ error: 'Failed to get RAM data' })
+    console.error('RAM API error:', error);
+    
+    // Fallback using native os module
+    try {
+      const totalMem = os.totalmem();
+      const freeMem = os.freemem();
+      const usedMem = totalMem - freeMem;
+      
+      res.json({
+        raw: {
+          total: totalMem,
+          used: usedMem,
+          free: freeMem,
+          available: freeMem
+        },
+        formatted: {
+          total: formatBytes(totalMem),
+          used: formatBytes(usedMem),
+          free: formatBytes(freeMem),
+          available: formatBytes(freeMem)
+        },
+        percentages: {
+          used: Math.round((usedMem / totalMem) * 100),
+          free: Math.round((freeMem / totalMem) * 100),
+          available: Math.round((freeMem / totalMem) * 100)
+        },
+        usage: {
+          traditional: Math.round((usedMem / totalMem) * 100),
+          actual: Math.round((usedMem / totalMem) * 100),
+          withCache: Math.round((usedMem / totalMem) * 100),
+          swap: 0
+        },
+        timestamp: new Date().toISOString(),
+        isFallback: true,
+        error: error.message
+      });
+    } catch (fallbackError) {
+      res.status(500).json({ 
+        error: 'Failed to get RAM data',
+        message: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
   }
-})
+});
+
+// Helper function for formatting bytes
+function formatBytes(bytes) {
+  if (bytes === 0 || bytes === undefined || bytes === null) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// Additional endpoint for memory history/stats
+app.get('/api/ram/history', requireAuth, (req, res) => {
+  // This could be implemented with a database or in-memory cache
+  // to track memory usage over time
+  res.json({
+    message: 'Memory history endpoint - implement with database',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Endpoint for detailed memory info from /proc/meminfo
+app.get('/api/ram/detailed', requireAuth, (req, res) => {
+  try {
+    const meminfo = fs.readFileSync('/proc/meminfo', 'utf8');
+    const lines = meminfo.split('\n');
+    const result = {};
+    
+    lines.forEach(line => {
+      if (line.trim()) {
+        const parts = line.split(':');
+        if (parts.length >= 2) {
+          const key = parts[0].trim();
+          const value = parts[1].trim();
+          result[key] = value;
+        }
+      }
+    });
+    
+    res.json({
+      meminfo: result,
+      timestamp: new Date().toISOString(),
+      source: '/proc/meminfo'
+    });
+    
+  } catch (error) {
+    console.error('Detailed RAM info error:', error);
+    res.status(500).json({ 
+      error: 'Failed to get detailed RAM info',
+      message: error.message 
+    });
+  }
+});
+
+// Endpoint do czyszczenia cache pamięci RAM
+app.post('/api/ram/clear-cache', requireAuth, async (req, res) => {
+  try {
+    const { exec } = require('child_process');
+    const { promisify } = require('util');
+    const execAsync = promisify(exec);
+
+    // Sprawdź czy użytkownik ma uprawnienia sudo (opcjonalnie)
+    if (process.platform !== 'linux') {
+      return res.status(400).json({
+        success: false,
+        error: 'This operation is only available on Linux systems'
+      });
+    }
+
+    // Loguj próbę czyszczenia
+    console.log(`RAM cache clear requested by user: ${req.session.username}`);
+
+    const commands = [
+      'sync', // Synchronizuj dane na dysk
+      'echo 1 > /proc/sys/vm/drop_caches', // Czyszczenie pagecache
+      'echo 2 > /proc/sys/vm/drop_caches', // Czyszczenie dentries i inode
+      'echo 3 > /proc/sys/vm/drop_caches'  // Czyszczenie wszystkiego
+    ];
+
+    const results = [];
+    
+    for (const command of commands) {
+      try {
+        const { stdout, stderr } = await execAsync(`sudo ${command}`, {
+          timeout: 10000 // 10 sekund timeout
+        });
+        results.push({
+          command,
+          success: true,
+          output: stdout || stderr || 'OK'
+        });
+        // Mała przerwa między komendami
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (error) {
+        results.push({
+          command,
+          success: false,
+          error: error.message
+        });
+      }
+    }
+
+    // Pobierz aktualne dane RAM po czyszczeniu
+    let ramAfter = null;
+    try {
+      const si = require('systeminformation');
+      ramAfter = await si.mem();
+    } catch (e) {
+      console.error('Could not get RAM data after clearing:', e);
+    }
+
+    res.json({
+      success: true,
+      message: 'RAM cache cleared successfully',
+      timestamp: new Date().toISOString(),
+      executedBy: req.session.username,
+      commands: results,
+      ramAfter: ramAfter ? {
+        available: ramAfter.available,
+        cached: ramAfter.cached || 0,
+        buffers: ramAfter.buffers || 0,
+        free: ramAfter.free
+      } : null
+    });
+
+  } catch (error) {
+    console.error('RAM cache clear error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to clear RAM cache',
+      details: error.message,
+      note: 'This operation requires root privileges. Make sure the Node.js process has sudo access.'
+    });
+  }
+});
+
+// Alternatywna wersja z mniejszymi uprawnieniami (bez sudo)
+app.post('/api/ram/clear-cache-safe', requireAuth, async (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    
+    // Bezpieczna metoda - tylko jeśli plik jest zapisywalny
+    const dropCachesPath = '/proc/sys/vm/drop_caches';
+    
+    if (!fs.existsSync(dropCachesPath)) {
+      return res.status(400).json({
+        success: false,
+        error: 'System does not support dropping caches'
+      });
+    }
+
+    // Sprawdź uprawnienia (opcjonalnie)
+    try {
+      fs.accessSync(dropCachesPath, fs.constants.W_OK);
+    } catch (accessError) {
+      return res.status(403).json({
+        success: false,
+        error: 'Insufficient permissions to clear cache',
+        details: 'The process needs write access to /proc/sys/vm/drop_caches'
+      });
+    }
+
+    // Synchronizuj dane
+    require('child_process').execSync('sync', { stdio: 'ignore' });
+    
+    // Czyszczenie cache
+    fs.writeFileSync(dropCachesPath, '3');
+    
+    // Poczekaj chwilę na efekt
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Pobierz dane po czyszczeniu
+    const si = require('systeminformation');
+    const ramAfter = await si.mem();
+    
+    res.json({
+      success: true,
+      message: 'RAM cache cleared (safe mode)',
+      timestamp: new Date().toISOString(),
+      ramBefore: req.body.ramBefore || null,
+      ramAfter: {
+        total: ramAfter.total,
+        used: ramAfter.used,
+        free: ramAfter.free,
+        available: ramAfter.available,
+        cached: ramAfter.cached || 0,
+        buffers: ramAfter.buffers || 0
+      },
+      freedCache: req.body.ramBefore && ramAfter.cached ? 
+        req.body.ramBefore.cached - ramAfter.cached : null
+    });
+
+  } catch (error) {
+    console.error('Safe RAM cache clear error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to clear RAM cache',
+      details: error.message
+    });
+  }
+});
 
 function checkRestartRequired() {
   try {
@@ -388,33 +1112,6 @@ async function getGroups(username) {
   })
 }
 
-async function getFilesystems() {
-  try {
-    const { exec } = await import('child_process');
-    return new Promise((resolve) => {
-      exec('df -h --output=source,size,pcent,target | awk \'NR>1{print $1","$2","$3","$4}\'', (err, stdout) => {
-        if (err) return resolve([]);
-        
-        const lines = stdout.trim().split('\n');
-        const filesystems = lines.map(line => {
-          const [device, size, percent, mount] = line.split(',');
-          return {
-            device,
-            size: size.trim(),
-            percent: percent.trim(),
-            percentNumber: parseInt(percent.trim()),
-            mount: mount.trim()
-          };
-        });
-        
-        resolve(filesystems);
-      });
-    });
-  } catch (error) {
-    console.error('Error getting filesystems:', error);
-    return [];
-  }
-}
 
 // Dodaj nowy endpoint (umieść go z innymi endpointami)
 app.get('/api/filesystems', requireAuth, async (req, res) => {
@@ -964,81 +1661,206 @@ app.get('/api/storage/filesystems', requireAuth, async (req, res) => {
     const util = require('util');
     const execAsync = util.promisify(exec);
 
-    // 1. Pobierz podstawowe dane przez df (zawsze dostępne)
+    // Użyj angielskiej lokalizacji aby uniknąć problemów z przecinkami
     const { stdout: dfStdout } = await execAsync(
-      'df -h --output=source,fstype,size,used,avail,pcent,target | awk \'NR>1{print}\''
+      'LC_ALL=C df -hT 2>/dev/null | tail -n +2'
     );
 
     if (!dfStdout.trim()) {
       return res.json({ success: true, data: [] });
     }
 
-    // 2. Parsowanie wyniku df
-    const filesystems = dfStdout.split('\n').map(line => {
-      const [device, type, size, used, avail, pcent, mounted] = line.trim().split(/\s+/);
-      return {
+    const lines = dfStdout.trim().split('\n');
+    const filesystems = [];
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      
+      // Przykład linii: /dev/sda1      ext4       458G  457G     0 100% /srv/dysk4
+      // Dzielimy na części, ale mount point może mieć spacje
+      const parts = line.trim().split(/\s+/);
+      if (parts.length < 7) continue;
+      
+      const device = parts[0];
+      const type = parts[1];
+      
+      // Konwersja human-readable (1K, 1M, 1G, 1T) na bajty
+      // Uwaga: LC_ALL=C daje kropki zamiast przecinków
+      const size = humanToBytes(parts[2]);
+      const used = humanToBytes(parts[3]);
+      const available = humanToBytes(parts[4]);
+      
+      const pcentStr = parts[5];
+      const mounted = parts.slice(6).join(' '); // reszta to mount point
+      
+      const usedPercent = parseInt(pcentStr.replace('%', '')) || 0;
+
+      // Filtruj niechciane systemy - ZWIĘKSZONA FILTRACJA
+      const deviceLower = device.toLowerCase();
+      const typeLower = type.toLowerCase();
+      const mountedLower = mounted.toLowerCase();
+
+      const isOverlay = deviceLower.includes('overlay') || 
+                       typeLower.includes('overlay') ||
+                       mountedLower.includes('overlay') ||
+                       mountedLower.includes('docker') ||
+                       deviceLower.includes('docker') ||
+                       typeLower.includes('tmpfs') ||
+                       deviceLower.includes('tmpfs') ||
+                       typeLower.includes('devtmpfs') ||
+                       typeLower.includes('efivarfs') ||
+                       mountedLower.includes('docker_data') ||
+                       mountedLower.includes('/run/') ||
+                       mountedLower.includes('/tmp') ||
+                       mountedLower.includes('/dev/shm');
+
+      const isSystem = mountedLower === '/' ||
+                       mountedLower.startsWith('/boot') ||
+                       mountedLower.startsWith('/efi') ||
+                       mountedLower.startsWith('/run') ||
+                       mountedLower.startsWith('/sys') ||
+                       mountedLower.startsWith('/proc') ||
+                       mountedLower.startsWith('/dev') ||
+                       mountedLower.includes('/var/lib/docker') ||
+                       mountedLower.includes('/home/docker_data') ||
+                       mountedLower.includes('credentials');
+
+      if (isOverlay || isSystem) {
+        console.log('Filtered out:', { device, type, mounted });
+        continue;
+      }
+
+      // Dodatkowe sprawdzenie - tylko fizyczne dyski i LVM
+      const isPhysicalDisk = deviceLower.startsWith('/dev/sd') ||
+                            deviceLower.startsWith('/dev/nvme') ||
+                            deviceLower.startsWith('/dev/mapper/') ||
+                            deviceLower.startsWith('/dev/md');
+
+      if (!isPhysicalDisk) continue;
+
+      filesystems.push({
         device,
         type,
         size,
         used,
-        available: avail,
-        usedPercent: parseInt(pcent),
-        mounted
-      };
-    }).filter(fs => fs.device && !fs.device.startsWith('tmpfs'));
-
-    // 3. Pobierz UUID tylko dla istniejących urządzeń
-    const uuidMapping = {};
-    try {
-      const { stdout: blkidStdout } = await execAsync(
-        'blkid -o export 2>/dev/null || echo ""'
-      );
-      
-      blkidStdout.split('\n\n').forEach(block => {
-        const device = block.match(/DEVICE=([^\n]+)/)?.[1];
-        const uuid = block.match(/UUID=([^\n]+)/)?.[1];
-        if (device && uuid) {
-          uuidMapping[device] = uuid;
-        }
+        available,
+        usedPercent,
+        mounted,
+        reference: device,
+        status: 'active'
       });
-    } catch (e) {
-      console.error('UUID mapping error:', e.message);
     }
 
-    // 4. Przygotuj ostateczną odpowiedź
-    const result = filesystems.map(fs => {
-      // Konwersja rozmiarów do bajtów
-      const units = { 'K': 1024, 'M': 1024**2, 'G': 1024**3, 'T': 1024**4 };
-      const convert = (val) => {
-        const match = val.match(/^(\d+\.?\d*)([KMGT])?/i);
-        if (!match) return 0;
-        return parseFloat(match[1]) * (units[match[2]?.toUpperCase()] || 1);
-      };
+    // Pobierz UUID dla każdego urządzenia
+    for (const fs of filesystems) {
+      try {
+        const { stdout: uuidStdout } = await execAsync(
+          `blkid -o value -s UUID ${fs.device} 2>/dev/null || echo ""`
+        );
+        const uuid = uuidStdout.trim();
+        if (uuid) {
+          fs.reference = uuid;
+        }
+      } catch (e) {
+        // Ignoruj błędy
+      }
+    }
 
-      return {
-        device: fs.device,
-        type: fs.type || 'unknown',
-        size: convert(fs.size),
-        used: convert(fs.used),
-        available: convert(fs.available),
-        usedPercent: fs.usedPercent,
-        mounted: fs.mounted,
-        reference: uuidMapping[fs.device] || fs.device,
-        status: fs.mounted ? 'active' : 'inactive'
-      };
-    });
+    // Sortuj alfabetycznie po mount point
+    filesystems.sort((a, b) => a.mounted.localeCompare(b.mounted));
 
-    res.json({ success: true, data: result });
+    res.json({ success: true, data: filesystems });
 
   } catch (error) {
     console.error('Filesystems API error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to get filesystems data',
-      details: error.message
+      error: 'Failed to get filesystems data'
     });
   }
 });
+
+// Funkcja do konwersji human-readable (1K, 1M, 1G, 1T) na bajty
+function humanToBytes(value) {
+  if (!value || value === '-') return 0;
+  
+  // LC_ALL=C daje kropki, ale na wszelki wypadek usuń przecinki
+  const cleanValue = value.replace(',', '.');
+  
+  const units = {
+    'K': 1024,
+    'M': 1024 ** 2,
+    'G': 1024 ** 3,
+    'T': 1024 ** 4,
+    'P': 1024 ** 5
+  };
+  
+  // Rozpoznaj format: 1.8T, 956M, 458G, 6.3G
+  const match = cleanValue.match(/^([\d.]+)([KMGT])?$/i);
+  if (!match) {
+    console.warn('Could not parse size:', value);
+    return 0;
+  }
+  
+  const num = parseFloat(match[1]);
+  const unit = match[2]?.toUpperCase() || '';
+  
+  if (unit && units[unit]) {
+    return Math.round(num * units[unit]);
+  }
+  
+  // Jeśli nie ma jednostki, traktuj jako bajty
+  return Math.round(num);
+}
+
+async function getFilesystems() {
+  try {
+    const { exec } = await import('child_process');
+    return new Promise((resolve) => {
+      exec('df -h --output=source,size,pcent,target | awk \'NR>1{print $1","$2","$3","$4}\'', (err, stdout) => {
+        if (err) return resolve([]);
+        
+        const lines = stdout.trim().split('\n');
+        const filesystems = lines.map(line => {
+          const [device, size, percent, mount] = line.split(',');
+          return {
+            device,
+            size: size.trim(),
+            percent: percent.trim(),
+            percentNumber: parseInt(percent.trim()),
+            mount: mount.trim()
+          };
+        }).filter(fs => {
+          // FILTRUJ OVERLAY I DOCKER
+          if (!fs.device) return false;
+          
+          const device = fs.device.toLowerCase();
+          const mount = (fs.mount || '').toLowerCase();
+
+          const isOverlay = device.includes('overlay') || 
+                           mount.includes('overlay') ||
+                           mount.includes('docker') ||
+                           device.includes('docker') ||
+                           device.includes('tmpfs');
+
+          const isSystem = mount.startsWith('/boot') ||
+                           mount.startsWith('/efi') ||
+                           mount.startsWith('/run') ||
+                           mount.startsWith('/sys') ||
+                           mount.startsWith('/proc') ||
+                           mount.startsWith('/dev');
+
+          return !isOverlay && !isSystem;
+        });
+        
+        resolve(filesystems);
+      });
+    });
+  } catch (error) {
+    console.error('Error getting filesystems:', error);
+    return [];
+  }
+}
 
 // Funkcja do sprawdzania statusu systemu plików
 async function checkFilesystemStatus(device, mountPoint) {

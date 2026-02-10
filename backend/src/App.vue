@@ -1,5 +1,11 @@
 <template>
   <div class="app-container" :class="theme">
+    <SessionDetectionOverlay 
+      :auto-redirect="true"
+      :redirect-delay="5000"
+      :max-reconnect-attempts="3"
+    />
+  
     <template v-if="!$route.meta.hideLayout">
       <Navbar 
         @toggle-sidebar="toggleSidebar" 
@@ -39,6 +45,7 @@ import axios from 'axios'
 import Navbar from '@/components/Navbar.vue'
 import Sidebar from '@/components/Sidebar.vue'
 import HorizontalSidebar from '@/components/HorizontalSidebar.vue'
+import SessionDetectionOverlay from '@/components/system/Detections/SessionDetectionOverlay.vue'
 
 const route = useRoute()
 const isSidebarCollapsed = ref(false)

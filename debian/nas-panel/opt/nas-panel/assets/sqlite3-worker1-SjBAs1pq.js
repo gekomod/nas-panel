@@ -1,1 +1,0 @@
-(function(){"use strict";var i={},t;function s(){if(t)return i;t=1;{const r=globalThis.location?new URL(globalThis.location.href).searchParams:new URLSearchParams;let e="sqlite3.js";r.has("sqlite3.dir")&&(e=r.get("sqlite3.dir")+"/"+e),importScripts(e)}return sqlite3InitModule().then(r=>r.initWorker1API()),i}s()})();

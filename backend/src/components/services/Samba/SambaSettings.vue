@@ -1,46 +1,104 @@
 <template>
   <div class="samba-settings">
+    <!-- Alert dla nie zainstalowanej usługi -->
     <el-alert
-      v-if="!serviceStatus.running"
-      title="Usługa Samba jest wyłączona"
+      v-if="!serviceStatus.installed"
+      :title="$t('samba.status.notInstalled')"
       type="warning"
       :closable="false"
       show-icon
       class="service-alert"
     />
+    
+    <!-- Alert dla wyłączonej usługi -->
+    <el-alert
+      v-if="serviceStatus.installed && !serviceStatus.running"
+      :title="$t('samba.status.serviceStopped')"
+      type="info"
+      :closable="false"
+      show-icon
+      class="service-alert"
+    />
 
-    <div class="section-header">
-      <h2>
-        <Icon icon="mdi:cog" width="24" height="24" class="header-icon" />
-        <span>Ustawienia Samba</span>
-      </h2>
-    </div>
+    <!-- Header -->
+    <el-card class="dashboard-header compact" shadow="hover">
+      <div class="header-content">
+        <div class="header-left">
+          <div class="header-icon small">
+            <Icon icon="mdi:cog" />
+          </div>
+          <div class="header-text">
+            <h2>{{ $t('samba.settings.title') }}</h2>
+            <p class="subtitle">{{ $t('samba.settings.subtitle') }}</p>
+          </div>
+        </div>
+      </div>
+    </el-card>
 
+    <!-- Settings Tabs -->
     <el-tabs type="border-card" class="clean-settings-tabs">
-      <el-tab-pane label="Główne">
+      <el-tab-pane :label="$t('samba.settings.general')">
         <div class="tab-content">
-          <el-form :model="settings" label-width="250px" label-position="left" class="settings-form">
-            <el-form-item label="Workgroup">
-              <el-input v-model="settings.workgroup" placeholder="np. WORKGROUP" />
+          <el-form :model="settings" label-width="200px" label-position="left" class="settings-form">
+            <el-form-item :label="$t('samba.settings.workgroup')">
+              <el-input 
+                v-model="settings.workgroup" 
+                :placeholder="$t('samba.settings.workgroupPlaceholder')"
+                size="small"
+              />
             </el-form-item>
-            <el-form-item label="Tryb bezpieczeństwa">
-              <el-select v-model="settings.security" placeholder="Wybierz tryb bezpieczeństwa">
-                <el-option label="User" value="user" />
-                <el-option label="Share" value="share" />
-                <el-option label="Domain" value="domain" />
+            
+            <el-form-item :label="$t('samba.settings.serverString')">
+              <el-input 
+                v-model="settings.serverString" 
+                :placeholder="$t('samba.settings.serverStringPlaceholder')"
+                size="small"
+              />
+            </el-form-item>
+            
+            <el-form-item :label="$t('samba.settings.securityMode')">
+              <el-select 
+                v-model="settings.security" 
+                :placeholder="$t('samba.settings.selectSecurityMode')"
+                size="small"
+                style="width: 100%"
+              >
+                <el-option 
+                  :label="$t('samba.settings.securityUser')" 
+                  value="user" 
+                />
+                <el-option 
+                  :label="$t('samba.settings.securityShare')" 
+                  value="share" 
+                />
+                <el-option 
+                  :label="$t('samba.settings.securityDomain')" 
+                  value="domain" 
+                />
+                <el-option 
+                  :label="$t('samba.settings.securityADS')" 
+                  value="ads" 
+                />
               </el-select>
             </el-form-item>
-            <el-form-item label="Interfejsy">
-              <el-input v-model="settings.interfaces" placeholder="np. eth0, wlan0" />
-              <div class="form-hint">Lista interfejsów oddzielonych przecinkami</div>
+            
+            <el-form-item :label="$t('samba.settings.interfaces')">
+              <el-input 
+                v-model="settings.interfaces" 
+                :placeholder="$t('samba.settings.interfacesPlaceholder')"
+                size="small"
+              />
+              <div class="form-hint">{{ $t('samba.settings.interfacesHint') }}</div>
             </el-form-item>
-            <el-form-item label="Bind tylko do interfejsów">
+            
+            <el-form-item :label="$t('samba.settings.bindInterfacesOnly')">
               <div class="switch-wrapper">
-                <el-switch v-model="settings.bindInterfacesOnly" />
-                <span class="switch-description">Ogranicza nasłuchiwanie tylko do podanych interfejsów</span>
+                <el-switch v-model="settings.bindInterfacesOnly" size="small" />
+                <span class="switch-description">{{ $t('samba.settings.bindInterfacesOnlyHint') }}</span>
               </div>
             </el-form-item>
-            <el-form-item label="Poziom logowania">
+            
+            <el-form-item :label="$t('samba.settings.logLevel')">
               <div class="log-level-wrapper">
                 <el-input-number 
                   v-model="settings.logLevel" 
@@ -48,71 +106,37 @@
                   :max="10" 
                   :step="1"
                   controls-position="right"
+                  size="small"
                 />
-                <div class="form-hint">0 - brak logów, 10 - pełne logowanie</div>
+                <div class="form-hint">{{ $t('samba.settings.logLevelHint') }}</div>
               </div>
             </el-form-item>
           </el-form>
         </div>
       </el-tab-pane>
 
-      <el-tab-pane label="Katalogi domowe">
+      <el-tab-pane :label="$t('samba.settings.homeDirectories')">
         <div class="tab-content">
-          <el-form :model="homeSettings" label-width="300px" label-position="left" class="settings-form">
-            <el-form-item label="Włączone">
+          <el-form :model="homeSettings" label-width="250px" label-position="left" class="settings-form">
+            <el-form-item :label="$t('samba.settings.enableHomeDirs')">
               <div class="switch-wrapper">
-                <el-switch v-model="homeSettings.enabled" />
-                <div class="form-hint">Aktywuje obsługę katalogów domowych</div>
+                <el-switch v-model="homeSettings.enabled" size="small" />
+                <div class="form-hint">{{ $t('samba.settings.enableHomeDirsHint') }}</div>
               </div>
             </el-form-item>
 
             <template v-if="homeSettings.enabled">
-              <el-form-item label="Włącz katalogi domowe użytkowników">
+              <el-form-item :label="$t('samba.settings.browsable')">
                 <div class="switch-wrapper">
-                  <el-switch v-model="homeSettings.enableUserHomes" />
-                  <div class="form-hint">Udostępnia automatycznie katalogi domowe użytkowników</div>
+                  <el-switch v-model="homeSettings.browsable" size="small" />
+                  <div class="form-hint">{{ $t('samba.settings.browsableHint') }}</div>
                 </div>
               </el-form-item>
 
-              <el-form-item label="Do przeglądania">
+              <el-form-item :label="$t('samba.settings.inheritAcls')">
                 <div class="switch-wrapper">
-                  <el-switch v-model="homeSettings.browsable" />
-                  <div class="form-hint">Kontroluje widoczność udziału na liście dostępnych udziałów</div>
-                </div>
-              </el-form-item>
-
-              <el-form-item label="Dziedzicz ACL-y">
-                <div class="switch-wrapper">
-                  <el-switch v-model="homeSettings.inheritAcls" />
-                  <div class="form-hint">Zapewnia honorowanie ACL-ów z katalogów nadrzędnych</div>
-                </div>
-              </el-form-item>
-
-              <el-form-item label="Dziedzicz uprawnienia">
-                <div class="switch-wrapper">
-                  <el-switch v-model="homeSettings.inheritPermissions" />
-                  <div class="form-hint">Nadpisuje domyślne maski uprawnień</div>
-                </div>
-              </el-form-item>
-
-              <el-form-item label="Włącz kosz">
-                <div class="switch-wrapper">
-                  <el-switch v-model="homeSettings.enableRecycleBin" />
-                  <div class="form-hint">Tworzy kosz dla każdego użytkownika</div>
-                </div>
-              </el-form-item>
-
-              <el-form-item label="Podążaj za dowiązaniami symbolicznymi">
-                <div class="switch-wrapper">
-                  <el-switch v-model="homeSettings.followSymlinks" />
-                  <div class="form-hint">Zezwala na obsługę dowiązań symbolicznych</div>
-                </div>
-              </el-form-item>
-
-              <el-form-item label="Szerokie linki" v-if="homeSettings.followSymlinks">
-                <div class="switch-wrapper">
-                  <el-switch v-model="homeSettings.wideLinks" />
-                  <div class="form-hint">Zezwala na dowiązania poza katalogiem domowym</div>
+                  <el-switch v-model="homeSettings.inheritAcls" size="small" />
+                  <div class="form-hint">{{ $t('samba.settings.inheritAclsHint') }}</div>
                 </div>
               </el-form-item>
             </template>
@@ -121,14 +145,29 @@
       </el-tab-pane>
     </el-tabs>
 
+    <!-- Action Buttons -->
     <div class="action-buttons">
-      <el-button type="primary" @click="saveSettings" :loading="saving" class="save-btn">
-        <Icon icon="mdi:content-save" width="16" />
-        Zapisz ustawienia
+      <el-button 
+        type="primary" 
+        @click="saveSettings" 
+        :loading="saving" 
+        size="small"
+        class="save-btn"
+        :disabled="!serviceStatus.installed"
+      >
+        <Icon icon="mdi:content-save" width="14" />
+        {{ $t('common.save') }}
       </el-button>
-      <el-button @click="restartService" :loading="restarting" :disabled="!serviceStatus.running" class="restart-btn">
-        <Icon icon="mdi:restart" width="16" />
-        Restartuj usługę
+      
+      <el-button 
+        @click="restartService" 
+        :loading="restarting" 
+        :disabled="!serviceStatus.running"
+        size="small"
+        class="restart-btn"
+      >
+        <Icon icon="mdi:restart" width="14" />
+        {{ $t('samba.settings.restartService') }}
       </el-button>
     </div>
   </div>
@@ -138,8 +177,10 @@
 import { ref, onMounted, defineProps, defineEmits } from 'vue';
 import { Icon } from '@iconify/vue';
 import { ElMessage } from 'element-plus';
-import SambaService from './api.js';
+import { useI18n } from 'vue-i18n';
+import axios from 'axios';
 
+const { t } = useI18n();
 const props = defineProps({
   serviceStatus: {
     type: Object,
@@ -151,6 +192,7 @@ const emit = defineEmits(['service-restarted']);
 
 const settings = ref({
   workgroup: 'WORKGROUP',
+  serverString: '%h server (Samba)',
   security: 'user',
   interfaces: '',
   bindInterfacesOnly: false,
@@ -159,13 +201,8 @@ const settings = ref({
 
 const homeSettings = ref({
   enabled: false,
-  enableUserHomes: false,
   browsable: true,
-  inheritAcls: true,
-  inheritPermissions: false,
-  enableRecycleBin: true,
-  followSymlinks: false,
-  wideLinks: false
+  inheritAcls: true
 });
 
 const saving = ref(false);
@@ -178,32 +215,32 @@ onMounted(() => {
 async function loadSettings() {
   try {
     const [mainSettings, homeSettingsRes] = await Promise.all([
-      SambaService.getSettings(),
-      SambaService.getHomeDirSettings()
+      axios.get('/services/samba/settings'),
+      axios.get('/services/samba/settings/homedirs')
     ]);
     
-    settings.value = {
-      workgroup: 'WORKGROUP',
-      security: 'user',
-      interfaces: '',
-      bindInterfacesOnly: false,
-      logLevel: 1,
-      ...mainSettings.data
-    };
+    if (mainSettings.data.success) {
+      settings.value = {
+        workgroup: 'WORKGROUP',
+        serverString: '%h server (Samba)',
+        security: 'user',
+        interfaces: '',
+        bindInterfacesOnly: false,
+        logLevel: 1,
+        ...mainSettings.data.data
+      };
+    }
     
-    homeSettings.value = {
-      enabled: false,
-      enableUserHomes: false,
-      browsable: true,
-      inheritAcls: true,
-      inheritPermissions: false,
-      enableRecycleBin: true,
-      followSymlinks: false,
-      wideLinks: false,
-      ...homeSettingsRes.data
-    };
+    if (homeSettingsRes.data.success) {
+      homeSettings.value = {
+        enabled: false,
+        browsable: true,
+        inheritAcls: true,
+        ...homeSettingsRes.data.data
+      };
+    }
   } catch (error) {
-    ElMessage.error('Błąd ładowania ustawień: ' + error.message);
+    ElMessage.error(t('samba.settings.errors.loadFailed'));
   }
 }
 
@@ -214,32 +251,26 @@ async function saveSettings() {
     const settingsToSend = {
       settings: {
         workgroup: settings.value.workgroup || 'WORKGROUP',
+        serverString: settings.value.serverString || '%h server (Samba)',
         security: settings.value.security || 'user',
-        interfaces: settings.value.interfaces || 'eth0',
+        interfaces: settings.value.interfaces || '',
         bindInterfacesOnly: settings.value.bindInterfacesOnly !== false,
-        logLevel: settings.value.logLevel || 1
+        logLevel: settings.value.logLevel || 1,
+        homes: homeSettings.value.enabled ? homeSettings.value : null
       }
     };
-    
-    const homeSettingsToSend = {
-      enabled: homeSettings.value.enabled || false,
-      enableUserHomes: homeSettings.value.enableUserHomes || false,
-      browsable: homeSettings.value.browsable !== false,
-      inheritAcls: homeSettings.value.inheritAcls !== false,
-      inheritPermissions: homeSettings.value.inheritPermissions || false,
-      enableRecycleBin: homeSettings.value.enableRecycleBin !== false,
-      followSymlinks: homeSettings.value.followSymlinks || false,
-      wideLinks: homeSettings.value.wideLinks || false
-    };
 
-    await Promise.all([
-      SambaService.updateSettings(settingsToSend),
-      SambaService.updateHomeDirSettings(homeSettingsToSend)
-    ]);
-    ElMessage.success('Ustawienia zapisane pomyślnie');
+    await axios.put('/services/samba/settings', settingsToSend);
+    
+    // Also save home directory settings separately
+    if (homeSettings.value.enabled) {
+      await axios.post('/services/samba/settings/homedirs', homeSettings.value);
+    }
+    
+    ElMessage.success(t('samba.settings.messages.saved'));
   } catch (error) {
     console.error('Save settings error:', error);
-    ElMessage.error('Błąd zapisywania ustawień: ' + (error.response?.data?.error || error.message));
+    ElMessage.error(t('samba.settings.errors.saveFailed'));
   } finally {
     saving.value = false;
   }
@@ -248,11 +279,11 @@ async function saveSettings() {
 async function restartService() {
   try {
     restarting.value = true;
-    await SambaService.restartService();
-    ElMessage.success('Usługa zrestartowana pomyślnie');
+    await axios.post('/services/samba/restart');
+    ElMessage.success(t('samba.settings.messages.restarted'));
     emit('service-restarted');
   } catch (error) {
-    ElMessage.error('Błąd restartowania usługi: ' + error.message);
+    ElMessage.error(t('samba.settings.errors.restartFailed'));
   } finally {
     restarting.value = false;
   }
@@ -261,45 +292,80 @@ async function restartService() {
 
 <style scoped lang="scss">
 .samba-settings {
-  --spacing-sm: 12px;
-  --spacing-md: 16px;
-  --radius: 8px;
   --card-bg: var(--el-bg-color);
   --border-color: var(--el-border-color);
   --text-primary: var(--el-text-color-primary);
   --text-secondary: var(--el-text-color-secondary);
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
 }
 
 .service-alert {
-  margin-bottom: var(--spacing-md);
-  border-radius: var(--radius);
+  margin-bottom: var(--spacing-lg);
+  border-radius: var(--radius-md);
 }
 
-.section-header {
-  margin-bottom: var(--spacing-md);
-  padding-bottom: var(--spacing-sm);
-  border-bottom: 1px solid var(--border-color);
+/* Header */
+.dashboard-header.compact {
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--spacing-lg);
+}
+
+.dashboard-header.compact .header-content {
+  padding: var(--spacing-lg);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.header-icon.small {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  border-radius: var(--radius-md);
+  color: white;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.header-text {
+  flex: 1;
   
   h2 {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
     margin: 0;
-    font-size: 1.25rem;
+    font-size: 18px;
     font-weight: 600;
     color: var(--text-primary);
   }
+  
+  .subtitle {
+    margin: var(--spacing-xs) 0 0;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
 }
 
-.header-icon {
-  color: var(--el-color-primary);
-}
-
+/* Tabs */
 .clean-settings-tabs {
   background: var(--card-bg);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
   overflow: hidden;
+  margin-bottom: var(--spacing-lg);
   
   :deep(.el-tabs__header) {
     margin: 0;
@@ -313,8 +379,8 @@ async function restartService() {
   }
   
   :deep(.el-tabs__item) {
-    height: 44px;
-    padding: 0 20px;
+    height: 40px;
+    padding: 0 16px;
     font-weight: 500;
     color: var(--text-secondary);
     
@@ -335,13 +401,14 @@ async function restartService() {
 }
 
 .tab-content {
-  padding: var(--spacing-md);
+  padding: var(--spacing-lg);
 }
 
+/* Settings Form */
 .settings-form {
   :deep(.el-form-item) {
-    margin-bottom: var(--spacing-md);
-    padding-bottom: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+    padding-bottom: var(--spacing-lg);
     border-bottom: 1px solid var(--border-color);
     
     &:last-child {
@@ -355,6 +422,7 @@ async function restartService() {
     color: var(--text-primary);
     font-weight: 500;
     padding-bottom: var(--spacing-sm);
+    font-size: 13px;
   }
 }
 
@@ -366,7 +434,7 @@ async function restartService() {
 }
 
 .switch-description {
-  font-size: 0.875rem;
+  font-size: 12px;
   color: var(--text-secondary);
   flex: 1;
 }
@@ -378,18 +446,18 @@ async function restartService() {
 }
 
 .form-hint {
-  font-size: 0.75rem;
+  font-size: 11px;
   color: var(--text-secondary);
-  margin-top: 4px;
+  margin-top: var(--spacing-xs);
   line-height: 1.4;
 }
 
+/* Action Buttons */
 .action-buttons {
   display: flex;
   justify-content: flex-end;
-  gap: var(--spacing-md);
-  margin-top: var(--spacing-md);
-  padding-top: var(--spacing-md);
+  gap: var(--spacing-sm);
+  padding-top: var(--spacing-lg);
   border-top: 1px solid var(--border-color);
 }
 
@@ -399,5 +467,23 @@ async function restartService() {
   align-items: center;
   gap: 6px;
   font-weight: 500;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .settings-form {
+    :deep(.el-form-item__label) {
+      width: 100% !important;
+      margin-bottom: var(--spacing-sm);
+    }
+    
+    :deep(.el-form-item__content) {
+      margin-left: 0 !important;
+    }
+  }
+  
+  .action-buttons {
+    flex-direction: column;
+  }
 }
 </style>
