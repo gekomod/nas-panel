@@ -426,6 +426,17 @@ const routes = [
         }
       },
       {
+        path: '/system/servers',
+        name: 'Servers',
+        component: () => import('@/components/system/Servers/ServersManager.vue'),
+        meta: { 
+          title: 'routes.servers',
+          requiresAuth: true,
+          icon: 'mdi:server',
+          description: 'Manage remote servers via SSH'
+        }
+      },
+      {
         path: '/system/settings',
         name: 'SystemSettings',
         component: () => import('@/components/system/Settings/Settings.vue'),

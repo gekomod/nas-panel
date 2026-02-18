@@ -9,6 +9,7 @@ const path = require('path');
 const multer = require('multer');
 const diskusage = require('diskusage');
 const { exec } = require('child_process');
+const http = require('http');
 require('dotenv').config({ path: './.env' });
 
 const ServerRoutes = require('./src/api/server.cjs');
@@ -35,6 +36,7 @@ const LoadBalancer = require('./src/api/loadbalancer.cjs');
 const terminalApi = require('./src/api/terminal.cjs');
 const nfsApi = require('./src/api/nfs.cjs');
 const nfsServerApi = require('./src/api/nfs-server.cjs');
+const ServersApi = require('./src/api/servers.cjs');
 
 const os = require('os');
 const { publicIpv4 } = require('public-ip');
@@ -140,6 +142,26 @@ const HOST = '0.0.0.0'; // Nasłuchuje na wszystkich interfejsach
 const PORT = process.env.VITE_API_PORT || 3000;
 console.log(`API port: ${PORT}`);
 
+const wsServer = http.createServer();
+
+console.log('Initializing WebSocket terminal...');
+try {
+  const TerminalSocketApi = require('./src/api/terminal-socket.cjs');
+  const terminalIO = TerminalSocketApi(wsServer); // Przekazujemy server, nie app!
+  
+  if (terminalIO) {
+    console.log('✅ Terminal WebSocket initialized 1113');
+  } else {
+    console.log('❌ Terminal WebSocket initialization failed');
+  }
+} catch (error) {
+  console.error('❌ Error loading terminal socket:', error);
+}
+
+wsServer.listen(1113, '0.0.0.0', () => {
+  console.log(`🔌 WebSocket server running on ws://0.0.0.0:1113/terminal`);
+});
+
 const BASE_DIR = '/';
 
 // Prosta konfiguracja CORS bez użycia path-to-regexp
@@ -235,6 +257,7 @@ LoadBalancer(app, requireAuth);
 terminalApi(app, requireAuth);
 nfsApi(app, requireAuth);
 nfsServerApi(app, requireAuth);
+ServersApi(app, requireAuth);
 
 // Zmieniamy funkcję logowania:
 app.post('/api/login', async (req, res) => {
@@ -1958,4 +1981,6 @@ async function gracefulShutdown() {
 
 app.listen(PORT, HOST, () => {
   console.log(`Serwer działa na http://${HOST}:${PORT}`);
+  console.log(`🔌 WebSocket endpoint: ws://0.0.0.0:${PORT}/terminal`);
+  console.log(`📡 API endpoint: http://0.0.0.0:${PORT}/api`);
 })
