@@ -339,6 +339,16 @@
       :settings="updateSettings"
       @save="saveAutomaticUpdatesSettings"
     />
+    
+    <TerminalInstallDialog
+      v-model="terminalDialogVisible"
+      :packages="installingPackages"
+      :process-id="currentProcessId"
+      :is-bulk="isInstallingAll || isInstallingSelected"
+      @complete="handleInstallComplete"
+      @cancel="handleInstallCancelled"
+      @retry="retryInstallation"
+    />
   </div>
 </template>
 
@@ -352,6 +362,7 @@ import UpdateStatus from './UpdateStatus.vue'
 import UpdateDetailsDialog from './UpdateDetailsDialog.vue'
 import AutomaticUpdatesDialog from './AutomaticUpdatesDialog.vue'
 import PriorityBadge from './PriorityBadge.vue'
+import TerminalInstallDialog from './TerminalInstallDialog.vue'
 
 const { t } = useI18n()
 
@@ -385,6 +396,11 @@ const pageSize = ref(10)
 const viewFilter = ref('all')
 const searchQuery = ref('')
 const priorityFilter = ref('')
+
+// Dialog Install Package
+const terminalDialogVisible = ref(false)
+const installingPackages = ref([])
+const currentProcessId = ref('')
 
 // Settings
 const updateSettings = ref({
@@ -620,6 +636,11 @@ const installSingleUpdate = async (pkg) => {
       no_confirm: true
     })
 
+    currentProcessId.value = response.data.processId
+    installingPackages.value = [pkg.name]
+    terminalDialogVisible.value = true
+    
+    // Nadal śledź progress w tle
     setupProgressTracking(pkg.name, response.data.processId, [pkg.name])
     
   } catch (err) {
@@ -699,6 +720,10 @@ const installUpdates = async () => {
       no_confirm: true
     })
     
+    currentProcessId.value = response.data.processId
+    installingPackages.value = packageNames
+    terminalDialogVisible.value = true
+    
     setupProgressTracking('_all', response.data.processId, packageNames)
     
   } catch (err) {
@@ -707,6 +732,31 @@ const installUpdates = async () => {
     }
     isInstallingAll.value = false
   }
+}
+
+const handleInstallComplete = (data) => {
+  isInstallingAll.value = false
+  isInstallingSelected.value = false
+  
+  if (data.success) {
+    ElNotification.success({
+      title: t('systemUpdates.installationComplete'),
+      message: t('systemUpdates.packagesInstalled', { 
+        count: installingPackages.value.length 
+      }),
+      position: 'bottom-right'
+    })
+    
+    // Odśwież listę aktualizacji
+    setTimeout(() => {
+      checkUpdates(true)
+    }, 2000)
+  }
+}
+
+const handleInstallCancelled = () => {
+  isInstallingAll.value = false
+  isInstallingSelected.value = false
 }
 
 const setupProgressTracking = (key, processId, packages = []) => {

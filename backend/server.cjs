@@ -33,6 +33,8 @@ const MediaRoutes = require('./src/api/media.cjs');
 const VPNRoutes = require('./src/api/vpn.cjs');
 const LoadBalancer = require('./src/api/loadbalancer.cjs');
 const terminalApi = require('./src/api/terminal.cjs');
+const nfsApi = require('./src/api/nfs.cjs');
+const nfsServerApi = require('./src/api/nfs-server.cjs');
 
 const os = require('os');
 const { publicIpv4 } = require('public-ip');
@@ -231,6 +233,8 @@ MediaRoutes(app, requireAuth);
 VPNRoutes(app, requireAuth);
 LoadBalancer(app, requireAuth);
 terminalApi(app, requireAuth);
+nfsApi(app, requireAuth);
+nfsServerApi(app, requireAuth);
 
 // Zmieniamy funkcję logowania:
 app.post('/api/login', async (req, res) => {

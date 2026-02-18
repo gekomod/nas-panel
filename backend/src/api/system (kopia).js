@@ -1295,41 +1295,15 @@ function calculateNextRun(cronExpression) {
       return nextRun;
     }
     
-    // Dla normalnych wyrażeń cron - poprawiony sposób użycia
+    // Dla normalnych wyrażeń cron
     const now = new Date();
-    // Sprawdź różne możliwe interfejsy API
-    let interval;
-    
-    if (typeof cronParser.parse === 'function') {
-      // Jeśli cronParser ma bezpośrednią metodę parse
-      interval = cronParser.parse(cronExpression, {
-        currentDate: now,
-        tz: 'Europe/Warsaw'
-      });
-    } else if (cronParser.CronExpression && typeof cronParser.CronExpression.parse === 'function') {
-      // Jeśli struktura to cronParser.CronExpression.parse
-      interval = cronParser.CronExpression.parse(cronExpression, {
-        currentDate: now,
-        tz: 'Europe/Warsaw'
-      });
-    } else if (typeof cronParser === 'function') {
-      // Jeśli sam cronParser jest funkcją
-      interval = cronParser(cronExpression, {
-        currentDate: now,
-        tz: 'Europe/Warsaw'
-      });
-    } else {
-      // Fallback - użyj node-cron do walidacji i obliczenia
-      console.warn('Using fallback for next run calculation');
-      const nextRun = new Date(now);
-      nextRun.setHours(nextRun.getHours() + 1);
-      return nextRun;
-    }
-    
+    const interval = cronParser.CronExpression.parse(cronExpression, {
+      currentDate: now,
+      tz: 'Europe/Warsaw'
+    });
     return interval.next().toDate();
   } catch (err) {
     console.error('Error calculating next run:', err);
-    // Fallback - zwróć za godzinę
     const nextRun = new Date();
     nextRun.setHours(nextRun.getHours() + 1);
     return nextRun;

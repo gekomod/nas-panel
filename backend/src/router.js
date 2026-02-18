@@ -259,7 +259,41 @@ const routes = [
           requiresAuth: true,
           icon: 'mdi:play-network' 
         }
-      }
+      },
+	  {
+		path: '/services/nfs',
+		name: 'NFS',
+		meta: { 
+		  title: 'routes.nfs',
+		  requiresAuth: true,
+		  icon: 'mdi:folder-network',
+		  description: 'Network File System'
+		},
+		children: [
+		  {
+		    path: '/services/nfs/client',
+		    name: 'NFS Client',
+		    component: () => import('@/components/services/Nfs/NfsClient.vue'),
+		    meta: { 
+		      title: 'routes.nfsClient',
+		      requiresAuth: true,
+		      icon: 'mdi:lan-connect',
+		      description: 'Mount NFS shares from remote servers'
+		    }
+		  },
+		  {
+		    path: '/services/nfs/server',
+		    name: 'NFS Server',
+		    component: () => import('@/components/services/Nfs/NfsServer.vue'),
+		    meta: { 
+		      title: 'routes.nfsServer',
+		      requiresAuth: true,
+		      icon: 'mdi:server-network',
+		      description: 'Share directories via NFS protocol'
+		    }
+		  }
+		]
+	  }
     ]
   },
   {
