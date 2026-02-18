@@ -13,11 +13,12 @@
       </div>
       <div class="toolbar-right">
         <el-button 
-          v-if="!connected && server?.status === 'online'"
+          v-if="!connected"
           @click="connect" 
           size="small" 
           type="success"
           :loading="connecting"
+          :disabled="server?.status !== 'online'"
         >
           <Icon icon="mdi:link" width="14" />
           Połącz
@@ -41,10 +42,10 @@
       </div>
     </div>
 
-    <!-- Właściwy terminal xterm.js -->
+    <!-- Właściwy terminal xterm.js - ZAWSZE WIDOCZNY -->
     <div ref="terminalContainer" class="xterm-container"></div>
 
-    <!-- Overlay gdy nie połączono -->
+    <!-- Overlay tylko gdy NIE połączono - ale nie zakrywa terminala! -->
     <div v-if="!connected && !connecting" class="terminal-overlay">
       <div class="overlay-content">
         <Icon icon="mdi:console" size="48" />
@@ -59,7 +60,6 @@
           v-if="server?.status === 'online'"
           @click="connect" 
           type="primary"
-          :disabled="server?.status !== 'online'"
         >
           <Icon icon="mdi:link" width="16" />
           Połącz z terminalem
@@ -100,11 +100,12 @@ const emit = defineEmits(['connected', 'disconnected', 'error'])
 // Stan
 const terminalContainer = ref(null)
 const term = ref(null)
-const fitAddon = ref(null)
 const socket = ref(null)
 const connected = ref(false)
 const connecting = ref(false)
-const commandBuffer = ref('')
+
+let fitAddon = null
+let webLinksAddon = null
 
 // Status połączenia
 const connectionStatus = computed(() => {
@@ -129,66 +130,77 @@ const connectionStatus = computed(() => {
   }
 })
 
-// Inicjalizacja terminala xterm.js
+// Inicjalizacja terminala
 const initTerminal = () => {
   if (!terminalContainer.value) return
 
-  term.value = new Terminal({
-    cursorBlink: true,
-    cursorStyle: 'block',
-    theme: {
-      background: '#1e1e2e',
-      foreground: '#cdd6f4',
-      cursor: '#f5e0dc',
-      selection: '#585b70',
-      black: '#45475a',
-      red: '#f38ba8',
-      green: '#a6e3a1',
-      yellow: '#f9e2af',
-      blue: '#89b4fa',
-      magenta: '#cba6f7',
-      cyan: '#94e2d5',
-      white: '#bac2de',
-      brightBlack: '#585b70',
-      brightRed: '#f38ba8',
-      brightGreen: '#a6e3a1',
-      brightYellow: '#f9e2af',
-      brightBlue: '#89b4fa',
-      brightMagenta: '#cba6f7',
-      brightCyan: '#94e2d5',
-      brightWhite: '#a6adc8'
-    },
-    fontSize: 13,
-    fontFamily: 'JetBrains Mono, SF Mono, Monaco, Consolas, monospace',
-    scrollback: 5000,
-    lineHeight: 1.4,
-    allowTransparency: true
-  })
+  try {
+    term.value = new Terminal({
+      cursorBlink: true,
+      cursorStyle: 'block',
+      theme: {
+        background: '#1e1e2e',
+        foreground: '#cdd6f4',
+        cursor: '#f5e0dc',
+        selection: '#585b70',
+        black: '#45475a',
+        red: '#f38ba8',
+        green: '#a6e3a1',
+        yellow: '#f9e2af',
+        blue: '#89b4fa',
+        magenta: '#cba6f7',
+        cyan: '#94e2d5',
+        white: '#bac2de',
+        brightBlack: '#585b70',
+        brightRed: '#f38ba8',
+        brightGreen: '#a6e3a1',
+        brightYellow: '#f9e2af',
+        brightBlue: '#89b4fa',
+        brightMagenta: '#cba6f7',
+        brightCyan: '#94e2d5',
+        brightWhite: '#a6adc8'
+      },
+      fontSize: 13,
+      fontFamily: 'JetBrains Mono, SF Mono, Monaco, Consolas, monospace',
+      scrollback: 5000,
+      lineHeight: 1.4,
+      allowTransparency: true
+    })
 
-  // Dodaj addony
-  fitAddon.value = new FitAddon()
-  term.value.loadAddon(fitAddon.value)
-  term.value.loadAddon(new WebLinksAddon())
+    term.value.open(terminalContainer.value)
+    
+    fitAddon = new FitAddon()
+    webLinksAddon = new WebLinksAddon()
+    
+    term.value.loadAddon(fitAddon)
+    term.value.loadAddon(webLinksAddon)
+    
+    setTimeout(() => {
+      if (fitAddon) {
+        fitAddon.fit()
+      }
+    }, 100)
 
-  // Otwórz terminal w kontenerze
-  term.value.open(terminalContainer.value)
-  
-  // Dostosuj rozmiar
-  setTimeout(() => {
-    fitAddon.value.fit()
-  }, 100)
+    window.addEventListener('resize', handleResize)
+    
+    // Pokaż komunikat "Rozłączono" od razu
+    term.value.writeln('\x1b[33m╭────────────────────────────────────╮')
+    term.value.writeln('\x1b[33m│         Rozłączono z terminalem     │')
+    term.value.writeln('\x1b[33m╰────────────────────────────────────╯\x1b[0m')
+    term.value.writeln('')
 
-  // Obsługa zmiany rozmiaru okna
-  window.addEventListener('resize', handleResize)
-}
-
-const handleResize = () => {
-  if (fitAddon.value && connected.value) {
-    fitAddon.value.fit()
+  } catch (error) {
+    console.error('Terminal initialization error:', error)
   }
 }
 
-// Połączenie WebSocket przez SSH
+const handleResize = () => {
+  if (fitAddon) {
+    fitAddon.fit()
+  }
+}
+
+// Połączenie
 const connect = async () => {
   if (!props.server || props.server.status !== 'online') {
     ElMessage.warning('Serwer jest offline. Najpierw połącz się z serwerem.')
@@ -198,28 +210,24 @@ const connect = async () => {
   connecting.value = true
 
   try {
-    // Połączenie WebSocket do serwera SSH
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `ws://${window.location.hostname}:1113`
+    const wsUrl = `${protocol}//${window.location.hostname}:1113`
     
     socket.value = io(wsUrl, {
       path: '/terminal',
       transports: ['websocket'],
       query: {
         serverId: props.server.id,
-        cols: term.value.cols,
-        rows: term.value.rows
+        cols: term.value?.cols || 100,
+        rows: term.value?.rows || 30
       }
     })
 
     socket.value.on('connect', () => {
-      console.log('WebSocket connected')
-      
-      // Wyślij dane logowania
       socket.value.emit('auth', {
         serverId: props.server.id,
         username: props.server.username,
-        password: props.server.password || null,
+        password: props.server.currentPassword || props.server.password || null,
         keyFile: props.server.keyFile || null
       })
     })
@@ -239,12 +247,10 @@ const connect = async () => {
     })
 
     socket.value.on('data', (data) => {
-      // Odbierz dane z SSH i wyświetl w terminalu
       term.value.write(data)
     })
 
     socket.value.on('error', (error) => {
-      console.error('Socket error:', error)
       ElMessage.error(error)
       emit('error', error)
       disconnect()
@@ -257,14 +263,12 @@ const connect = async () => {
       }
     })
 
-    // Przekaż dane z terminala do SSH
     term.value.onData((data) => {
       if (socket.value && connected.value) {
         socket.value.emit('input', data)
       }
     })
 
-    // Obsługa resize
     term.value.onResize((size) => {
       if (socket.value && connected.value) {
         socket.value.emit('resize', size)
@@ -288,12 +292,12 @@ const disconnect = () => {
   connected.value = false
   connecting.value = false
   
-  if (term.value) {
-    term.value.clear()
-    term.value.writeln('\x1b[33m╭────────────────────────────────────╮')
-    term.value.writeln('\x1b[33m│      Rozłączono z terminalem        │')
-    term.value.writeln('\x1b[33m╰────────────────────────────────────╯\x1b[0m')
-  }
+  // Wyczyść i pokaż komunikat rozłączenia
+  term.value.clear()
+  term.value.writeln('\x1b[33m╭────────────────────────────────────╮')
+  term.value.writeln('\x1b[33m│         Rozłączono z terminalem     │')
+  term.value.writeln('\x1b[33m╰────────────────────────────────────╯\x1b[0m')
+  term.value.writeln('')
   
   emit('disconnected')
 }
@@ -304,26 +308,41 @@ const clearTerminal = () => {
   }
 }
 
-// Lifecycle
+// Cleanup
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+  
+  if (socket.value) {
+    socket.value.disconnect()
+    socket.value = null
+  }
+  
+  // TYLKO jeśli terminal istnieje
+  if (term.value) {
+    try {
+      // NAJPIERW usuń referencje addonów
+      fitAddon = null
+      webLinksAddon = null
+      
+      // POTEM zniszcz terminal - addony już "nie istnieją" dla xterm
+      term.value.dispose()
+    } catch (e) {
+      console.log('Terminal disposed (ignoring addon errors)')
+    }
+    term.value = null
+  }
+  
+  // Dodatkowe zabezpieczenie
+  fitAddon = null
+  webLinksAddon = null
+})
+
 onMounted(() => {
   nextTick(() => {
     initTerminal()
   })
 })
 
-onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
-  
-  if (socket.value) {
-    socket.value.disconnect()
-  }
-  
-  if (term.value) {
-    term.value.dispose()
-  }
-})
-
-// Expose metody dla rodzica
 defineExpose({
   connect,
   disconnect,
@@ -341,6 +360,7 @@ defineExpose({
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid #313244;
+  position: relative;
 }
 
 .terminal-toolbar {
@@ -350,6 +370,8 @@ defineExpose({
   padding: 8px 12px;
   background: #181825;
   border-bottom: 1px solid #313244;
+  position: relative;
+  z-index: 20;
   
   .toolbar-left {
     display: flex;
@@ -375,6 +397,8 @@ defineExpose({
   min-height: 300px;
   padding: 8px;
   background: #1e1e2e;
+  position: relative;
+  z-index: 10;
   
   :deep(.xterm) {
     height: 100%;
@@ -409,7 +433,7 @@ defineExpose({
 
 .terminal-overlay {
   position: absolute;
-  top: 40px;
+  top: 0;
   left: 0;
   right: 0;
   bottom: 0;
@@ -418,7 +442,7 @@ defineExpose({
   justify-content: center;
   background: rgba(30, 30, 46, 0.95);
   backdrop-filter: blur(4px);
-  z-index: 10;
+  z-index: 30;
   
   .overlay-content {
     text-align: center;

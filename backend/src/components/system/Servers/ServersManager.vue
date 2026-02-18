@@ -369,7 +369,7 @@
 
             <!-- Terminal -->
             <el-tab-pane :label="$t('servers.terminal')" name="terminal">
-              <div class="terminal-section">
+              <div class="terminal-section expanded-terminal">
                 <RealTerminal 
                   v-if="server.connected"
                   ref="terminalRefs"
@@ -833,15 +833,27 @@ const doConnect = async (server, password = null) => {
   }
 }
 
+// POPRAWIONA FUNKCJA DISCONNECT - kluczowa zmiana
 const disconnectFromServer = async (server) => {
   try {
-    // Rozłącz terminal jeśli aktywny
-    if (terminalRefs.value[server.id]) {
-      terminalRefs.value[server.id].disconnect()
+    // Bezpieczne rozłączenie terminala jeśli istnieje
+    if (terminalRefs.value && terminalRefs.value[server.id]) {
+      try {
+        // Sprawdź czy terminal istnieje i ma metodę disconnect
+        const terminal = terminalRefs.value[server.id]
+        if (terminal && typeof terminal.disconnect === 'function') {
+          terminal.disconnect()
+        }
+      } catch (terminalError) {
+        console.error('Error disconnecting terminal:', terminalError)
+        // Ignoruj błąd terminala - kontynuuj rozłączanie serwera
+      }
     }
     
+    // Rozłącz połączenie z serwerem
     await axios.post(`/api/servers/${server.id}/disconnect`)
     
+    // Zaktualizuj stan serwera
     server.connected = false
     server.stats = null
     server.processes = []
@@ -849,11 +861,20 @@ const disconnectFromServer = async (server) => {
     server.terminalSessionId = null
     server.currentPassword = null
     
+    // Jeśli aktywna zakładka to terminal, przełącz na statystyki
+    if (server.activeTab === 'terminal') {
+      server.activeTab = 'stats'
+    }
+    
     ElMessage.success(t('servers.disconnected', { name: server.name }))
     
   } catch (error) {
     console.error('Disconnect error:', error)
-    ElMessage.error(t('servers.disconnectError'))
+    
+    // Nawet jeśli API zwróci błąd, zaktualizuj stan lokalny
+    server.connected = false
+    
+    ElMessage.error(error.response?.data?.error || t('servers.disconnectError'))
   }
 }
 
@@ -1423,6 +1444,12 @@ onUnmounted(() => {
   }
 }
 
+.expanded-terminal {
+  height: 550px !important;
+  margin: -8px;
+  position: relative;
+}
+
 /* Logs */
 .logs-container {
   .logs-toolbar {
@@ -1542,6 +1569,10 @@ onUnmounted(() => {
       align-items: center;
       gap: 8px;
     }
+  }
+  
+  .expanded-terminal {
+    height: 400px !important;
   }
 }
 </style>
